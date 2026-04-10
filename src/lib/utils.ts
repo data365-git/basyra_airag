@@ -12,6 +12,21 @@ export const DAYS_OF_WEEK = [
   "Saturday",
 ];
 
+export const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Format an array of day indices into a human-readable string.
+ *  [6] → "Saturday"
+ *  [0, 6] → "Sunday & Saturday"
+ *  [1, 3, 5] → "Mon, Wed, Fri"
+ */
+export function formatScheduleDays(days: number[]): string {
+  if (!days || days.length === 0) return "—";
+  const sorted = [...days].sort((a, b) => a - b);
+  if (sorted.length === 1) return DAYS_OF_WEEK[sorted[0]];
+  if (sorted.length === 2) return `${DAYS_OF_WEEK[sorted[0]]} & ${DAYS_OF_WEEK[sorted[1]]}`;
+  return sorted.map((d) => DAYS_SHORT[d]).join(", ");
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -44,31 +59,26 @@ export function getAttendanceColorClass(rate: number): string {
 export function generateSessionDates(
   startDate: string,
   endDate: string,
-  scheduleDay: number // 0=Sun, 1=Mon ... 6=Sat
+  scheduleDays: number[] // e.g. [6] = Saturday, [0, 6] = Sunday + Saturday
 ): Date[] {
-  const start = parseISO(startDate);
-  const end = parseISO(endDate);
+  if (!scheduleDays || scheduleDays.length === 0) return [];
 
-  // Find all occurrences of the day of week between start and end
-  const days: Date[] = [];
+  const start = startOfDay(parseISO(startDate));
+  const end = startOfDay(parseISO(endDate));
+  const daySet = new Set(scheduleDays);
+  const result: Date[] = [];
 
-  // Get the first occurrence of the target day on or after start
-  let current = startOfDay(start);
-  const targetDayOfWeek = scheduleDay; // 0=Sun
-
-  // Find first occurrence
-  while (current.getDay() !== targetDayOfWeek) {
+  // Walk day-by-day from start to end, collect every day whose weekday is in the set
+  let current = new Date(start);
+  while (current <= end) {
+    if (daySet.has(current.getDay())) {
+      result.push(new Date(current));
+    }
     current = new Date(current.getTime() + 24 * 60 * 60 * 1000);
   }
 
-  while (current <= end) {
-    if (current >= start) {
-      days.push(new Date(current));
-    }
-    current = new Date(current.getTime() + 7 * 24 * 60 * 60 * 1000);
-  }
-
-  return days;
+  // Already in chronological order; return sorted just to be explicit
+  return result.sort((a, b) => a.getTime() - b.getTime());
 }
 
 export function trainingStatus(startDate: string, endDate: string): "upcoming" | "active" | "completed" {

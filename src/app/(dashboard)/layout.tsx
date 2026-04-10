@@ -1,5 +1,10 @@
 import { DashboardShell } from "@/components/layout/DashboardShell";
+import { LanguageProvider } from "@/providers/LanguageProvider";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return (
+    <LanguageProvider>
+      <DashboardShell>{children}</DashboardShell>
+    </LanguageProvider>
+  );
 }

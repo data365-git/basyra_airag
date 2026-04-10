@@ -31,6 +31,12 @@ export function hasPermission(
   if (page === "settings.roles") {
     return (perms.settings?.roles as Record<string, boolean>)?.[action] === true;
   }
+  if (page === "settings.categories") {
+    return (perms.settings?.categories as Record<string, boolean> | undefined)?.[action] === true;
+  }
+  if (page === "settings.translations") {
+    return (perms.settings?.translations as Record<string, boolean> | undefined)?.[action] === true;
+  }
 
   const bucket = (perms as unknown as Record<string, Record<string, boolean>>)[page];
   return bucket?.[action] === true;
@@ -54,12 +60,14 @@ export type PageDef = {
 };
 
 export const PAGE_DEFS: PageDef[] = [
-  { page: "trainings",       label: "Trainings",   actions: ["view", "create", "edit", "delete"] },
-  { page: "participants",    label: "Participants", actions: ["view", "create", "edit", "delete"] },
-  { page: "scanner",         label: "Scanner",      actions: ["view"] },
-  { page: "reports",         label: "Reports",      actions: ["view", "export"] },
-  { page: "settings.users",  label: "Users",        actions: ["view", "create", "edit", "delete"], parent: "settings" },
-  { page: "settings.roles",  label: "Roles",        actions: ["view", "create", "edit", "delete"], parent: "settings" },
+  { page: "trainings",              label: "Trainings",     actions: ["view", "create", "edit", "delete"] },
+  { page: "participants",           label: "Participants",  actions: ["view", "create", "edit", "delete"] },
+  { page: "scanner",                label: "Scanner",       actions: ["view"] },
+  { page: "reports",                label: "Reports",       actions: ["view", "export"] },
+  { page: "settings.users",         label: "Users",         actions: ["view", "create", "edit", "delete"], parent: "settings" },
+  { page: "settings.roles",         label: "Roles",         actions: ["view", "create", "edit", "delete"], parent: "settings" },
+  { page: "settings.categories",    label: "Categories",    actions: ["view", "create", "edit", "delete"], parent: "settings" },
+  { page: "settings.translations",  label: "Translations",  actions: ["view", "edit"],                     parent: "settings" },
 ];
 
 export const PRESET_COLORS = [
@@ -80,19 +88,23 @@ export function emptyPermissions(): RolePermissions {
     scanner:      { view: false },
     reports:      { view: false, export: false },
     settings: {
-      users: { view: false, create: false, edit: false, delete: false },
-      roles: { view: false, create: false, edit: false, delete: false },
+      users:        { view: false, create: false, edit: false, delete: false },
+      roles:        { view: false, create: false, edit: false, delete: false },
+      categories:   { view: false, create: false, edit: false, delete: false },
+      translations: { view: false, edit: false },
     },
   };
 }
 
 export function countAccessiblePages(perms: RolePermissions): number {
   let n = 0;
-  if (perms.trainings?.view)       n++;
-  if (perms.participants?.view)    n++;
-  if (perms.scanner?.view)         n++;
-  if (perms.reports?.view)         n++;
-  if (perms.settings?.users?.view) n++;
-  if (perms.settings?.roles?.view) n++;
+  if (perms.trainings?.view)              n++;
+  if (perms.participants?.view)           n++;
+  if (perms.scanner?.view)               n++;
+  if (perms.reports?.view)               n++;
+  if (perms.settings?.users?.view)       n++;
+  if (perms.settings?.roles?.view)       n++;
+  if (perms.settings?.categories?.view)  n++;
+  if (perms.settings?.translations?.view) n++;
   return n;
 }

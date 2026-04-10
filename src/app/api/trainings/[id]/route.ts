@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
+import { generateSessionDates } from "@/lib/utils";
 
 const PatchTrainingSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -13,7 +14,11 @@ const PatchTrainingSchema = z.object({
   attendance_threshold: z.number().int().min(0).max(100).optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
-  schedule_day: z.number().int().min(0).max(6).optional(),
+  schedule_days: z.array(z.number().int().min(0).max(6))
+    .min(1, "At least one day is required")
+    .max(7)
+    .transform((days) => [...new Set(days)].sort((a, b) => a - b))
+    .optional(),
   schedule_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
 }).refine(
   (d) => {
@@ -49,7 +54,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       icon: training.icon,
       start_date: training.startDate.toISOString().slice(0, 10),
       end_date: training.endDate.toISOString().slice(0, 10),
-      schedule_day: training.scheduleDay,
+      schedule_days: training.scheduleDays,
       schedule_time: training.scheduleTime,
       status: training.status,
       attendance_threshold: training.attendanceThreshold,
@@ -105,11 +110,72 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (d.attendance_threshold !== undefined) data.attendanceThreshold = d.attendance_threshold;
     if (d.start_date !== undefined) data.startDate = new Date(d.start_date);
     if (d.end_date !== undefined) data.endDate = new Date(d.end_date);
-    if (d.schedule_day !== undefined) data.scheduleDay = d.schedule_day;
+    if (d.schedule_days !== undefined) data.scheduleDays = d.schedule_days;
     if (d.schedule_time !== undefined) data.scheduleTime = d.schedule_time;
 
     const training = await prisma.training.update({ where: { id }, data });
-    return NextResponse.json(training);
+
+    // If schedule-related fields changed, regenerate non-closed sessions
+    const scheduleChanged = d.schedule_days !== undefined || d.start_date !== undefined ||
+                            d.end_date !== undefined || d.schedule_time !== undefined;
+    if (scheduleChanged) {
+      // Use the final values (merged from update + existing training)
+      const finalStartDate = d.start_date ?? training.startDate.toISOString().slice(0, 10);
+      const finalEndDate = d.end_date ?? training.endDate.toISOString().slice(0, 10);
+      const finalDays = d.schedule_days ?? training.scheduleDays;
+      const finalTime = d.schedule_time ?? training.scheduleTime;
+
+      // Delete upcoming/open sessions (closed sessions have attendance data — keep them)
+      await prisma.session.deleteMany({
+        where: { trainingId: id, status: { in: ["upcoming", "open"] } },
+      });
+
+      // Count existing closed sessions to continue numbering from
+      const closedCount = await prisma.session.count({
+        where: { trainingId: id, status: "closed" },
+      });
+
+      // Generate new sessions from schedule
+      const newDates = generateSessionDates(finalStartDate, finalEndDate, finalDays);
+      const now = new Date();
+
+      // Filter out dates already covered by closed sessions (by date match)
+      const closedSessions = await prisma.session.findMany({
+        where: { trainingId: id, status: "closed" },
+        select: { sessionDate: true },
+      });
+      const closedDateStrs = new Set(closedSessions.map((s) => s.sessionDate.toISOString().slice(0, 10)));
+
+      const newSessionDates = newDates.filter((d) => !closedDateStrs.has(d.toISOString().slice(0, 10)));
+
+      if (newSessionDates.length > 0) {
+        await prisma.session.createMany({
+          data: newSessionDates.map((date, i) => ({
+            trainingId: id,
+            sessionNumber: closedCount + i + 1,
+            sessionDate: date,
+            sessionTime: finalTime,
+            status: date < now ? "closed" : "upcoming",
+          })),
+        });
+      }
+    }
+
+    return NextResponse.json({
+      id: training.id,
+      name: training.name,
+      description: training.description,
+      color: training.color,
+      icon: training.icon,
+      start_date: training.startDate.toISOString().slice(0, 10),
+      end_date: training.endDate.toISOString().slice(0, 10),
+      schedule_days: training.scheduleDays,
+      schedule_time: training.scheduleTime,
+      status: training.status,
+      attendance_threshold: training.attendanceThreshold,
+      created_by: training.createdById,
+      created_at: training.createdAt,
+    });
   } catch (e) {
     console.error("training PATCH error:", e);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });

@@ -11,7 +11,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { ConfirmModal, Modal } from "@/components/ui/Modal";
-import { formatDate, formatTime, getAttendanceColorClass, DAYS_OF_WEEK } from "@/lib/utils";
+import { formatDate, formatTime, getAttendanceColorClass, formatScheduleDays } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
 import toast from "react-hot-toast";
 
@@ -214,7 +214,7 @@ export default function TrainingDetailPage() {
     <div className="space-y-6">
       <PageHeader
         title={training.name}
-        subtitle={`Every ${DAYS_OF_WEEK[training.schedule_day]} · ${formatTime(training.schedule_time)}`}
+        subtitle={`Every ${formatScheduleDays(training.schedule_days)} · ${formatTime(training.schedule_time)}`}
         back
         backHref="/trainings"
         actions={

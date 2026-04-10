@@ -16,8 +16,10 @@ async function main() {
     scanner:      { view: true  },
     reports:      { view: true,  export: true  },
     settings: {
-      users: { view: true,  create: true,  edit: true,  delete: true  },
-      roles: { view: true,  create: true,  edit: true,  delete: true  },
+      users:        { view: true,  create: true,  edit: true,  delete: true  },
+      roles:        { view: true,  create: true,  edit: true,  delete: true  },
+      categories:   { view: true,  create: true,  edit: true,  delete: true  },
+      translations: { view: true,  edit: true  },
     },
   };
   const scannerPerms = {
@@ -26,8 +28,10 @@ async function main() {
     scanner:      { view: true  },
     reports:      { view: false, export: false },
     settings: {
-      users: { view: false, create: false, edit: false, delete: false },
-      roles: { view: false, create: false, edit: false, delete: false },
+      users:        { view: false, create: false, edit: false, delete: false },
+      roles:        { view: false, create: false, edit: false, delete: false },
+      categories:   { view: false, create: false, edit: false, delete: false },
+      translations: { view: false, edit: false },
     },
   };
   const viewerPerms = {
@@ -36,8 +40,10 @@ async function main() {
     scanner:      { view: false },
     reports:      { view: true,  export: true  },
     settings: {
-      users: { view: false, create: false, edit: false, delete: false },
-      roles: { view: false, create: false, edit: false, delete: false },
+      users:        { view: false, create: false, edit: false, delete: false },
+      roles:        { view: false, create: false, edit: false, delete: false },
+      categories:   { view: false, create: false, edit: false, delete: false },
+      translations: { view: false, edit: false },
     },
   };
 
@@ -166,7 +172,7 @@ async function main() {
   const now = new Date();
   const daysAgo = (n: number) => { const d = new Date(now); d.setDate(d.getDate() - n); d.setHours(0,0,0,0); return d; };
 
-  // Training 1: Active Web Dev
+  // Training 1: Active Web Dev — Saturday + Sunday to show multi-day feature
   const webDev = await prisma.training.upsert({
     where: { id: "cccccccc-0001-0000-0000-000000000000" },
     update: {},
@@ -178,14 +184,14 @@ async function main() {
       icon: "book",
       startDate: daysAgo(56),
       endDate: new Date(now.getTime() + 28 * 24 * 60 * 60 * 1000),
-      scheduleDay: 6,
+      scheduleDays: [0, 6],      // Sunday + Saturday
       scheduleTime: "09:00",
       status: "active",
       attendanceThreshold: 75,
     },
   });
 
-  // Training 2: Upcoming Data Analysis
+  // Training 2: Upcoming Data Analysis — Saturday only
   await prisma.training.upsert({
     where: { id: "cccccccc-0002-0000-0000-000000000000" },
     update: {},
@@ -197,14 +203,14 @@ async function main() {
       icon: "book",
       startDate: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000),
       endDate: new Date(now.getTime() + 112 * 24 * 60 * 60 * 1000),
-      scheduleDay: 6,
+      scheduleDays: [6],
       scheduleTime: "14:00",
       status: "upcoming",
       attendanceThreshold: 80,
     },
   });
 
-  // Training 3: Completed English
+  // Training 3: Completed English — Saturday only
   const english = await prisma.training.upsert({
     where: { id: "cccccccc-0003-0000-0000-000000000000" },
     update: {},
@@ -216,7 +222,7 @@ async function main() {
       icon: "book",
       startDate: daysAgo(84),
       endDate: daysAgo(14),
-      scheduleDay: 6,
+      scheduleDays: [6],
       scheduleTime: "11:00",
       status: "completed",
       attendanceThreshold: 80,
@@ -341,6 +347,55 @@ async function main() {
   }
 
   console.log("Attendance data generated.");
+
+  // Training categories
+  const categoryData = [
+    {
+      id: "catcat00-0001-0000-0000-000000000000",
+      nameUz: "Veb-dasturlash",
+      nameRu: "Веб-разработка",
+      nameEn: "Web Development",
+      sortOrder: 1,
+    },
+    {
+      id: "catcat00-0002-0000-0000-000000000000",
+      nameUz: "Ma'lumotlar tahlili",
+      nameRu: "Анализ данных",
+      nameEn: "Data Analysis",
+      sortOrder: 2,
+    },
+    {
+      id: "catcat00-0003-0000-0000-000000000000",
+      nameUz: "Liderlik",
+      nameRu: "Лидерство",
+      nameEn: "Leadership",
+      sortOrder: 3,
+    },
+    {
+      id: "catcat00-0004-0000-0000-000000000000",
+      nameUz: "Til o'rganish",
+      nameRu: "Изучение языков",
+      nameEn: "Language Learning",
+      sortOrder: 4,
+    },
+    {
+      id: "catcat00-0005-0000-0000-000000000000",
+      nameUz: "Dizayn",
+      nameRu: "Дизайн",
+      nameEn: "Design",
+      sortOrder: 5,
+    },
+  ];
+
+  for (const cat of categoryData) {
+    await prisma.trainingCategory.upsert({
+      where: { id: cat.id },
+      update: { nameUz: cat.nameUz, nameRu: cat.nameRu, nameEn: cat.nameEn, sortOrder: cat.sortOrder },
+      create: cat,
+    });
+  }
+
+  console.log("Training categories created.");
   console.log("Seed complete!");
 }
 

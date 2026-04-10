@@ -15,6 +15,10 @@ export default function SettingsPage() {
       router.replace("/settings/users");
     } else if (hasPermission(user, "settings.roles", "view")) {
       router.replace("/settings/roles");
+    } else if (hasPermission(user, "settings.categories", "view")) {
+      router.replace("/settings/categories");
+    } else if (hasPermission(user, "settings.translations", "view")) {
+      router.replace("/settings/translations");
     } else {
       router.replace("/");
     }

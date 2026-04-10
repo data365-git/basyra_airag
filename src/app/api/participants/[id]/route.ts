@@ -21,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         trainingParticipants: {
           include: {
             training: {
-              select: { id: true, name: true, color: true, icon: true, startDate: true, endDate: true, status: true, scheduleDay: true },
+              select: { id: true, name: true, color: true, icon: true, startDate: true, endDate: true, status: true, scheduleDays: true },
             },
           },
         },
@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       photo_url: p.photoUrl,
       qr_token: p.qrToken,
       created_at: p.createdAt,
-      training_participants: p.trainingParticipants.map((tp) => ({
+      training_participants: (p as any).trainingParticipants?.map((tp: any) => ({
         enrolled_at: tp.enrolledAt,
         training: {
           id: tp.training.id,
@@ -48,9 +48,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           start_date: tp.training.startDate.toISOString().slice(0, 10),
           end_date: tp.training.endDate.toISOString().slice(0, 10),
           status: tp.training.status,
-          schedule_day: tp.training.scheduleDay,
+          schedule_days: tp.training.scheduleDays,
         },
-      })),
+      })) ?? [],
     });
   } catch (e) {
     console.error("participant GET error:", e);

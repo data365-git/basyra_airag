@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Users, Calendar, ChevronRight } from "lucide-react";
 import { TrainingStatusBadge } from "@/components/ui/Badge";
-import { formatDate, formatTime, DAYS_OF_WEEK } from "@/lib/utils";
+import { formatDate, formatTime, formatScheduleDays } from "@/lib/utils";
 import type { Training } from "@/types";
 
 export function TrainingCard({ training }: { training: Training & { participant_count?: number; session_count?: number } }) {
@@ -27,7 +27,7 @@ export function TrainingCard({ training }: { training: Training & { participant_
         <div className="flex items-center gap-4 text-xs text-gray-500 mt-3">
           <div className="flex items-center gap-1">
             <Calendar size={12} />
-            <span>Every {DAYS_OF_WEEK[training.schedule_day]} · {formatTime(training.schedule_time)}</span>
+            <span>Every {formatScheduleDays(training.schedule_days)} · {formatTime(training.schedule_time)}</span>
           </div>
         </div>
 

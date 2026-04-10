@@ -5,7 +5,9 @@ export type PermPage =
   | "scanner"
   | "reports"
   | "settings.users"
-  | "settings.roles";
+  | "settings.roles"
+  | "settings.categories"
+  | "settings.translations";
 
 /** Action used in hasPermission() */
 export type PermAction = "view" | "create" | "edit" | "delete" | "export";
@@ -17,9 +19,21 @@ export interface RolePermissions {
   scanner:      { view: boolean };
   reports:      { view: boolean; export: boolean };
   settings: {
-    users: { view: boolean; create: boolean; edit: boolean; delete: boolean };
-    roles: { view: boolean; create: boolean; edit: boolean; delete: boolean };
+    users:        { view: boolean; create: boolean; edit: boolean; delete: boolean };
+    roles:        { view: boolean; create: boolean; edit: boolean; delete: boolean };
+    categories?:  { view: boolean; create: boolean; edit: boolean; delete: boolean };
+    translations?:{ view: boolean; edit: boolean };
   };
+}
+
+export interface TrainingCategory {
+  id: string;
+  name_uz: string;
+  name_ru: string | null;
+  name_en: string | null;
+  sort_order: number;
+  created_at: string;
+  training_count?: number;
 }
 
 export interface Role {
@@ -51,10 +65,12 @@ export interface Training {
   icon: string;
   start_date: string;
   end_date: string;
-  schedule_day: number; // 0=Sun ... 6=Sat
+  schedule_days: number[]; // e.g. [6] = Sat, [0, 6] = Sun + Sat
   schedule_time: string;
   status: "upcoming" | "active" | "completed";
   attendance_threshold: number;
+  category_id?: string | null;
+  category?: TrainingCategory | null;
   created_by: string | null;
   created_at: string;
   trainers?: StaffUser[];

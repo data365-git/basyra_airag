@@ -32,6 +32,7 @@ model StaffUser {
   overrideAttendance Attendance[]     @relation("OverrideBy")
   createdTrainings   Training[]
   auditLogs          AttendanceAudit[]
+  translations       Translation[]
 
   @@map("staff_users")
 }
@@ -44,10 +45,12 @@ model Training {
   icon                 String                @default("book")
   startDate            DateTime              @map("start_date") @db.Date
   endDate              DateTime              @map("end_date") @db.Date
-  scheduleDay          Int                   @map("schedule_day")
+  scheduleDays         Int[]                 @map("schedule_days")
   scheduleTime         String                @map("schedule_time")
   status               String                @default("upcoming")
   attendanceThreshold  Int                   @default(80) @map("attendance_threshold")
+  categoryId           String?               @map("category_id")
+  category             TrainingCategory?     @relation(fields: [categoryId], references: [id])
   createdById          String?               @map("created_by")
   createdBy            StaffUser?            @relation(fields: [createdById], references: [id])
   createdAt            DateTime              @default(now()) @map("created_at")
@@ -55,6 +58,31 @@ model Training {
   trainingParticipants TrainingParticipant[]
 
   @@map("trainings")
+}
+
+model TrainingCategory {
+  id        String     @id @default(uuid())
+  nameUz    String     @map("name_uz")
+  nameRu    String?    @map("name_ru")
+  nameEn    String?    @map("name_en")
+  sortOrder Int        @default(0) @map("sort_order")
+  createdAt DateTime   @default(now()) @map("created_at")
+  trainings Training[]
+
+  @@map("training_categories")
+}
+
+model Translation {
+  id          String     @id @default(uuid())
+  key         String
+  language    String
+  value       String
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  updatedById String?    @map("updated_by")
+  updatedBy   StaffUser? @relation(fields: [updatedById], references: [id])
+
+  @@unique([key, language])
+  @@map("translations")
 }
 
 model Session {

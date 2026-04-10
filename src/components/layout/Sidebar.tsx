@@ -11,6 +11,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { hasPermission, isSuperadmin } from "@/lib/permissions";
 import type { PermPage, PermAction } from "@/types";
 import toast from "react-hot-toast";
+import { useTranslation } from "@/providers/LanguageProvider";
+import type { Language } from "@/providers/LanguageProvider";
 
 interface NavItem {
   label: string;
@@ -32,10 +34,17 @@ const settingsItems: NavItem[] = [
   { label: "Settings", href: "/settings", icon: Settings, page: null, action: "view" },
 ];
 
+const LANG_OPTIONS: { code: Language; label: string }[] = [
+  { code: "uz", label: "UZ" },
+  { code: "ru", label: "RU" },
+  { code: "en", label: "EN" },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
+  const { language, setLanguage } = useTranslation();
 
   const superadmin = isSuperadmin(user);
 
@@ -116,6 +125,26 @@ export function Sidebar() {
           </>
         )}
       </nav>
+
+      {/* Language switcher */}
+      <div className="px-4 py-2 border-t border-gray-100">
+        <div className="flex gap-1">
+          {LANG_OPTIONS.map(({ code, label }) => (
+            <button
+              key={code}
+              onClick={() => setLanguage(code)}
+              className={cn(
+                "flex-1 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                language === code
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* User info */}
       <div className="px-3 py-3 border-t border-gray-100">

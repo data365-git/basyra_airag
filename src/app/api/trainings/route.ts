@@ -12,7 +12,10 @@ const CreateTrainingSchema = z.object({
   icon: z.string().optional(),
   start_date: z.string().min(1, "Start date is required"),
   end_date: z.string().min(1, "End date is required"),
-  schedule_day: z.number().int().min(0).max(6),
+  schedule_days: z.array(z.number().int().min(0).max(6))
+    .min(1, "At least one day is required")
+    .max(7)
+    .transform((days) => [...new Set(days)].sort((a, b) => a - b)),
   schedule_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format"),
   attendance_threshold: z.number().int().min(0).max(100).optional(),
 }).refine(
@@ -71,7 +74,7 @@ export async function GET() {
           icon: t.icon,
           start_date: t.startDate.toISOString().slice(0, 10),
           end_date: t.endDate.toISOString().slice(0, 10),
-          schedule_day: t.scheduleDay,
+          schedule_days: t.scheduleDays,
           schedule_time: t.scheduleTime,
           status: t.status,
           attendance_threshold: t.attendanceThreshold,
@@ -105,7 +108,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { name, description, color, icon, start_date, end_date, schedule_day, schedule_time, attendance_threshold } = parsed.data;
+    const { name, description, color, icon, start_date, end_date, schedule_days, schedule_time, attendance_threshold } = parsed.data;
 
     const training = await prisma.training.create({
       data: {
@@ -115,14 +118,14 @@ export async function POST(request: Request) {
         icon: icon || "book",
         startDate: new Date(start_date),
         endDate: new Date(end_date),
-        scheduleDay: schedule_day,
+        scheduleDays: schedule_days,
         scheduleTime: schedule_time,
         attendanceThreshold: attendance_threshold ?? 80,
         createdById: user.id,
       },
     });
 
-    const sessionDates = generateSessionDates(start_date, end_date, schedule_day);
+    const sessionDates = generateSessionDates(start_date, end_date, schedule_days);
     if (sessionDates.length > 0) {
       await prisma.session.createMany({
         data: sessionDates.map((date, i) => ({
