@@ -29,9 +29,16 @@ export async function GET() {
     id: user.id,
     name: user.name,
     email: user.email,
-    roleId: user.roleId,
-    role: user.role,
-    isActive: user.isActive,
-    createdAt: user.createdAt,
+    role_id: user.roleId,
+    role: user.role
+      ? {
+          id: user.role.id,
+          name: user.role.name,
+          permissions: user.role.permissions,
+          created_at: user.role.createdAt,
+        }
+      : null,
+    is_active: user.isActive,
+    created_at: user.createdAt,
   });
 }
