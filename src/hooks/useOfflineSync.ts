@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import toast from "react-hot-toast";
 import { getPendingScans, markSynced, clearSynced, getPendingCount } from "@/lib/db/offline";
 import { useOnlineStatus } from "./useOnlineStatus";
 
@@ -32,15 +33,31 @@ export function useOfflineSync() {
       });
 
       if (response.ok) {
+        const result: { synced: number; errors: string[] } = await response.json();
+
         const syncedIds = pending
           .map((s) => s.id)
           .filter((id): id is number => id !== undefined);
         await markSynced(syncedIds);
         await clearSynced();
         await refreshCount();
+
+        if (result.synced > 0) {
+          toast.success(
+            `${result.synced} offline scan${result.synced === 1 ? "" : "s"} synced successfully`
+          );
+        }
+        if (result.errors?.length > 0) {
+          toast.error(
+            `${result.errors.length} scan${result.errors.length === 1 ? "" : "s"} failed to sync`
+          );
+        }
+      } else {
+        toast.error("Offline sync failed — will retry when online");
       }
     } catch (error) {
       console.error("Sync failed:", error);
+      toast.error("Offline sync failed — will retry when online");
     } finally {
       setSyncing(false);
     }

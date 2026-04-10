@@ -124,29 +124,4 @@ export async function PATCH(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
-  try {
-    const user = await getFullUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (!hasPermission(user, "settings.roles", "delete"))
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-
-    const userCount = await prisma.staffUser.count({ where: { roleId: id } });
-    if (userCount > 0) {
-      return NextResponse.json(
-        { error: `Cannot delete: ${userCount} user${userCount === 1 ? " is" : "s are"} assigned this role` },
-        { status: 409 }
-      );
-    }
-
-    await prisma.role.delete({ where: { id } });
-    return NextResponse.json({ success: true });
-  } catch (e) {
-    console.error("roles DELETE error:", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
-  }
-}
+// DELETE is handled by /api/roles/[id]/route.ts

@@ -1,58 +1,133 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
+import { hashPassword } from "@/lib/auth";
+
+const CreateUserSchema = z.object({
+  name: z.string().min(1, "Name is required").max(200),
+  email: z.string().email("Invalid email").max(200),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role_id: z.string().optional().nullable(),
+});
+
+const PatchUserSchema = z.object({
+  id: z.string().min(1),
+  role_id: z.string().optional().nullable(),
+  is_active: z.boolean().optional(),
+  name: z.string().min(1).max(200).optional(),
+});
+
+function mapUser(u: { id: string; name: string; email: string; roleId: string | null; role: { id: string; name: string; description: string | null; color: string; isSuperadmin: boolean; permissions: unknown; createdAt: Date } | null; isActive: boolean; createdAt: Date }) {
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role_id: u.roleId,
+    role: u.role,
+    is_active: u.isActive,
+    created_at: u.createdAt,
+  };
+}
 
 export async function GET(request: Request) {
-  const caller = await getFullUser();
-  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!hasPermission(caller, "settings.users", "view"))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  void request;
-  const users = await prisma.staffUser.findMany({
-    orderBy: { name: "asc" },
-    include: { role: true },
-  });
+  try {
+    const caller = await getFullUser();
+    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!hasPermission(caller, "settings.users", "view"))
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    void request;
+    const users = await prisma.staffUser.findMany({
+      orderBy: { name: "asc" },
+      include: { role: true },
+    });
 
-  return NextResponse.json(
-    users.map((u) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      role_id: u.roleId,
-      role: u.role,
-      is_active: u.isActive,
-      created_at: u.createdAt,
-    }))
-  );
+    return NextResponse.json(users.map(mapUser));
+  } catch (e) {
+    console.error("users GET error:", e);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const caller = await getFullUser();
+    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!hasPermission(caller, "settings.users", "create"))
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const body = await request.json();
+    const parsed = CreateUserSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", fields: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const { name, email, password, role_id } = parsed.data;
+
+    const existing = await prisma.staffUser.findUnique({ where: { email } });
+    if (existing) {
+      return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
+    }
+
+    const hashed = await hashPassword(password);
+
+    const user = await prisma.staffUser.create({
+      data: {
+        name,
+        email,
+        password: hashed,
+        roleId: role_id || null,
+        isActive: true,
+      },
+      include: { role: true },
+    });
+
+    return NextResponse.json(mapUser(user), { status: 201 });
+  } catch (e: unknown) {
+    const err = e as { code?: string };
+    if (err?.code === "P2002") {
+      return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
+    }
+    console.error("users POST error:", e);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: Request) {
-  const caller = await getFullUser();
-  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!hasPermission(caller, "settings.users", "edit"))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  try {
+    const caller = await getFullUser();
+    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!hasPermission(caller, "settings.users", "edit"))
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const body = await request.json();
-  const { id, role_id, is_active, name } = body;
+    const body = await request.json();
+    const parsed = PatchUserSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", fields: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
 
-  const user = await prisma.staffUser.update({
-    where: { id },
-    data: {
-      ...(role_id !== undefined ? { roleId: role_id } : {}),
-      ...(is_active !== undefined ? { isActive: is_active } : {}),
-      ...(name !== undefined ? { name } : {}),
-    },
-    include: { role: true },
-  });
+    const { id, role_id, is_active, name } = parsed.data;
 
-  return NextResponse.json({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role_id: user.roleId,
-    role: user.role,
-    is_active: user.isActive,
-    created_at: user.createdAt,
-  });
+    const user = await prisma.staffUser.update({
+      where: { id },
+      data: {
+        ...(role_id !== undefined ? { roleId: role_id } : {}),
+        ...(is_active !== undefined ? { isActive: is_active } : {}),
+        ...(name !== undefined ? { name } : {}),
+      },
+      include: { role: true },
+    });
+
+    return NextResponse.json(mapUser(user));
+  } catch (e) {
+    console.error("users PATCH error:", e);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
 }

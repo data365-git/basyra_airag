@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, CheckCircle, XCircle } from "lucide-react";
+import { Upload, CheckCircle, XCircle, SkipForward } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -12,8 +12,8 @@ interface CSVRow {
   full_name: string;
   phone?: string;
   email?: string;
-  status?: "pending" | "success" | "error";
-  error?: string;
+  state: "pending" | "imported" | "skipped" | "error";
+  reason?: string;
 }
 
 export default function ImportParticipantsPage() {
@@ -21,7 +21,7 @@ export default function ImportParticipantsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<CSVRow[]>([]);
   const [importing, setImporting] = useState(false);
-  const [done, setDone] = useState(false);
+  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null);
 
   function parseCSV(text: string): CSVRow[] {
     const lines = text.trim().split("\n");
@@ -36,7 +36,7 @@ export default function ImportParticipantsPage() {
         full_name: row.full_name || row.name || "",
         phone: row.phone || row.phone_number || "",
         email: row.email || "",
-        status: "pending" as const,
+        state: "pending" as const,
       };
     }).filter((r) => r.full_name);
   }
@@ -48,33 +48,55 @@ export default function ImportParticipantsPage() {
     reader.onload = (ev) => {
       const parsed = parseCSV(ev.target?.result as string);
       setRows(parsed);
-      setDone(false);
+      setResult(null);
     };
     reader.readAsText(file);
   }
 
   async function importAll() {
     setImporting(true);
-    const updated = [...rows];
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row.full_name) continue;
-
-      const res = await fetch("/api/participants", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: row.full_name, phone: row.phone, email: row.email }),
-      });
-
-      updated[i] = { ...updated[i], status: res.ok ? "success" : "error", error: res.ok ? undefined : "Failed" };
-      setRows([...updated]);
-    }
+    const res = await fetch("/api/participants/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        participants: rows.map((r) => ({
+          full_name: r.full_name,
+          phone: r.phone || null,
+          email: r.email || null,
+        })),
+      }),
+    });
 
     setImporting(false);
-    setDone(true);
-    const successful = updated.filter((r) => r.status === "success").length;
-    toast.success(`Imported ${successful} participants`);
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Import failed — no participants were saved");
+      return;
+    }
+
+    const data: { created: number; skipped: number; skipped_rows: Array<{ full_name: string; phone?: string | null; reason: string }> } = await res.json();
+    const skippedNames = new Set(data.skipped_rows.map((r) => r.full_name + "|" + (r.phone ?? "")));
+
+    setRows((prev) =>
+      prev.map((r) => {
+        const key = r.full_name + "|" + (r.phone ?? "");
+        if (skippedNames.has(key)) {
+          const skipped = data.skipped_rows.find((s) => s.full_name === r.full_name && (s.phone ?? "") === (r.phone ?? ""));
+          return { ...r, state: "skipped", reason: skipped?.reason };
+        }
+        return { ...r, state: "imported" };
+      })
+    );
+
+    setResult({ created: data.created, skipped: data.skipped });
+    toast.success(`Imported ${data.created} participant${data.created === 1 ? "" : "s"}${data.skipped > 0 ? `, skipped ${data.skipped} duplicate${data.skipped === 1 ? "" : "s"}` : ""}`);
+  }
+
+  function goToParticipants() {
+    router.refresh();
+    router.push("/participants");
   }
 
   return (
@@ -89,6 +111,9 @@ export default function ImportParticipantsPage() {
           Dilnoza Yusupova,+998901234567,dilnoza@example.com<br />
           Bobur Karimov,+998901234568,
         </code>
+        <p className="text-xs text-gray-400 mt-2">
+          Rows with a duplicate phone number will be skipped. All valid rows are saved atomically — if the import fails, no partial data is saved.
+        </p>
       </Card>
 
       <div className="flex gap-3 mb-6">
@@ -102,17 +127,26 @@ export default function ImportParticipantsPage() {
           className="hidden"
           onChange={handleFile}
         />
-        {rows.length > 0 && !done && (
+        {rows.length > 0 && !result && (
           <Button onClick={importAll} loading={importing}>
             Import {rows.length} Participants
           </Button>
         )}
-        {done && (
-          <Button variant="outline" onClick={() => router.push("/participants")}>
-            View Participants
+        {result && (
+          <Button onClick={goToParticipants}>
+            View Participants ({result.created} imported)
           </Button>
         )}
       </div>
+
+      {result && (
+        <div className="mb-4 p-4 rounded-xl bg-green-50 border border-green-200 text-sm text-green-800">
+          ✅ <strong>{result.created}</strong> participant{result.created === 1 ? "" : "s"} imported successfully.
+          {result.skipped > 0 && (
+            <> <strong>{result.skipped}</strong> skipped (duplicate phone).</>
+          )}
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className="space-y-2">
@@ -120,14 +154,17 @@ export default function ImportParticipantsPage() {
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {rows.map((row, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0">
-                {row.status === "success" && <CheckCircle size={16} className="text-green-500 shrink-0" />}
-                {row.status === "error" && <XCircle size={16} className="text-red-500 shrink-0" />}
-                {row.status === "pending" && <div className="w-4 h-4 rounded-full bg-gray-200 shrink-0" />}
+                {row.state === "imported" && <CheckCircle size={16} className="text-green-500 shrink-0" />}
+                {row.state === "error"    && <XCircle size={16} className="text-red-500 shrink-0" />}
+                {row.state === "skipped"  && <SkipForward size={16} className="text-yellow-500 shrink-0" />}
+                {row.state === "pending"  && <div className="w-4 h-4 rounded-full bg-gray-200 shrink-0" />}
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-900">{row.full_name}</p>
                   <p className="text-xs text-gray-500">{row.phone} {row.email}</p>
                 </div>
-                {row.error && <p className="text-xs text-red-500">{row.error}</p>}
+                {row.state === "skipped" && (
+                  <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">{row.reason}</span>
+                )}
               </div>
             ))}
           </div>

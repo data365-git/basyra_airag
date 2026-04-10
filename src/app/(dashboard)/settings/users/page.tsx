@@ -1,33 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Shield } from "lucide-react";
+import { Shield, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import { Select } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { TableSkeleton } from "@/components/ui/Skeleton";
+import { usePermission } from "@/hooks/usePermission";
 import Link from "next/link";
 import type { StaffUser, Role } from "@/types";
 import toast from "react-hot-toast";
 
 export default function UsersPage() {
+  const canCreate = usePermission("settings.users", "create");
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Edit modal
   const [editingUser, setEditingUser] = useState<StaffUser | null>(null);
   const [editForm, setEditForm] = useState({ role_id: "", is_active: true });
   const [saving, setSaving] = useState(false);
+
+  // Add user modal
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState({ name: "", email: "", password: "", role_id: "" });
+  const [addErrors, setAddErrors] = useState<Record<string, string>>({});
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/users").then((r) => r.json()),
       fetch("/api/roles").then((r) => r.json()),
     ]).then(([u, r]) => {
-      setUsers(u);
-      setRoles(r);
+      setUsers(Array.isArray(u) ? u : []);
+      setRoles(Array.isArray(r) ? r : []);
       setLoading(false);
     });
   }, []);
@@ -56,17 +66,62 @@ export default function UsersPage() {
     setSaving(false);
   }
 
+  function openAdd() {
+    setAddForm({ name: "", email: "", password: "", role_id: "" });
+    setAddErrors({});
+    setAddOpen(true);
+  }
+
+  async function handleAddUser(e: React.FormEvent) {
+    e.preventDefault();
+    setAddErrors({});
+    setAdding(true);
+
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...addForm, role_id: addForm.role_id || null }),
+    });
+
+    setAdding(false);
+
+    if (res.ok) {
+      const newUser = await res.json();
+      setUsers((prev) => [...prev, newUser].sort((a, b) => a.name.localeCompare(b.name)));
+      toast.success("User created");
+      setAddOpen(false);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (err.fields) {
+        const flat: Record<string, string> = {};
+        for (const [k, v] of Object.entries(err.fields)) {
+          flat[k] = Array.isArray(v) ? v[0] : String(v);
+        }
+        setAddErrors(flat);
+      } else {
+        toast.error(err.error ?? "Failed to create user");
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Staff Users"
         subtitle="Manage staff accounts and role assignments"
         actions={
-          <Link href="/settings/roles">
-            <Button variant="outline" size="sm">
-              <Shield size={14} /> Manage Roles
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            {canCreate && (
+              <Button size="sm" onClick={openAdd}>
+                <Plus size={14} /> Add User
+              </Button>
+            )}
+            <Link href="/settings/roles">
+              <Button variant="outline" size="sm">
+                <Shield size={14} /> Manage Roles
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -118,6 +173,7 @@ export default function UsersPage() {
         </Table>
       )}
 
+      {/* Edit user modal */}
       <Modal
         open={!!editingUser}
         onClose={() => setEditingUser(null)}
@@ -157,6 +213,57 @@ export default function UsersPage() {
             </label>
           </div>
         )}
+      </Modal>
+
+      {/* Add user modal */}
+      <Modal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="Add Staff User"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button form="add-user-form" type="submit" loading={adding}>Create User</Button>
+          </>
+        }
+      >
+        <form id="add-user-form" onSubmit={handleAddUser} className="space-y-4">
+          <Input
+            label="Full Name"
+            value={addForm.name}
+            onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
+            error={addErrors.name}
+            required
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={addForm.email}
+            onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))}
+            error={addErrors.email}
+            required
+          />
+          <Input
+            label="Password"
+            type="password"
+            value={addForm.password}
+            onChange={(e) => setAddForm((f) => ({ ...f, password: e.target.value }))}
+            error={addErrors.password}
+            hint="Minimum 6 characters"
+            required
+          />
+          <Select
+            label="Role"
+            value={addForm.role_id}
+            onChange={(e) => setAddForm((f) => ({ ...f, role_id: e.target.value }))}
+          >
+            <option value="">No role (no permissions)</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </Select>
+        </form>
       </Modal>
     </div>
   );

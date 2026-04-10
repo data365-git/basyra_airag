@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Edit, Download, Plus, Trash2, UserMinus, Search } from "lucide-react";
+import { Edit, Download, Plus, Trash2, UserMinus, Search, CalendarPlus } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { TrainingStatusBadge, SessionStatusBadge, AttendanceBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -28,6 +28,11 @@ export default function TrainingDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Add session modal state
+  const [addSessionOpen, setAddSessionOpen] = useState(false);
+  const [addSessionForm, setAddSessionForm] = useState({ session_date: "", session_time: training?.schedule_time || "09:00" });
+  const [addingSession, setAddingSession] = useState(false);
+
   // Enrollment modal state
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollSearch, setEnrollSearch] = useState("");
@@ -48,6 +53,25 @@ export default function TrainingDetailPage() {
     setParticipants((trainingRes.participants || []).map((tp: any) => tp.participant));
     setAttendance(Array.isArray(attendanceRes) ? attendanceRes : []);
     setLoading(false);
+  }
+
+  async function handleAddSession(e: React.FormEvent) {
+    e.preventDefault();
+    setAddingSession(true);
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ training_id: id, ...addSessionForm }),
+    });
+    setAddingSession(false);
+    if (res.ok) {
+      toast.success("Session added");
+      setAddSessionOpen(false);
+      await load();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Failed to add session");
+    }
   }
 
   async function openEnrollModal() {
@@ -199,6 +223,14 @@ export default function TrainingDetailPage() {
       <Card>
         <CardHeader>
           <CardTitle>Sessions ({sessions.length})</CardTitle>
+          {canManage && (
+            <Button size="sm" variant="outline" onClick={() => {
+              setAddSessionForm({ session_date: "", session_time: training.schedule_time || "09:00" });
+              setAddSessionOpen(true);
+            }}>
+              <CalendarPlus size={14} /> Add Session
+            </Button>
+          )}
         </CardHeader>
         <Table>
           <Thead>
@@ -320,6 +352,47 @@ export default function TrainingDetailPage() {
         message="This will permanently delete the training and all its sessions and attendance records. This cannot be undone."
         confirmLabel="Delete"
       />
+
+      {/* Add session modal */}
+      <Modal
+        open={addSessionOpen}
+        onClose={() => setAddSessionOpen(false)}
+        title="Add Session"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setAddSessionOpen(false)}>Cancel</Button>
+            <Button form="add-session-form" type="submit" loading={addingSession}>Add Session</Button>
+          </>
+        }
+      >
+        <form id="add-session-form" onSubmit={handleAddSession} className="space-y-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">
+              Date <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              required
+              value={addSessionForm.session_date}
+              onChange={(e) => setAddSessionForm((f) => ({ ...f, session_date: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">
+              Time <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="time"
+              required
+              value={addSessionForm.session_time}
+              onChange={(e) => setAddSessionForm((f) => ({ ...f, session_time: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </form>
+      </Modal>
 
       {/* Enroll participants modal */}
       <Modal

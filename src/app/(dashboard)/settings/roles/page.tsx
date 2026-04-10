@@ -34,7 +34,7 @@ export default function RolesPage() {
   async function handleDelete() {
     if (!deletingRole) return;
     setDeleting(true);
-    const res = await fetch(`/api/roles?id=${deletingRole.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/roles/${deletingRole.id}`, { method: "DELETE" });
     setDeleting(false);
     if (res.ok) {
       toast.success("Role deleted");
