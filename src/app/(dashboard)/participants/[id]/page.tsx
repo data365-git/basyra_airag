@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { QRCodeDisplay } from "@/components/participants/QRCodeDisplay";
 import { AttendanceBadge, TrainingStatusBadge } from "@/components/ui/Badge";
@@ -12,7 +12,6 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { formatDate, getAttendanceColorClass } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { usePermission } from "@/hooks/usePermission";
 import type { Participant } from "@/types";
 
@@ -20,60 +19,28 @@ export default function ParticipantProfilePage() {
   const { id } = useParams<{ id: string }>();
   const canManage = usePermission("manage_participants");
   const [participant, setParticipant] = useState<Participant | null>(null);
-  const [trainings, setTrainings] = useState<any[]>([]);
-  const [attendanceByTraining, setAttendanceByTraining] = useState<Record<string, any[]>>({});
+  const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { if (id) load(); }, [id]);
+  useEffect(() => {
+    if (!id) return;
+    Promise.all([
+      fetch(`/api/participants/${id}`).then((r) => r.json()),
+      fetch(`/api/participants/${id}/history`).then((r) => r.json()),
+    ]).then(([p, h]) => {
+      setParticipant(p);
+      setHistory(Array.isArray(h) ? h : []);
+      setLoading(false);
+    });
+  }, [id]);
 
-  async function load() {
-    const supabase = createClient();
-    const { data: p } = await supabase
-      .from("participants")
-      .select("*, training_participants(enrolled_at, training:trainings(id, name, color, status, start_date, end_date))")
-      .eq("id", id)
-      .single();
-
-    if (!p) { setLoading(false); return; }
-    setParticipant(p);
-
-    const enrolledTrainings = (p.training_participants || []).map((tp: any) => tp.training);
-    setTrainings(enrolledTrainings);
-
-    // Load attendance for each training
-    const byTraining: Record<string, any[]> = {};
-    for (const training of enrolledTrainings) {
-      const { data: sessions } = await supabase
-        .from("sessions")
-        .select("id, session_number, session_date, status")
-        .eq("training_id", training.id)
-        .order("session_number");
-
-      const { data: att } = await supabase
-        .from("attendance")
-        .select("*")
-        .eq("participant_id", id)
-        .in("session_id", (sessions || []).map((s: any) => s.id));
-
-      // Merge sessions with attendance
-      byTraining[training.id] = (sessions || []).map((s: any) => ({
-        ...s,
-        record: (att || []).find((a: any) => a.session_id === s.id),
-      }));
-    }
-    setAttendanceByTraining(byTraining);
-    setLoading(false);
-  }
-
-  function getStats(trainingId: string) {
-    const rows = attendanceByTraining[trainingId] || [];
-    const closed = rows.filter((r) => r.status === "closed");
-    const present = closed.filter((r) => r.record?.status === "present" || r.record?.status === "late").length;
-    const absent = closed.filter((r) => r.record?.status === "absent").length;
-    const excused = closed.filter((r) => r.record?.status === "excused").length;
+  function getStats(sessions: any[]) {
+    const closed = sessions.filter((s) => s.status === "closed");
+    const present = closed.filter((s) => s.record?.status === "present" || s.record?.status === "late").length;
+    const absent = closed.filter((s) => s.record?.status === "absent").length;
+    const excused = closed.filter((s) => s.record?.status === "excused").length;
     const rate = closed.length > 0 ? Math.round((present / closed.length) * 100) : 0;
 
-    // Calculate streak
     let streak = 0;
     for (let i = closed.length - 1; i >= 0; i--) {
       const st = closed[i].record?.status;
@@ -129,24 +96,22 @@ export default function ParticipantProfilePage() {
 
         {/* Training stats */}
         <div className="lg:col-span-2 space-y-4">
-          {trainings.length === 0 ? (
+          {history.length === 0 ? (
             <Card>
               <p className="text-gray-400 text-center py-6">Not enrolled in any training</p>
             </Card>
-          ) : trainings.map((training) => {
-            const stats = getStats(training.id);
-            const rows = attendanceByTraining[training.id] || [];
-
+          ) : history.map((item) => {
+            const stats = getStats(item.sessions);
             return (
-              <Card key={training.id}>
+              <Card key={item.trainingId}>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-3 h-8 rounded-sm" style={{ backgroundColor: training.color }} />
+                  <div className="w-3 h-8 rounded-sm" style={{ backgroundColor: item.training.color }} />
                   <div className="flex-1">
-                    <Link href={`/trainings/${training.id}`} className="font-semibold text-gray-900 hover:text-blue-600">
-                      {training.name}
+                    <Link href={`/trainings/${item.trainingId}`} className="font-semibold text-gray-900 hover:text-blue-600">
+                      {item.training.name}
                     </Link>
                   </div>
-                  <TrainingStatusBadge status={training.status} />
+                  <TrainingStatusBadge status={item.training.status} />
                 </div>
 
                 {/* Stats row */}
@@ -165,7 +130,7 @@ export default function ParticipantProfilePage() {
                   ))}
                 </div>
 
-                {/* Rate */}
+                {/* Rate bar */}
                 <div className="flex items-center gap-3 mb-4">
                   <div className="flex-1 bg-gray-100 rounded-full h-2">
                     <div
@@ -181,7 +146,7 @@ export default function ParticipantProfilePage() {
                 {/* Session history */}
                 <details>
                   <summary className="text-sm text-blue-600 cursor-pointer hover:underline">
-                    View session history ({rows.length} sessions)
+                    View session history ({item.sessions.length} sessions)
                   </summary>
                   <div className="mt-3">
                     <Table>
@@ -194,7 +159,7 @@ export default function ParticipantProfilePage() {
                         </tr>
                       </Thead>
                       <Tbody>
-                        {rows.length === 0 ? <EmptyRow cols={4} /> : rows.map((row) => (
+                        {item.sessions.length === 0 ? <EmptyRow cols={4} /> : item.sessions.map((row: any) => (
                           <Tr key={row.id}>
                             <Td>{row.session_number}</Td>
                             <Td>{formatDate(row.session_date)}</Td>

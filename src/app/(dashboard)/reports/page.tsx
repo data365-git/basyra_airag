@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { CardSkeleton } from "@/components/ui/Skeleton";
-import { createClient } from "@/lib/supabase/client";
 import { formatDate, getAttendanceColorClass } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
 
@@ -23,9 +22,9 @@ export default function ReportsPage() {
   }>({ sessions: [], participants: [], records: [] });
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from("trainings").select("id, name, status").order("name")
-      .then(({ data }) => setTrainings(data || []));
+    fetch("/api/trainings")
+      .then((r) => r.json())
+      .then((data) => setTrainings(Array.isArray(data) ? data : []));
   }, []);
 
   useEffect(() => {
@@ -34,22 +33,12 @@ export default function ReportsPage() {
 
   async function loadHeatmap(trainingId: string) {
     setLoading(true);
-    const supabase = createClient();
-
-    const [{ data: sessions }, { data: participants }] = await Promise.all([
-      supabase.from("sessions").select("*").eq("training_id", trainingId).eq("status", "closed").order("session_number"),
-      supabase.from("participants")
-        .select("id, full_name, training_participants!inner(training_id)")
-        .eq("training_participants.training_id", trainingId)
-        .order("full_name"),
-    ]);
-
-    const sessionIds = (sessions || []).map((s: any) => s.id);
-    const { data: records } = sessionIds.length
-      ? await supabase.from("attendance").select("*").in("session_id", sessionIds)
-      : { data: [] };
-
-    setHeatmapData({ sessions: sessions || [], participants: participants || [], records: records || [] });
+    const data = await fetch(`/api/reports?training_id=${trainingId}`).then((r) => r.json());
+    setHeatmapData({
+      sessions: data.sessions || [],
+      participants: data.participants || [],
+      records: data.records || [],
+    });
     setLoading(false);
   }
 
@@ -77,10 +66,10 @@ export default function ReportsPage() {
   };
 
   const statusTitle: Record<string, string> = {
-    present: "✅ Present",
-    late: "⏰ Late",
-    excused: "🔵 Excused",
-    absent: "❌ Absent",
+    present: "Present",
+    late: "Late",
+    excused: "Excused",
+    absent: "Absent",
   };
 
   const rankedParticipants = [...heatmapData.participants]
@@ -146,7 +135,7 @@ export default function ReportsPage() {
                 {Object.entries(statusTitle).map(([k, v]) => (
                   <span key={k} className="flex items-center gap-1">
                     <span className={`w-3 h-3 rounded-sm inline-block ${statusCell[k]}`} />
-                    {v.split(" ")[1]}
+                    {v}
                   </span>
                 ))}
               </div>

@@ -12,7 +12,6 @@ import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ui/Modal";
 import { formatDate, formatTime, getAttendanceColorClass, DAYS_OF_WEEK } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { usePermission } from "@/hooks/usePermission";
 import toast from "react-hot-toast";
 
@@ -32,30 +31,15 @@ export default function TrainingDetailPage() {
   useEffect(() => { if (id) load(); }, [id]);
 
   async function load() {
-    const supabase = createClient();
-    const [{ data: t }, { data: s }, { data: p }] = await Promise.all([
-      supabase.from("trainings").select("*").eq("id", id).single(),
-      supabase.from("sessions").select("*").eq("training_id", id).order("session_number"),
-      supabase.from("participants")
-        .select("*, training_participants!inner(training_id)")
-        .eq("training_participants.training_id", id)
-        .order("full_name"),
+    const [trainingRes, attendanceRes] = await Promise.all([
+      fetch(`/api/trainings/${id}`).then((r) => r.json()),
+      fetch(`/api/attendance?training_id=${id}`).then((r) => r.json()),
     ]);
 
-    setTraining(t);
-    setSessions(s || []);
-    setParticipants(p || []);
-
-    // Get attendance for all sessions
-    if (s?.length) {
-      const sessionIds = s.map((ses: any) => ses.id);
-      const { data: att } = await supabase
-        .from("attendance")
-        .select("*")
-        .in("session_id", sessionIds);
-      setAttendance(att || []);
-    }
-
+    setTraining(trainingRes);
+    setSessions(trainingRes.sessions || []);
+    setParticipants((trainingRes.participants || []).map((tp: any) => tp.participant));
+    setAttendance(Array.isArray(attendanceRes) ? attendanceRes : []);
     setLoading(false);
   }
 

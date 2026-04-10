@@ -5,9 +5,7 @@ import { Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { TrainingCard } from "@/components/trainings/TrainingCard";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { CardSkeleton } from "@/components/ui/Skeleton";
-import { createClient } from "@/lib/supabase/client";
 import { usePermission } from "@/hooks/usePermission";
 import type { Training } from "@/types";
 
@@ -19,23 +17,12 @@ export default function TrainingsPage() {
   const [filter, setFilter] = useState<"all" | "active" | "upcoming" | "completed">("all");
 
   useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("trainings")
-        .select("*, participant_count:training_participants(count), session_count:sessions(count)")
-        .order("created_at", { ascending: false });
-
-      setTrainings(
-        (data || []).map((t: any) => ({
-          ...t,
-          participant_count: t.participant_count?.[0]?.count || 0,
-          session_count: t.session_count?.[0]?.count || 0,
-        }))
-      );
-      setLoading(false);
-    }
-    load();
+    fetch("/api/trainings")
+      .then((r) => r.json())
+      .then((data) => {
+        setTrainings(Array.isArray(data) ? data : []);
+        setLoading(false);
+      });
   }, []);
 
   const filtered = trainings.filter((t) => {

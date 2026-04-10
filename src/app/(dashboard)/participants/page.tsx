@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { TableSkeleton } from "@/components/ui/Skeleton";
-import { createClient } from "@/lib/supabase/client";
 import { usePermission } from "@/hooks/usePermission";
 import { downloadQR } from "@/lib/qr/generate";
 import type { Participant } from "@/types";
@@ -20,16 +19,12 @@ export default function ParticipantsPage() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("participants")
-        .select("*")
-        .order("full_name");
-      setParticipants(data || []);
-      setLoading(false);
-    }
-    load();
+    fetch("/api/participants")
+      .then((r) => r.json())
+      .then((data) => {
+        setParticipants(Array.isArray(data) ? data : []);
+        setLoading(false);
+      });
   }, []);
 
   const filtered = participants.filter((p) =>

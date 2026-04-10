@@ -1,0 +1,130 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Role {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  permissions Json        @default("{}")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  staffUsers  StaffUser[]
+
+  @@map("roles")
+}
+
+model StaffUser {
+  id                 String           @id @default(uuid())
+  name               String
+  email              String           @unique
+  password           String
+  roleId             String?          @map("role_id")
+  role               Role?            @relation(fields: [roleId], references: [id])
+  isActive           Boolean          @default(true) @map("is_active")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  scannedAttendance  Attendance[]     @relation("ScannedBy")
+  overrideAttendance Attendance[]     @relation("OverrideBy")
+  createdTrainings   Training[]
+  auditLogs          AttendanceAudit[]
+
+  @@map("staff_users")
+}
+
+model Training {
+  id                   String                @id @default(uuid())
+  name                 String
+  description          String?
+  color                String                @default("#3B82F6")
+  icon                 String                @default("book")
+  startDate            DateTime              @map("start_date") @db.Date
+  endDate              DateTime              @map("end_date") @db.Date
+  scheduleDay          Int                   @map("schedule_day")
+  scheduleTime         String                @map("schedule_time")
+  status               String                @default("upcoming")
+  attendanceThreshold  Int                   @default(80) @map("attendance_threshold")
+  createdById          String?               @map("created_by")
+  createdBy            StaffUser?            @relation(fields: [createdById], references: [id])
+  createdAt            DateTime              @default(now()) @map("created_at")
+  sessions             Session[]
+  trainingParticipants TrainingParticipant[]
+
+  @@map("trainings")
+}
+
+model Session {
+  id            String       @id @default(uuid())
+  trainingId    String       @map("training_id")
+  training      Training     @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  sessionNumber Int          @map("session_number")
+  sessionDate   DateTime     @map("session_date") @db.Date
+  sessionTime   String       @map("session_time")
+  status        String       @default("upcoming")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  attendance    Attendance[]
+
+  @@unique([trainingId, sessionNumber])
+  @@map("sessions")
+}
+
+model Participant {
+  id                   String                @id @default(uuid())
+  fullName             String                @map("full_name")
+  phone                String?
+  email                String?
+  photoUrl             String?               @map("photo_url")
+  qrToken              String                @unique @default(uuid()) @map("qr_token")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  trainingParticipants TrainingParticipant[]
+  attendance           Attendance[]
+
+  @@map("participants")
+}
+
+model TrainingParticipant {
+  trainingId    String      @map("training_id")
+  participantId String      @map("participant_id")
+  training      Training    @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  enrolledAt    DateTime    @default(now()) @map("enrolled_at")
+
+  @@id([trainingId, participantId])
+  @@map("training_participants")
+}
+
+model Attendance {
+  id               String           @id @default(uuid())
+  sessionId        String           @map("session_id")
+  participantId    String           @map("participant_id")
+  session          Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant      Participant      @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  status           String
+  scannedAt        DateTime?        @map("scanned_at")
+  scannedById      String?          @map("scanned_by")
+  scannedBy        StaffUser?       @relation("ScannedBy", fields: [scannedById], references: [id])
+  note             String?
+  overrideById     String?          @map("override_by")
+  overrideBy       StaffUser?       @relation("OverrideBy", fields: [overrideById], references: [id])
+  overrideAt       DateTime?        @map("override_at")
+  syncedFromOffline Boolean         @default(false) @map("synced_from_offline")
+  auditLogs        AttendanceAudit[]
+
+  @@unique([sessionId, participantId])
+  @@map("attendance")
+}
+
+model AttendanceAudit {
+  id           String      @id @default(uuid())
+  attendanceId String      @map("attendance_id")
+  attendance   Attendance  @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  changedById  String?     @map("changed_by")
+  changedBy    StaffUser?  @relation(fields: [changedById], references: [id])
+  oldStatus    String?     @map("old_status")
+  newStatus    String?     @map("new_status")
+  reason       String?
+  changedAt    DateTime    @default(now()) @map("changed_at")
+
+  @@map("attendance_audit")
+}

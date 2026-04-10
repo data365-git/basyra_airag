@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import prisma from "@/lib/prisma";
+import { getUser } from "@/lib/getUser";
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { token, sessionId } = await request.json();
@@ -12,23 +12,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ type: "unknown", message: "Missing token or session" }, { status: 400 });
   }
 
-  // Look up participant by QR token
-  const { data: participant } = await supabase
-    .from("participants")
-    .select("*")
-    .eq("qr_token", token)
-    .single();
+  const participant = await prisma.participant.findUnique({
+    where: { qrToken: token },
+  });
 
   if (!participant) {
     return NextResponse.json({ type: "unknown", message: "QR not recognized" });
   }
 
-  // Get session + training info
-  const { data: session } = await supabase
-    .from("sessions")
-    .select("*, training:trainings(id)")
-    .eq("id", sessionId)
-    .single();
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+  });
 
   if (!session) {
     return NextResponse.json({ type: "unknown", message: "Session not found" });
@@ -38,37 +32,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ type: "session_closed", message: "Session is closed", participant });
   }
 
-  // Check enrollment
-  const { data: enrollment } = await supabase
-    .from("training_participants")
-    .select("participant_id")
-    .eq("training_id", session.training.id)
-    .eq("participant_id", participant.id)
-    .single();
+  const enrollment = await prisma.trainingParticipant.findUnique({
+    where: {
+      trainingId_participantId: {
+        trainingId: session.trainingId,
+        participantId: participant.id,
+      },
+    },
+  });
 
   if (!enrollment) {
     return NextResponse.json({ type: "not_enrolled", message: "Not enrolled in this training", participant });
   }
 
-  // Check if already scanned
-  const { data: existing } = await supabase
-    .from("attendance")
-    .select("id, status")
-    .eq("session_id", sessionId)
-    .eq("participant_id", participant.id)
-    .single();
+  const existing = await prisma.attendance.findUnique({
+    where: {
+      sessionId_participantId: {
+        sessionId,
+        participantId: participant.id,
+      },
+    },
+  });
 
   if (existing) {
     return NextResponse.json({ type: "already_scanned", message: "Already marked present", participant });
   }
 
-  // Mark present
-  await supabase.from("attendance").insert({
-    session_id: sessionId,
-    participant_id: participant.id,
-    status: "present",
-    scanned_at: new Date().toISOString(),
-    scanned_by: user.id,
+  await prisma.attendance.create({
+    data: {
+      sessionId,
+      participantId: participant.id,
+      status: "present",
+      scannedAt: new Date(),
+      scannedById: user.sub,
+    },
   });
 
   return NextResponse.json({ type: "success", message: "Marked present", participant });

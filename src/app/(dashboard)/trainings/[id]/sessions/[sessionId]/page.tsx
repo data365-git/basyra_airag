@@ -11,7 +11,6 @@ import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Input";
 import { Input } from "@/components/ui/Input";
 import { formatDate, formatTime } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { usePermission } from "@/hooks/usePermission";
 import toast from "react-hot-toast";
 
@@ -29,37 +28,10 @@ export default function SessionDetailPage() {
   useEffect(() => { if (sessionId) load(); }, [sessionId]);
 
   async function load() {
-    const supabase = createClient();
-    const [{ data: s }, { data: t }, { data: att }] = await Promise.all([
-      supabase.from("sessions").select("*").eq("id", sessionId).single(),
-      supabase.from("trainings").select("name, color").eq("id", trainingId).single(),
-      supabase.from("attendance")
-        .select("*, participant:participants(id, full_name, phone)")
-        .eq("session_id", sessionId),
-    ]);
-
-    // Get enrolled participants not yet in attendance
-    const { data: enrolled } = await supabase
-      .from("training_participants")
-      .select("participant:participants(id, full_name, phone)")
-      .eq("training_id", trainingId);
-
-    const attendedIds = new Set((att || []).map((r: any) => r.participant_id));
-    const pending = (enrolled || [])
-      .filter((e: any) => !attendedIds.has(e.participant.id))
-      .map((e: any) => ({
-        id: `pending-${e.participant.id}`,
-        session_id: sessionId,
-        participant_id: e.participant.id,
-        status: "pending",
-        participant: e.participant,
-        scanned_at: null,
-        note: null,
-      }));
-
-    setSession(s);
-    setTraining(t);
-    setRecords([...(att || []), ...pending].sort((a, b) => a.participant.full_name.localeCompare(b.participant.full_name)));
+    const data = await fetch(`/api/sessions/${sessionId}`).then((r) => r.json());
+    setSession(data);
+    setTraining(data.training);
+    setRecords(data.records || []);
     setLoading(false);
   }
 
@@ -71,21 +43,27 @@ export default function SessionDetailPage() {
   async function saveEdit() {
     if (!editingRecord) return;
     setEditLoading(true);
-    const supabase = createClient();
 
     if (editingRecord.status === "pending") {
-      await supabase.from("attendance").insert({
-        session_id: sessionId,
-        participant_id: editingRecord.participant_id,
-        status: editForm.status,
-        note: editForm.note || null,
+      await fetch("/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          participant_id: editingRecord.participant_id,
+          status: editForm.status,
+          note: editForm.note || null,
+        }),
       });
     } else {
-      await supabase.from("attendance").update({
-        status: editForm.status,
-        note: editForm.note || null,
-        override_at: new Date().toISOString(),
-      }).eq("id", editingRecord.id);
+      await fetch(`/api/attendance/${editingRecord.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: editForm.status,
+          note: editForm.note || null,
+        }),
+      });
     }
 
     toast.success("Attendance updated");

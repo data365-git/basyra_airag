@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
+import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
 
 const PUBLIC_PATHS = ["/login", "/api/auth"];
 
@@ -17,22 +17,23 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/icons") ||
     pathname === "/manifest.json" ||
     pathname === "/sw.js" ||
-    pathname === "/workbox-" ||
+    pathname.startsWith("/workbox-") ||
     pathname.includes(".")
   ) {
     return NextResponse.next();
   }
 
-  const { supabaseResponse, user } = await updateSession(request);
+  const token = request.cookies.get(COOKIE_NAME)?.value;
+  const payload = token ? await verifyJWT(token) : null;
 
-  if (!user) {
+  if (!payload) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  return supabaseResponse;
+  return NextResponse.next();
 }
 
 export const config = {

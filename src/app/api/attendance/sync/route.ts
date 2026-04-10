@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import prisma from "@/lib/prisma";
+import { getUser } from "@/lib/getUser";
 import type { PendingScan } from "@/types";
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { scans }: { scans: PendingScan[] } = await request.json();
@@ -15,48 +15,50 @@ export async function POST(request: Request) {
 
   for (const scan of scans) {
     try {
-      // Look up participant
-      const { data: participant } = await supabase
-        .from("participants")
-        .select("id")
-        .eq("qr_token", scan.qrToken)
-        .single();
-
+      const participant = await prisma.participant.findUnique({
+        where: { qrToken: scan.qrToken },
+        select: { id: true },
+      });
       if (!participant) continue;
 
-      // Get session
-      const { data: session } = await supabase
-        .from("sessions")
-        .select("training_id")
-        .eq("id", scan.sessionId)
-        .single();
-
+      const session = await prisma.session.findUnique({
+        where: { id: scan.sessionId },
+        select: { trainingId: true },
+      });
       if (!session) continue;
 
-      // Check enrollment
-      const { data: enrollment } = await supabase
-        .from("training_participants")
-        .select("participant_id")
-        .eq("training_id", session.training_id)
-        .eq("participant_id", participant.id)
-        .single();
-
+      const enrollment = await prisma.trainingParticipant.findUnique({
+        where: {
+          trainingId_participantId: {
+            trainingId: session.trainingId,
+            participantId: participant.id,
+          },
+        },
+      });
       if (!enrollment) continue;
 
-      // Upsert attendance (offline scans may have been after close)
-      const { error } = await supabase.from("attendance").upsert(
-        {
-          session_id: scan.sessionId,
-          participant_id: participant.id,
-          status: "present",
-          scanned_at: scan.scannedAt,
-          scanned_by: user.id,
-          synced_from_offline: true,
+      const existing = await prisma.attendance.findUnique({
+        where: {
+          sessionId_participantId: {
+            sessionId: scan.sessionId,
+            participantId: participant.id,
+          },
         },
-        { onConflict: "session_id,participant_id", ignoreDuplicates: true }
-      );
+      });
 
-      if (!error) synced++;
+      if (!existing) {
+        await prisma.attendance.create({
+          data: {
+            sessionId: scan.sessionId,
+            participantId: participant.id,
+            status: "present",
+            scannedAt: new Date(scan.scannedAt),
+            scannedById: user.sub,
+            syncedFromOffline: true,
+          },
+        });
+        synced++;
+      }
     } catch (e) {
       errors.push(String(e));
     }

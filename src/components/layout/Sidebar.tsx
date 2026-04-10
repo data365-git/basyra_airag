@@ -9,7 +9,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/lib/permissions";
-import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
 
 const navItems = [
@@ -60,8 +59,7 @@ export function Sidebar() {
   const { user } = useAuth();
 
   async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     toast.success("Logged out");
   }

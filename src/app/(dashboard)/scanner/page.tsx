@@ -4,8 +4,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { QRScanner } from "@/components/scanner/QRScanner";
 import { ScanResultOverlay } from "@/components/scanner/ScanResult";
 import { OfflineBanner } from "@/components/scanner/OfflineBanner";
-import { Select } from "@/components/ui/Input";
-import { createClient } from "@/lib/supabase/client";
 import { queueScan } from "@/lib/db/offline";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { usePermission } from "@/hooks/usePermission";
@@ -33,33 +31,26 @@ export default function ScannerPage() {
   }, [selectedTraining]);
 
   async function loadTrainings() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("trainings")
-      .select("id, name, color, status")
-      .in("status", ["active", "upcoming"])
-      .order("name");
-    setTrainings(data || []);
-    if (data?.length === 1) setSelectedTraining(data[0].id);
+    const data = await fetch("/api/trainings").then((r) => r.json());
+    const active = (Array.isArray(data) ? data : []).filter(
+      (t: any) => t.status === "active" || t.status === "upcoming"
+    );
+    setTrainings(active);
+    if (active.length === 1) setSelectedTraining(active[0].id);
   }
 
   async function loadSessions(trainingId: string) {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("sessions")
-      .select("id, session_number, session_date, status")
-      .eq("training_id", trainingId)
-      .in("status", ["open", "upcoming"])
-      .order("session_number", { ascending: false });
-    setSessions(data || []);
-    // Auto-select open session if available
-    const openSession = data?.find((s: any) => s.status === "open");
+    const data = await fetch(
+      `/api/sessions?training_id=${trainingId}&status=open,upcoming`
+    ).then((r) => r.json());
+    const list = Array.isArray(data) ? data : [];
+    setSessions(list);
+    const openSession = list.find((s: any) => s.status === "open");
     if (openSession) setSelectedSession(openSession.id);
-    else if (data?.length === 1) setSelectedSession(data[0].id);
+    else if (list.length === 1) setSelectedSession(list[0].id);
   }
 
   const handleScan = useCallback(async (token: string) => {
-    // Debounce: ignore if same token within 3 seconds
     const now = Date.now();
     if (token === lastScannedRef.current && now - lastScannedTimeRef.current < 3000) return;
     lastScannedRef.current = token;
@@ -72,7 +63,6 @@ export default function ScannerPage() {
     }
 
     if (!isOnline) {
-      // Queue for offline
       await queueScan({ sessionId: selectedSession, qrToken: token, scannedAt: new Date().toISOString() });
       await refreshCount();
       setScanResult({ type: "success" });
@@ -89,7 +79,6 @@ export default function ScannerPage() {
       const data = await res.json();
       setScanResult(data as ScanResult);
     } catch {
-      // If request fails and offline, queue it
       if (!navigator.onLine) {
         await queueScan({ sessionId: selectedSession, qrToken: token, scannedAt: new Date().toISOString() });
         await refreshCount();
@@ -124,7 +113,6 @@ export default function ScannerPage() {
 
   return (
     <div className="fixed inset-0 lg:relative lg:inset-auto flex flex-col bg-gray-900 lg:h-[calc(100vh-2rem)] lg:rounded-2xl overflow-hidden">
-      {/* Offline banner */}
       <OfflineBanner />
 
       {/* Session selector */}
@@ -158,7 +146,6 @@ export default function ScannerPage() {
       <div className="flex-1 relative overflow-hidden">
         <QRScanner onScan={handleScan} active={scanning && !!selectedSession} />
 
-        {/* Targeting overlay */}
         {!scanResult && selectedSession && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
             <div className="relative w-64 h-64">
@@ -170,7 +157,6 @@ export default function ScannerPage() {
           </div>
         )}
 
-        {/* No session selected */}
         {!selectedSession && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80">
             <div className="text-4xl mb-4">📱</div>
@@ -179,11 +165,9 @@ export default function ScannerPage() {
           </div>
         )}
 
-        {/* Scan result overlay */}
         <ScanResultOverlay result={scanResult} isOffline={!isOnline} />
       </div>
 
-      {/* Status bar */}
       {selectedSession && !scanResult && (
         <div className="bg-gray-800 px-4 py-3 text-center">
           <p className="text-white/70 text-sm">

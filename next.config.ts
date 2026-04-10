@@ -7,11 +7,12 @@ const withPWA = require("next-pwa")({
   disable: process.env.NODE_ENV === "development",
   runtimeCaching: [
     {
-      urlPattern: /^https:\/\/.*supabase.*/,
+      urlPattern: /\/api\//,
       handler: "NetworkFirst",
       options: {
-        cacheName: "supabase-api",
+        cacheName: "api-cache",
         expiration: { maxEntries: 50, maxAgeSeconds: 300 },
+        networkTimeoutSeconds: 10,
       },
     },
     {
@@ -32,11 +33,6 @@ const withPWA = require("next-pwa")({
 
 const nextConfig: NextConfig = {
   turbopack: {},
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "*.supabase.co" },
-    ],
-  },
 };
 
 export default withPWA(nextConfig);

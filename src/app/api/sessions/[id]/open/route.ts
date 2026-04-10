@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import prisma from "@/lib/prisma";
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("sessions")
-    .update({ status: "open" })
-    .eq("id", id)
-    .select()
-    .single();
+  const session = await prisma.session.update({
+    where: { id },
+    data: { status: "open" },
+  });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  return NextResponse.json(session);
 }

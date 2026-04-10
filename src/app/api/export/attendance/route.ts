@@ -1,25 +1,24 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import prisma from "@/lib/prisma";
 import * as XLSX from "xlsx";
 import { formatDate } from "@/lib/utils";
 
 export async function GET(request: Request) {
-  const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const trainingId = searchParams.get("training_id");
 
   if (!trainingId) return NextResponse.json({ error: "training_id required" }, { status: 400 });
 
-  const [{ data: training }, { data: sessions }, { data: participants }, { data: records }] = await Promise.all([
-    supabase.from("trainings").select("name").eq("id", trainingId).single(),
-    supabase.from("sessions").select("*").eq("training_id", trainingId).order("session_number"),
-    supabase.from("participants")
-      .select("*, training_participants!inner(training_id)")
-      .eq("training_participants.training_id", trainingId)
-      .order("full_name"),
-    supabase.from("attendance")
-      .select("*")
-      .in("session_id", (await supabase.from("sessions").select("id").eq("training_id", trainingId)).data?.map(s => s.id) || []),
+  const [training, sessions, participants, records] = await Promise.all([
+    prisma.training.findUnique({ where: { id: trainingId }, select: { name: true } }),
+    prisma.session.findMany({ where: { trainingId }, orderBy: { sessionNumber: "asc" } }),
+    prisma.participant.findMany({
+      where: { trainingParticipants: { some: { trainingId } } },
+      orderBy: { fullName: "asc" },
+    }),
+    prisma.attendance.findMany({
+      where: { session: { trainingId } },
+    }),
   ]);
 
   if (!training || !sessions || !participants) {
@@ -28,29 +27,42 @@ export async function GET(request: Request) {
 
   const wb = XLSX.utils.book_new();
 
-  // Summary
-  const summaryData = (participants || []).map((p) => {
-    const pRecords = (records || []).filter((r) => r.participant_id === p.id);
+  // Summary sheet
+  const summaryData = participants.map((p) => {
+    const pRecords = records.filter((r) => r.participantId === p.id);
     const present = pRecords.filter((r) => r.status === "present").length;
     const late = pRecords.filter((r) => r.status === "late").length;
     const excused = pRecords.filter((r) => r.status === "excused").length;
     const absent = pRecords.filter((r) => r.status === "absent").length;
     const total = sessions.length;
     const rate = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
-    return { Name: p.full_name, Phone: p.phone || "", Present: present, Late: late, Excused: excused, Absent: absent, "Total Sessions": total, "Rate": `${rate}%` };
+    return {
+      Name: p.fullName,
+      Phone: p.phone || "",
+      Present: present,
+      Late: late,
+      Excused: excused,
+      Absent: absent,
+      "Total Sessions": total,
+      Rate: `${rate}%`,
+    };
   });
 
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), "Summary");
 
-  // Detail
-  const headers = ["Name", ...sessions.map(s => `S${s.session_number} (${formatDate(s.session_date, "MM/dd")})`), "Rate"];
-  const detailData = (participants || []).map((p) => {
-    const row: Record<string, string> = { Name: p.full_name };
+  // Detail sheet
+  const headers = [
+    "Name",
+    ...sessions.map((s) => `S${s.sessionNumber} (${formatDate(s.sessionDate.toISOString().slice(0, 10), "MM/dd")})`),
+    "Rate",
+  ];
+  const detailData = participants.map((p) => {
+    const row: Record<string, string> = { Name: p.fullName };
     let attended = 0;
     sessions.forEach((s) => {
-      const rec = (records || []).find(r => r.session_id === s.id && r.participant_id === p.id);
+      const rec = records.find((r) => r.sessionId === s.id && r.participantId === p.id);
       const status = rec?.status || "—";
-      row[`S${s.session_number} (${formatDate(s.session_date, "MM/dd")})`] = status;
+      row[`S${s.sessionNumber} (${formatDate(s.sessionDate.toISOString().slice(0, 10), "MM/dd")})`] = status;
       if (status === "present" || status === "late") attended++;
     });
     row["Rate"] = `${sessions.length > 0 ? Math.round((attended / sessions.length) * 100) : 0}%`;

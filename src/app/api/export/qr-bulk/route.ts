@@ -1,22 +1,21 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import prisma from "@/lib/prisma";
 import JSZip from "jszip";
 import { generateQRBuffer } from "@/lib/qr/generate";
 
 export async function GET(request: Request) {
-  const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const trainingId = searchParams.get("training_id");
 
   if (!trainingId) return NextResponse.json({ error: "training_id required" }, { status: 400 });
 
-  const { data: participants } = await supabase
-    .from("participants")
-    .select("id, full_name, qr_token, training_participants!inner(training_id)")
-    .eq("training_participants.training_id", trainingId)
-    .order("full_name");
+  const participants = await prisma.participant.findMany({
+    where: { trainingParticipants: { some: { trainingId } } },
+    orderBy: { fullName: "asc" },
+    select: { id: true, fullName: true, qrToken: true },
+  });
 
-  if (!participants?.length) {
+  if (!participants.length) {
     return NextResponse.json({ error: "No participants" }, { status: 404 });
   }
 
@@ -25,8 +24,8 @@ export async function GET(request: Request) {
 
   await Promise.all(
     participants.map(async (p) => {
-      const buffer = await generateQRBuffer(p.qr_token);
-      const filename = `${p.full_name.replace(/\s+/g, "_")}.png`;
+      const buffer = await generateQRBuffer(p.qrToken);
+      const filename = `${p.fullName.replace(/\s+/g, "_")}.png`;
       folder!.file(filename, buffer);
     })
   );
