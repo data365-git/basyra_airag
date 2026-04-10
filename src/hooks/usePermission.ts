@@ -1,17 +1,15 @@
 "use client";
 
 import { useAuth } from "./useAuth";
-import { hasPermission } from "@/lib/permissions";
-import type { Permission } from "@/types";
+import { hasPermission, isSuperadmin } from "@/lib/permissions";
+import type { PermPage, PermAction } from "@/types";
 
-export function usePermission(perm: Permission): boolean {
+export function usePermission(page: PermPage, action: PermAction): boolean {
   const { user } = useAuth();
-  return hasPermission(user, perm);
+  return hasPermission(user, page, action);
 }
 
-export function usePermissions(perms: Permission[]): Record<Permission, boolean> {
+export function useIsSuperadmin(): boolean {
   const { user } = useAuth();
-  return Object.fromEntries(
-    perms.map((p) => [p, hasPermission(user, p)])
-  ) as Record<Permission, boolean>;
+  return isSuperadmin(user);
 }

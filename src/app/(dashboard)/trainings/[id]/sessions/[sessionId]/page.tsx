@@ -16,7 +16,7 @@ import toast from "react-hot-toast";
 
 export default function SessionDetailPage() {
   const { id: trainingId, sessionId } = useParams<{ id: string; sessionId: string }>();
-  const canManage = usePermission("manage_trainings");
+  const canManage = usePermission("trainings", "edit");
   const [session, setSession] = useState<any>(null);
   const [training, setTraining] = useState<any>(null);
   const [records, setRecords] = useState<any[]>([]);

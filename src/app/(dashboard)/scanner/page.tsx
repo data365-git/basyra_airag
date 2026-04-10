@@ -10,7 +10,7 @@ import { usePermission } from "@/hooks/usePermission";
 import type { ScanResult } from "@/types";
 
 export default function ScannerPage() {
-  const canScan = usePermission("scan_qr");
+  const canScan = usePermission("scanner", "view");
   const { isOnline, refreshCount } = useOfflineSync();
   const [trainings, setTrainings] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);

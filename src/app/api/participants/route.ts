@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getFullUser } from "@/lib/getUser";
+import { hasPermission } from "@/lib/permissions";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -32,6 +34,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const user = await getFullUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(user, "participants", "create"))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
   const body = await request.json();
   const { full_name, phone, email, training_ids } = body;
 

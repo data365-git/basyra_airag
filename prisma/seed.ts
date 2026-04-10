@@ -9,55 +9,74 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log("Seeding database...");
 
-  // Roles
+  // Roles — granular permission structure
+  const adminPerms = {
+    trainings:    { view: true,  create: true,  edit: true,  delete: true  },
+    participants: { view: true,  create: true,  edit: true,  delete: true  },
+    scanner:      { view: true  },
+    reports:      { view: true,  export: true  },
+    settings: {
+      users: { view: true,  create: true,  edit: true,  delete: true  },
+      roles: { view: true,  create: true,  edit: true,  delete: true  },
+    },
+  };
+  const scannerPerms = {
+    trainings:    { view: true,  create: false, edit: false, delete: false },
+    participants: { view: false, create: false, edit: false, delete: false },
+    scanner:      { view: true  },
+    reports:      { view: false, export: false },
+    settings: {
+      users: { view: false, create: false, edit: false, delete: false },
+      roles: { view: false, create: false, edit: false, delete: false },
+    },
+  };
+  const viewerPerms = {
+    trainings:    { view: true,  create: false, edit: false, delete: false },
+    participants: { view: false, create: false, edit: false, delete: false },
+    scanner:      { view: false },
+    reports:      { view: true,  export: true  },
+    settings: {
+      users: { view: false, create: false, edit: false, delete: false },
+      roles: { view: false, create: false, edit: false, delete: false },
+    },
+  };
+
   const adminRole = await prisma.role.upsert({
     where: { name: "Admin" },
-    update: {},
+    update: { permissions: adminPerms, color: "#6366f1", isSuperadmin: true, description: "Full system access" },
     create: {
       id: "aaaaaaaa-0001-0000-0000-000000000000",
       name: "Admin",
-      permissions: {
-        view_trainings: true,
-        manage_trainings: true,
-        manage_participants: true,
-        scan_qr: true,
-        view_reports: true,
-        manage_users: true,
-      },
+      description: "Full system access",
+      color: "#6366f1",
+      isSuperadmin: true,
+      permissions: adminPerms,
     },
   });
 
   const scannerRole = await prisma.role.upsert({
     where: { name: "Scanner" },
-    update: {},
+    update: { permissions: scannerPerms, color: "#0ea5e9", description: "Can scan QR codes and view trainings" },
     create: {
       id: "aaaaaaaa-0002-0000-0000-000000000000",
       name: "Scanner",
-      permissions: {
-        view_trainings: true,
-        manage_trainings: false,
-        manage_participants: false,
-        scan_qr: true,
-        view_reports: false,
-        manage_users: false,
-      },
+      description: "Can scan QR codes and view trainings",
+      color: "#0ea5e9",
+      isSuperadmin: false,
+      permissions: scannerPerms,
     },
   });
 
   const viewerRole = await prisma.role.upsert({
     where: { name: "Viewer" },
-    update: {},
+    update: { permissions: viewerPerms, color: "#10b981", description: "Read-only access to trainings and reports" },
     create: {
       id: "aaaaaaaa-0003-0000-0000-000000000000",
       name: "Viewer",
-      permissions: {
-        view_trainings: true,
-        manage_trainings: false,
-        manage_participants: false,
-        scan_qr: false,
-        view_reports: true,
-        manage_users: false,
-      },
+      description: "Read-only access to trainings and reports",
+      color: "#10b981",
+      isSuperadmin: false,
+      permissions: viewerPerms,
     },
   });
 

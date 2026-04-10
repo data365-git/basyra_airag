@@ -17,7 +17,7 @@ import type { Participant } from "@/types";
 
 export default function ParticipantProfilePage() {
   const { id } = useParams<{ id: string }>();
-  const canManage = usePermission("manage_participants");
+  const canManage = usePermission("participants", "edit");
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

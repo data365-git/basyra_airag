@@ -6,13 +6,22 @@ import { LayoutDashboard, BookOpen, Users, QrCode, BarChart3 } from "lucide-reac
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/lib/permissions";
+import type { PermPage, PermAction } from "@/types";
 
-const navItems = [
-  { label: "Home", href: "/", icon: LayoutDashboard, permission: null },
-  { label: "Trainings", href: "/trainings", icon: BookOpen, permission: "view_trainings" as const },
-  { label: "Scan", href: "/scanner", icon: QrCode, permission: "scan_qr" as const },
-  { label: "People", href: "/participants", icon: Users, permission: "manage_participants" as const },
-  { label: "Reports", href: "/reports", icon: BarChart3, permission: "view_reports" as const },
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  page: PermPage | null;
+  action: PermAction;
+}
+
+const navItems: NavItem[] = [
+  { label: "Home",      href: "/",            icon: LayoutDashboard, page: null,           action: "view" },
+  { label: "Trainings", href: "/trainings",   icon: BookOpen,        page: "trainings",    action: "view" },
+  { label: "Scan",      href: "/scanner",     icon: QrCode,          page: "scanner",      action: "view" },
+  { label: "People",    href: "/participants",icon: Users,           page: "participants", action: "view" },
+  { label: "Reports",   href: "/reports",     icon: BarChart3,       page: "reports",      action: "view" },
 ];
 
 export function BottomNav() {
@@ -25,7 +34,7 @@ export function BottomNav() {
   };
 
   const visibleItems = navItems.filter(
-    (item) => !item.permission || hasPermission(user, item.permission)
+    (item) => !item.page || hasPermission(user, item.page, item.action)
   );
 
   return (
@@ -48,9 +57,6 @@ export function BottomNav() {
               <item.icon
                 size={item.href === "/scanner" ? 26 : 22}
                 strokeWidth={item.href === "/scanner" ? 2.5 : 1.75}
-                className={cn(
-                  item.href === "/scanner" && active && "drop-shadow-sm"
-                )}
               />
               <span className={item.href === "/scanner" ? "font-semibold" : ""}>{item.label}</span>
             </Link>

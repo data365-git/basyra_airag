@@ -76,7 +76,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Today's sessions */}
-      {hasPermission(user, "manage_trainings") && (
+      {hasPermission(user, "trainings", "edit") && (
         <TodaysSessions
           sessions={todaysSessions || []}
           onOpen={openSession}
@@ -86,7 +86,7 @@ export default function DashboardPage() {
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Active trainings */}
-        {hasPermission(user, "view_trainings") && (
+        {hasPermission(user, "trainings", "view") && (
           <Card>
             <CardHeader>
               <CardTitle>Active Trainings</CardTitle>

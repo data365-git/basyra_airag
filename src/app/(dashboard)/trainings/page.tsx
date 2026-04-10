@@ -10,7 +10,7 @@ import { usePermission } from "@/hooks/usePermission";
 import type { Training } from "@/types";
 
 export default function TrainingsPage() {
-  const canManage = usePermission("manage_trainings");
+  const canManage = usePermission("trainings", "create");
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

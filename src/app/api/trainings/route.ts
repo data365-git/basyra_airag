@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getUser } from "@/lib/getUser";
+import { getFullUser } from "@/lib/getUser";
+import { hasPermission } from "@/lib/permissions";
 import { generateSessionDates } from "@/lib/utils";
 
 export async function GET() {
@@ -34,8 +35,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const user = await getUser();
+  const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(user, "trainings", "create"))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await request.json();
   const { name, description, color, icon, start_date, end_date, schedule_day, schedule_time, attendance_threshold } = body;
@@ -51,7 +54,7 @@ export async function POST(request: Request) {
       scheduleDay: schedule_day,
       scheduleTime: schedule_time,
       attendanceThreshold: attendance_threshold || 80,
-      createdById: user.sub,
+      createdById: user.id,
     },
   });
 

@@ -11,7 +11,7 @@ import { formatDate, getAttendanceColorClass } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
 
 export default function ReportsPage() {
-  const canView = usePermission("view_reports");
+  const canView = usePermission("reports", "view");
   const [trainings, setTrainings] = useState<any[]>([]);
   const [selectedTraining, setSelectedTraining] = useState("");
   const [loading, setLoading] = useState(false);

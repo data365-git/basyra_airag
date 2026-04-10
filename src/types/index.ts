@@ -1,16 +1,36 @@
-export type Permission =
-  | "view_trainings"
-  | "manage_trainings"
-  | "manage_participants"
-  | "scan_qr"
-  | "view_reports"
-  | "manage_users";
+/** Page key used in hasPermission() — dot notation for sub-pages */
+export type PermPage =
+  | "trainings"
+  | "participants"
+  | "scanner"
+  | "reports"
+  | "settings.users"
+  | "settings.roles";
+
+/** Action used in hasPermission() */
+export type PermAction = "view" | "create" | "edit" | "delete" | "export";
+
+/** Granular permission object stored in DB */
+export interface RolePermissions {
+  trainings:    { view: boolean; create: boolean; edit: boolean; delete: boolean };
+  participants: { view: boolean; create: boolean; edit: boolean; delete: boolean };
+  scanner:      { view: boolean };
+  reports:      { view: boolean; export: boolean };
+  settings: {
+    users: { view: boolean; create: boolean; edit: boolean; delete: boolean };
+    roles: { view: boolean; create: boolean; edit: boolean; delete: boolean };
+  };
+}
 
 export interface Role {
   id: string;
   name: string;
-  permissions: Record<Permission, boolean>;
+  description: string | null;
+  color: string;
+  is_superadmin: boolean;
+  permissions: RolePermissions;
   created_at: string;
+  user_count?: number;
 }
 
 export interface StaffUser {

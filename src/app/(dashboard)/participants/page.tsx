@@ -13,7 +13,7 @@ import type { Participant } from "@/types";
 
 export default function ParticipantsPage() {
   const router = useRouter();
-  const canManage = usePermission("manage_participants");
+  const canManage = usePermission("participants", "create");
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

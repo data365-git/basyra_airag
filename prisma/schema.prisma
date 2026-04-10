@@ -7,11 +7,14 @@ generator client {
 }
 
 model Role {
-  id          String      @id @default(uuid())
-  name        String      @unique
-  permissions Json        @default("{}")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  staffUsers  StaffUser[]
+  id            String      @id @default(uuid())
+  name          String      @unique
+  description   String?
+  color         String      @default("#6366f1")
+  isSuperadmin  Boolean     @default(false) @map("is_superadmin")
+  permissions   Json        @default("{}")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  staffUsers    StaffUser[]
 
   @@map("roles")
 }

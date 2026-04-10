@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getFullUser } from "@/lib/getUser";
+import { hasPermission } from "@/lib/permissions";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const caller = await getFullUser();
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(caller, "settings.users", "view"))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  void request;
   const users = await prisma.staffUser.findMany({
     orderBy: { name: "asc" },
     include: { role: true },
@@ -21,6 +28,11 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const caller = await getFullUser();
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(caller, "settings.users", "edit"))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
   const body = await request.json();
   const { id, role_id, is_active, name } = body;
 
