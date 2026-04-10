@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/Button";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { usePermission } from "@/hooks/usePermission";
+import { useTranslation } from "@/providers/LanguageProvider";
 import { downloadQR } from "@/lib/qr/generate";
 import type { Participant } from "@/types";
 
 export default function ParticipantsPage() {
   const router = useRouter();
   const canManage = usePermission("participants", "create");
+  const { t } = useTranslation();
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -37,16 +39,16 @@ export default function ParticipantsPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Participants</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t("participants.title")}</h1>
           <p className="text-gray-500 text-sm mt-1">{participants.length} registered</p>
         </div>
         {canManage && (
           <div className="flex gap-2">
             <Link href="/participants/import">
-              <Button variant="outline" size="sm"><Upload size={14} /> Import CSV</Button>
+              <Button variant="outline" size="sm"><Upload size={14} /> {t("participants.import_csv")}</Button>
             </Link>
             <Link href="/participants/new">
-              <Button size="sm"><Plus size={14} /> Add</Button>
+              <Button size="sm"><Plus size={14} /> {t("common.add")}</Button>
             </Link>
           </div>
         )}
@@ -58,7 +60,7 @@ export default function ParticipantsPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name, phone, email..."
+          placeholder={t("participants.search_placeholder")}
           className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -70,16 +72,16 @@ export default function ParticipantsPage() {
         <Table>
           <Thead>
             <tr>
-              <Th>Name</Th>
-              <Th>Phone</Th>
-              <Th>Email</Th>
-              <Th>Registered</Th>
-              <Th>QR</Th>
+              <Th>{t("common.name")}</Th>
+              <Th>{t("common.phone")}</Th>
+              <Th>{t("common.email")}</Th>
+              <Th>{t("participants.registered_col")}</Th>
+              <Th>{t("participants.qr_col")}</Th>
             </tr>
           </Thead>
           <Tbody>
             {filtered.length === 0 ? (
-              <EmptyRow cols={5} message="No participants found" />
+              <EmptyRow cols={5} message={t("participants.no_participants")} />
             ) : filtered.map((p) => (
               <Tr key={p.id} onClick={() => router.push(`/participants/${p.id}`)}>
                 <Td className="font-medium text-gray-900">{p.full_name}</Td>

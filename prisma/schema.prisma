@@ -24,6 +24,7 @@ model StaffUser {
   name               String
   email              String           @unique
   password           String
+  avatarUrl          String?          @map("avatar_url")
   roleId             String?          @map("role_id")
   role               Role?            @relation(fields: [roleId], references: [id])
   isActive           Boolean          @default(true) @map("is_active")

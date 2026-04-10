@@ -1,4 +1,7 @@
+"use client";
+
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/providers/LanguageProvider";
 
 interface BadgeProps {
   children: React.ReactNode;
@@ -9,21 +12,21 @@ interface BadgeProps {
 }
 
 const variantClasses = {
-  green: "bg-green-100 text-green-800",
-  red: "bg-red-100 text-red-800",
+  green:  "bg-green-100 text-green-800",
+  red:    "bg-red-100 text-red-800",
   yellow: "bg-yellow-100 text-yellow-800",
-  blue: "bg-blue-100 text-blue-800",
-  gray: "bg-gray-100 text-gray-700",
+  blue:   "bg-blue-100 text-blue-800",
+  gray:   "bg-gray-100 text-gray-700",
   orange: "bg-orange-100 text-orange-800",
   purple: "bg-purple-100 text-purple-800",
 };
 
 const dotClasses = {
-  green: "bg-green-500",
-  red: "bg-red-500",
+  green:  "bg-green-500",
+  red:    "bg-red-500",
   yellow: "bg-yellow-500",
-  blue: "bg-blue-500",
-  gray: "bg-gray-400",
+  blue:   "bg-blue-500",
+  gray:   "bg-gray-400",
   orange: "bg-orange-500",
   purple: "bg-purple-500",
 };
@@ -38,52 +41,56 @@ export function Badge({ children, variant = "gray", size = "sm", className, dot 
         className
       )}
     >
-      {dot && (
-        <span className={cn("w-1.5 h-1.5 rounded-full", dotClasses[variant])} />
-      )}
+      {dot && <span className={cn("w-1.5 h-1.5 rounded-full", dotClasses[variant])} />}
       {children}
     </span>
   );
 }
 
 export function AttendanceBadge({ status }: { status: string }) {
-  const config: Record<string, { variant: BadgeProps["variant"]; label: string; icon: string }> = {
-    present: { variant: "green", label: "Present", icon: "✅" },
-    absent: { variant: "red", label: "Absent", icon: "❌" },
-    late: { variant: "yellow", label: "Late", icon: "⏰" },
-    excused: { variant: "blue", label: "Excused", icon: "🔵" },
-    pending: { variant: "gray", label: "Pending", icon: "—" },
+  const { t } = useTranslation();
+
+  const config: Record<string, { variant: BadgeProps["variant"]; icon: string; key: string }> = {
+    present: { variant: "green",  icon: "✅", key: "common.status.present" },
+    absent:  { variant: "red",    icon: "❌", key: "common.status.absent"  },
+    late:    { variant: "yellow", icon: "⏰", key: "common.status.late"    },
+    excused: { variant: "blue",   icon: "🔵", key: "common.status.excused" },
+    pending: { variant: "gray",   icon: "—",  key: "common.status.pending" },
   };
 
-  const c = config[status] || config.pending;
+  const c = config[status] ?? config.pending;
 
   return (
     <Badge variant={c.variant}>
-      <span>{c.icon}</span> {c.label}
+      <span>{c.icon}</span> {t(c.key)}
     </Badge>
   );
 }
 
 export function SessionStatusBadge({ status }: { status: string }) {
-  const config: Record<string, { variant: BadgeProps["variant"]; label: string }> = {
-    upcoming: { variant: "gray", label: "Upcoming" },
-    open: { variant: "green", label: "Open" },
-    closed: { variant: "red", label: "Closed" },
+  const { t } = useTranslation();
+
+  const config: Record<string, { variant: BadgeProps["variant"]; key: string }> = {
+    upcoming: { variant: "gray",  key: "common.status.upcoming" },
+    open:     { variant: "green", key: "common.status.open"     },
+    closed:   { variant: "red",   key: "common.status.closed"   },
   };
 
-  const c = config[status] || config.upcoming;
+  const c = config[status] ?? config.upcoming;
 
-  return <Badge variant={c.variant} dot>{c.label}</Badge>;
+  return <Badge variant={c.variant} dot>{t(c.key)}</Badge>;
 }
 
 export function TrainingStatusBadge({ status }: { status: string }) {
-  const config: Record<string, { variant: BadgeProps["variant"]; label: string }> = {
-    upcoming: { variant: "blue", label: "Upcoming" },
-    active: { variant: "green", label: "Active" },
-    completed: { variant: "gray", label: "Completed" },
+  const { t } = useTranslation();
+
+  const config: Record<string, { variant: BadgeProps["variant"]; key: string }> = {
+    upcoming:  { variant: "blue",  key: "common.status.upcoming"  },
+    active:    { variant: "green", key: "common.status.active"    },
+    completed: { variant: "gray",  key: "common.status.completed" },
   };
 
-  const c = config[status] || config.upcoming;
+  const c = config[status] ?? config.upcoming;
 
-  return <Badge variant={c.variant} dot>{c.label}</Badge>;
+  return <Badge variant={c.variant} dot>{t(c.key)}</Badge>;
 }

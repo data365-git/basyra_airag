@@ -7,10 +7,12 @@ import { TrainingCard } from "@/components/trainings/TrainingCard";
 import { Button } from "@/components/ui/Button";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { usePermission } from "@/hooks/usePermission";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { Training } from "@/types";
 
 export default function TrainingsPage() {
   const canManage = usePermission("trainings", "create");
+  const { t } = useTranslation();
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -36,13 +38,13 @@ export default function TrainingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Trainings</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t("trainings.title")}</h1>
           <p className="text-gray-500 text-sm mt-1">{trainings.length} total</p>
         </div>
         {canManage && (
           <Link href="/trainings/new">
             <Button>
-              <Plus size={16} /> New Training
+              <Plus size={16} /> {t("trainings.new")}
             </Button>
           </Link>
         )}
@@ -55,7 +57,7 @@ export default function TrainingsPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search trainings..."
+            placeholder={t("trainings.search_placeholder")}
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -64,11 +66,11 @@ export default function TrainingsPage() {
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors capitalize ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                 filter === f ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              {f}
+              {t(`trainings.filter_${f}`)}
             </button>
           ))}
         </div>
@@ -81,10 +83,10 @@ export default function TrainingsPage() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-lg">No trainings found</p>
+          <p className="text-lg">{t("trainings.no_trainings")}</p>
           {canManage && (
             <Link href="/trainings/new">
-              <Button className="mt-4">Create first training</Button>
+              <Button className="mt-4">{t("trainings.new")}</Button>
             </Link>
           )}
         </div>

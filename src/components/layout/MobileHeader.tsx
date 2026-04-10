@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { QrCode, X, LogOut, Shield } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
+import { QrCode, X, LogOut, Shield, Settings } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperadmin } from "@/lib/permissions";
 import toast from "react-hot-toast";
@@ -16,24 +16,74 @@ const LANG_OPTIONS: { code: Language; label: string }[] = [
   { code: "en", label: "EN" },
 ];
 
+function UserAvatar({
+  name,
+  avatarUrl,
+  size = 11,
+}: {
+  name: string;
+  avatarUrl?: string | null;
+  size?: number;
+}) {
+  const initials = name
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        className="rounded-full object-cover"
+        style={{ width: size * 4, height: size * 4 }}
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = "none";
+          (e.currentTarget.nextSibling as HTMLElement | null)?.removeAttribute("style");
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold"
+      style={{ width: size * 4, height: size * 4 }}
+    >
+      {initials || "?"}
+    </div>
+  );
+}
+
 export function MobileHeader() {
   const { user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const superadmin = isSuperadmin(user);
-  const { language, setLanguage } = useTranslation();
+  const { language, setLanguage, t } = useTranslation();
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     setOpen(false);
     router.push("/login");
-    toast.success("Logged out");
+    toast.success(t("auth.sign_out"));
+  }
+
+  function goToSettings() {
+    setOpen(false);
+    router.push("/settings/profile");
   }
 
   return (
     <>
-      {/* Header bar */}
-      <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-30">
+      {/* Header bar — hidden on scanner (scanner covers full screen) */}
+      <header className={cn(
+        "lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-30",
+        pathname === "/scanner" && "hidden"
+      )}>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
             <QrCode size={15} className="text-white" />
@@ -42,10 +92,10 @@ export function MobileHeader() {
         </div>
         <button
           onClick={() => setOpen(true)}
-          className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm"
+          className="shrink-0"
           aria-label="Account menu"
         >
-          {user?.name?.charAt(0).toUpperCase() ?? "?"}
+          <UserAvatar name={user?.name ?? ""} avatarUrl={user?.avatar_url} size={8} />
         </button>
       </header>
 
@@ -66,9 +116,7 @@ export function MobileHeader() {
         {/* User row */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg">
-              {user?.name?.charAt(0).toUpperCase() ?? "?"}
-            </div>
+            <UserAvatar name={user?.name ?? ""} avatarUrl={user?.avatar_url} size={11} />
             <div>
               <p className="font-semibold text-gray-900 text-sm">{user?.name ?? "Loading…"}</p>
               <p className="text-xs text-gray-500 flex items-center gap-1">
@@ -104,13 +152,22 @@ export function MobileHeader() {
           ))}
         </div>
 
+        {/* Settings / Profile button */}
+        <button
+          onClick={goToSettings}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 bg-gray-50 hover:bg-gray-100 font-medium text-sm transition-colors mb-2"
+        >
+          <Settings size={18} className="text-gray-500" />
+          {t("nav.settings")}
+        </button>
+
         {/* Logout button */}
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 font-medium text-sm transition-colors"
         >
           <LogOut size={18} />
-          Sign out
+          {t("auth.sign_out")}
         </button>
 
         {/* Safe area spacer */}

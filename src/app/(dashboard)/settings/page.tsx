@@ -3,25 +3,15 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { hasPermission, isSuperadmin } from "@/lib/permissions";
 
+// Always redirect to Profile — every user can access their own profile
 export default function SettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!user) return;
-    if (isSuperadmin(user) || hasPermission(user, "settings.users", "view")) {
-      router.replace("/settings/users");
-    } else if (hasPermission(user, "settings.roles", "view")) {
-      router.replace("/settings/roles");
-    } else if (hasPermission(user, "settings.categories", "view")) {
-      router.replace("/settings/categories");
-    } else if (hasPermission(user, "settings.translations", "view")) {
-      router.replace("/settings/translations");
-    } else {
-      router.replace("/");
-    }
+    router.replace("/settings/profile");
   }, [user, router]);
 
   return null;

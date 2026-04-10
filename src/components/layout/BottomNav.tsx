@@ -6,10 +6,11 @@ import { LayoutDashboard, BookOpen, Users, QrCode } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/lib/permissions";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { PermPage, PermAction } from "@/types";
 
 interface NavItem {
-  label: string;
+  labelKey: string;
   href: string;
   icon: React.ElementType;
   page: PermPage | null;
@@ -17,15 +18,16 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Home",      href: "/",            icon: LayoutDashboard, page: null,           action: "view" },
-  { label: "Trainings", href: "/trainings",   icon: BookOpen,        page: "trainings",    action: "view" },
-  { label: "Scan",      href: "/scanner",     icon: QrCode,          page: "scanner",      action: "view" },
-  { label: "People",    href: "/participants",icon: Users,           page: "participants", action: "view" },
+  { labelKey: "nav.dashboard",    href: "/",             icon: LayoutDashboard, page: null,           action: "view" },
+  { labelKey: "nav.trainings",    href: "/trainings",    icon: BookOpen,        page: "trainings",    action: "view" },
+  { labelKey: "nav.scanner",      href: "/scanner",      icon: QrCode,          page: "scanner",      action: "view" },
+  { labelKey: "nav.participants", href: "/participants", icon: Users,           page: "participants", action: "view" },
 ];
 
 export function BottomNav() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -57,7 +59,9 @@ export function BottomNav() {
                 size={item.href === "/scanner" ? 26 : 22}
                 strokeWidth={item.href === "/scanner" ? 2.5 : 1.75}
               />
-              <span className={item.href === "/scanner" ? "font-semibold" : ""}>{item.label}</span>
+              <span className={item.href === "/scanner" ? "font-semibold" : ""}>
+                {t(item.labelKey)}
+              </span>
             </Link>
           );
         })}

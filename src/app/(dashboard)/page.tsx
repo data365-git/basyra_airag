@@ -10,10 +10,12 @@ import { CardSkeleton } from "@/components/ui/Skeleton";
 import { formatDate, formatTime } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/lib/permissions";
+import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
 
@@ -29,13 +31,13 @@ export default function DashboardPage() {
 
   async function openSession(id: string) {
     await fetch(`/api/sessions/${id}/open`, { method: "POST" });
-    toast.success("Session opened");
+    toast.success(t("dashboard.session_opened"));
     loadDashboard();
   }
 
   async function closeSession(id: string) {
     await fetch(`/api/sessions/${id}/close`, { method: "POST" });
-    toast.success("Session closed — absent participants marked");
+    toast.success(t("dashboard.session_closed"));
     loadDashboard();
   }
 
@@ -59,17 +61,22 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
-          Good {new Date().getHours() < 12 ? "morning" : "afternoon"}, {user?.name?.split(" ")[0] || "Staff"} 👋
+          {t(
+            new Date().getHours() < 12
+              ? "dashboard.greeting_morning"
+              : "dashboard.greeting_afternoon",
+            { name: user?.name?.split(" ")[0] || "Staff" }
+          )}
         </h1>
         <p className="text-gray-500 text-sm mt-1">{formatDate(new Date().toISOString())}</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard title="Participants" value={stats?.totalParticipants || 0} icon={Users} color="blue" />
-        <StatsCard title="Trainings" value={stats?.totalTrainings || 0} icon={BookOpen} color="purple" />
-        <StatsCard title="Active" value={stats?.activeTrainings || 0} icon={QrCode} color="green" />
-        <StatsCard title="Today's Sessions" value={(todaysSessions || []).length} icon={BarChart3} color="yellow" />
+        <StatsCard title={t("dashboard.participants")}    value={stats?.totalParticipants || 0} icon={Users}    color="blue"   />
+        <StatsCard title={t("dashboard.trainings")}       value={stats?.totalTrainings || 0}    icon={BookOpen} color="purple" />
+        <StatsCard title={t("dashboard.active")}          value={stats?.activeTrainings || 0}   icon={QrCode}   color="green"  />
+        <StatsCard title={t("dashboard.today_sessions")}  value={(todaysSessions || []).length}  icon={BarChart3} color="yellow" />
       </div>
 
       {/* Today's sessions */}

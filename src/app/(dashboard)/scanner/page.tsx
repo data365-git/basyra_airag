@@ -7,11 +7,13 @@ import { OfflineBanner } from "@/components/scanner/OfflineBanner";
 import { queueScan } from "@/lib/db/offline";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { usePermission } from "@/hooks/usePermission";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { ScanResult } from "@/types";
 
 export default function ScannerPage() {
   const canScan = usePermission("scanner", "view");
   const { isOnline, refreshCount } = useOfflineSync();
+  const { t } = useTranslation();
   const [trainings, setTrainings] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [selectedTraining, setSelectedTraining] = useState("");
@@ -62,14 +64,14 @@ export default function ScannerPage() {
     setScanResult(null);
 
     if (!selectedSession) {
-      const result: ScanResult = { type: "unknown", message: "Please select a session first" };
+      const result: ScanResult = { type: "unknown", message: t("scanner.session_required") };
       setScanResult(result);
       navigator.vibrate?.([100, 50, 100]);
       return;
     }
 
     if (!sessionIsOpen) {
-      const result: ScanResult = { type: "unknown", message: "Session is not open" };
+      const result: ScanResult = { type: "unknown", message: t("scanner.session_not_open") };
       setScanResult(result);
       navigator.vibrate?.([100, 50, 100]);
       return;
@@ -105,7 +107,7 @@ export default function ScannerPage() {
         setScanResult(result);
         navigator.vibrate?.(200);
       } else {
-        const result: ScanResult = { type: "unknown", message: "Network error" };
+        const result: ScanResult = { type: "unknown", message: t("scanner.network_error") };
         setScanResult(result);
         navigator.vibrate?.([100, 50, 100]);
       }
@@ -116,14 +118,14 @@ export default function ScannerPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
         <div className="text-4xl mb-4">🔒</div>
-        <h2 className="text-xl font-bold text-gray-900">Access Denied</h2>
-        <p className="text-gray-500 mt-2">You don&apos;t have permission to use the scanner.</p>
+        <h2 className="text-xl font-bold text-gray-900">{t("scanner.access_denied_title")}</h2>
+        <p className="text-gray-500 mt-2">{t("scanner.access_denied_hint")}</p>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 lg:relative lg:inset-auto flex flex-col bg-gray-900 lg:h-[calc(100vh-2rem)] lg:rounded-2xl overflow-hidden">
+    <div className="fixed inset-0 z-40 lg:relative lg:z-auto lg:inset-auto flex flex-col bg-gray-900 lg:h-[calc(100vh-2rem)] lg:rounded-2xl overflow-hidden">
       <OfflineBanner />
 
       {/* Session selector */}
@@ -137,7 +139,7 @@ export default function ScannerPage() {
           }}
           className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">Select Training...</option>
+          <option value="">{t("scanner.select_training")}</option>
           {trainings.map((t) => (
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
@@ -151,10 +153,10 @@ export default function ScannerPage() {
           disabled={!selectedTraining}
           className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
         >
-          <option value="">Select Session...</option>
+          <option value="">{t("scanner.select_session")}</option>
           {sessions.map((s) => (
             <option key={s.id} value={s.id}>
-              Session {s.session_number} — {s.status === "open" ? "🟢 Open" : "⏳ Upcoming"}
+              {t("trainings.session_number", { n: s.session_number })} — {s.status === "open" ? `🟢 ${t("common.status.open")}` : `⏳ ${t("common.status.upcoming")}`}
             </option>
           ))}
         </select>
@@ -180,8 +182,8 @@ export default function ScannerPage() {
         {!selectedSession && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80">
             <div className="text-4xl mb-4">📱</div>
-            <p className="text-lg font-medium">Select a training and session</p>
-            <p className="text-sm text-white/60 mt-1">to start scanning</p>
+            <p className="text-lg font-medium">{t("scanner.select_to_scan")}</p>
+            <p className="text-sm text-white/60 mt-1">{t("scanner.select_to_scan_sub")}</p>
           </div>
         )}
 
@@ -189,8 +191,8 @@ export default function ScannerPage() {
         {selectedSession && !sessionIsOpen && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80">
             <div className="text-4xl mb-4">⏳</div>
-            <p className="text-lg font-medium">Session not open yet</p>
-            <p className="text-sm text-white/60 mt-1">Open this session to start scanning attendance</p>
+            <p className="text-lg font-medium">{t("scanner.no_session_open")}</p>
+            <p className="text-sm text-white/60 mt-1">{t("scanner.open_to_scan")}</p>
           </div>
         )}
 
@@ -201,12 +203,12 @@ export default function ScannerPage() {
       <div className="bg-gray-800 px-4 py-3 text-center">
         <p className="text-white/70 text-sm">
           {!selectedSession
-            ? "Select a training and session above"
+            ? t("scanner.select_above")
             : !sessionIsOpen
-              ? "Open the session to enable scanning"
+              ? t("scanner.open_to_enable")
               : scanResult
-                ? "Scan next participant to continue"
-                : "Point camera at participant QR code"}
+                ? t("scanner.scan_next")
+                : t("scanner.point_camera")}
         </p>
       </div>
     </div>

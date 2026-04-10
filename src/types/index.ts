@@ -51,6 +51,7 @@ export interface StaffUser {
   id: string;
   name: string;
   email: string;
+  avatar_url: string | null;
   role_id: string | null;
   role: Role | null;
   is_active: boolean;

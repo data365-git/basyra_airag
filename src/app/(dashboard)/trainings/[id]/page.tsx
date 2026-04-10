@@ -13,6 +13,7 @@ import { CardSkeleton } from "@/components/ui/Skeleton";
 import { ConfirmModal, Modal } from "@/components/ui/Modal";
 import { formatDate, formatTime, getAttendanceColorClass, formatScheduleDays } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
+import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 
 export default function TrainingDetailPage() {
@@ -20,6 +21,7 @@ export default function TrainingDetailPage() {
   const router = useRouter();
   const canManage = usePermission("trainings", "edit");
   const canManageParticipants = usePermission("participants", "view");
+  const { t } = useTranslation();
   const [training, setTraining] = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>([]);
   const [participants, setParticipants] = useState<any[]>([]);
@@ -68,7 +70,7 @@ export default function TrainingDetailPage() {
     });
     setAddingSession(false);
     if (res.ok) {
-      toast.success("Session added");
+      toast.success(t("trainings.session_added"));
       setAddSessionOpen(false);
       await load();
     } else {
@@ -119,7 +121,7 @@ export default function TrainingDetailPage() {
     setCreatingAndEnrolling(false);
 
     if (enrollRes.ok) {
-      toast.success(`${newParticipantForm.full_name.trim()} created and enrolled`);
+      toast.success(`${newParticipantForm.full_name.trim()} — ${t("trainings.participant_enrolled")}`);
       setNewParticipantForm({ full_name: "", phone: "", email: "" });
       await load();
     } else {
@@ -145,7 +147,7 @@ export default function TrainingDetailPage() {
     });
     setEnrolling((s) => { const n = new Set(s); n.delete(participantId); return n; });
     if (res.ok) {
-      toast.success("Participant enrolled");
+      toast.success(t("trainings.participant_enrolled"));
       await load();
     } else {
       toast.error("Failed to enroll");
@@ -162,7 +164,7 @@ export default function TrainingDetailPage() {
     });
     setUnenrolling((s) => { const n = new Set(s); n.delete(participantId); return n; });
     if (res.ok) {
-      toast.success("Participant removed");
+      toast.success(t("trainings.participant_removed"));
       await load();
     } else {
       toast.error("Failed to remove participant");
@@ -189,32 +191,32 @@ export default function TrainingDetailPage() {
 
   async function openSession(sessionId: string) {
     await fetch(`/api/sessions/${sessionId}/open`, { method: "POST" });
-    toast.success("Session opened");
+    toast.success(t("dashboard.session_opened"));
     load();
   }
 
   async function closeSession(sessionId: string) {
     await fetch(`/api/sessions/${sessionId}/close`, { method: "POST" });
-    toast.success("Session closed");
+    toast.success(t("dashboard.session_closed"));
     load();
   }
 
   async function handleDelete() {
     setDeleting(true);
     await fetch(`/api/trainings/${id}`, { method: "DELETE" });
-    toast.success("Training deleted");
+    toast.success(t("trainings.deleted"));
     router.refresh();
     router.push("/trainings");
   }
 
   if (loading) return <div className="space-y-4"><CardSkeleton /><CardSkeleton /></div>;
-  if (!training) return <div className="text-center py-16 text-gray-400">Training not found</div>;
+  if (!training) return <div className="text-center py-16 text-gray-400">{t("trainings.not_found")}</div>;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={training.name}
-        subtitle={`Every ${formatScheduleDays(training.schedule_days)} · ${formatTime(training.schedule_time)}`}
+        subtitle={t("trainings.schedule_subtitle", { days: formatScheduleDays(training.schedule_days), time: formatTime(training.schedule_time) })}
         back
         backHref="/trainings"
         actions={
@@ -226,10 +228,10 @@ export default function TrainingDetailPage() {
                   size="sm"
                   onClick={() => window.open(`/api/export/attendance?training_id=${id}`, "_blank")}
                 >
-                  <Download size={14} /> Export
+                  <Download size={14} /> {t("common.export")}
                 </Button>
                 <Link href={`/trainings/${id}/edit`}>
-                  <Button variant="outline" size="sm"><Edit size={14} /> Edit</Button>
+                  <Button variant="outline" size="sm"><Edit size={14} /> {t("common.edit")}</Button>
                 </Link>
                 <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
                   <Trash2 size={14} />
@@ -244,23 +246,23 @@ export default function TrainingDetailPage() {
       <Card>
         <div className="flex flex-wrap gap-6">
           <div>
-            <p className="text-xs text-gray-500">Status</p>
+            <p className="text-xs text-gray-500">{t("common.status")}</p>
             <TrainingStatusBadge status={training.status} />
           </div>
           <div>
-            <p className="text-xs text-gray-500">Duration</p>
+            <p className="text-xs text-gray-500">{t("trainings.duration_label")}</p>
             <p className="text-sm font-medium">{formatDate(training.start_date)} — {formatDate(training.end_date)}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Participants</p>
+            <p className="text-xs text-gray-500">{t("trainings.participants_section")}</p>
             <p className="text-sm font-medium">{participants.length}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Sessions</p>
+            <p className="text-xs text-gray-500">{t("trainings.sessions_section")}</p>
             <p className="text-sm font-medium">{sessions.length} total</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Alert Threshold</p>
+            <p className="text-xs text-gray-500">{t("trainings.alert_threshold")}</p>
             <p className="text-sm font-medium">{training.attendance_threshold}%</p>
           </div>
         </div>
@@ -269,13 +271,13 @@ export default function TrainingDetailPage() {
       {/* Sessions */}
       <Card>
         <CardHeader>
-          <CardTitle>Sessions ({sessions.length})</CardTitle>
+          <CardTitle>{t("trainings.sessions_section")} ({sessions.length})</CardTitle>
           {canManage && (
             <Button size="sm" variant="outline" onClick={() => {
               setAddSessionForm({ session_date: "", session_time: training.schedule_time || "09:00" });
               setAddSessionOpen(true);
             }}>
-              <CalendarPlus size={14} /> Add Session
+              <CalendarPlus size={14} /> {t("trainings.add_session")}
             </Button>
           )}
         </CardHeader>
@@ -283,19 +285,19 @@ export default function TrainingDetailPage() {
           <Thead>
             <tr>
               <Th>#</Th>
-              <Th>Date</Th>
-              <Th>Status</Th>
-              <Th>Present</Th>
-              <Th>Absent</Th>
+              <Th>{t("common.date")}</Th>
+              <Th>{t("common.status")}</Th>
+              <Th>{t("trainings.present_col")}</Th>
+              <Th>{t("trainings.absent_col")}</Th>
               <Th></Th>
             </tr>
           </Thead>
           <Tbody>
-            {sessions.length === 0 ? <EmptyRow cols={6} message="No sessions" /> : sessions.map((s) => {
+            {sessions.length === 0 ? <EmptyRow cols={6} message={t("trainings.no_sessions")} /> : sessions.map((s) => {
               const stats = getSessionStats(s.id);
               return (
                 <Tr key={s.id}>
-                  <Td className="font-medium">Session {s.session_number}</Td>
+                  <Td className="font-medium">{t("trainings.session_number", { n: s.session_number })}</Td>
                   <Td>{formatDate(s.session_date)}</Td>
                   <Td><SessionStatusBadge status={s.status} /></Td>
                   <Td className="text-green-600">{stats.present + stats.late} / {stats.total}</Td>
@@ -303,13 +305,13 @@ export default function TrainingDetailPage() {
                   <Td>
                     <div className="flex gap-1">
                       {s.status === "upcoming" && canManage && (
-                        <Button size="sm" onClick={() => openSession(s.id)}>Open</Button>
+                        <Button size="sm" onClick={() => openSession(s.id)}>{t("common.open")}</Button>
                       )}
                       {s.status === "open" && canManage && (
-                        <Button size="sm" variant="danger" onClick={() => closeSession(s.id)}>Close</Button>
+                        <Button size="sm" variant="danger" onClick={() => closeSession(s.id)}>{t("common.close_action")}</Button>
                       )}
                       <Link href={`/trainings/${id}/sessions/${s.id}`}>
-                        <Button size="sm" variant="ghost">View</Button>
+                        <Button size="sm" variant="ghost">{t("common.view")}</Button>
                       </Link>
                     </div>
                   </Td>
@@ -323,18 +325,18 @@ export default function TrainingDetailPage() {
       {/* Participant roster */}
       <Card>
         <CardHeader>
-          <CardTitle>Participants ({participants.length})</CardTitle>
+          <CardTitle>{t("trainings.participants_section")} ({participants.length})</CardTitle>
           <div className="flex gap-2">
             <Button
               size="sm"
               variant="outline"
               onClick={() => window.open(`/api/export/qr-bulk?training_id=${id}`, "_blank")}
             >
-              <Download size={14} /> QR Codes
+              <Download size={14} /> {t("trainings.export_qr")}
             </Button>
             {canManage && (
               <Button size="sm" onClick={openEnrollModal}>
-                <Plus size={14} /> Add
+                <Plus size={14} /> {t("common.add")}
               </Button>
             )}
           </div>
@@ -342,15 +344,15 @@ export default function TrainingDetailPage() {
         <Table>
           <Thead>
             <tr>
-              <Th>Name</Th>
-              <Th>Phone</Th>
-              <Th>Attendance Rate</Th>
+              <Th>{t("common.name")}</Th>
+              <Th>{t("common.phone")}</Th>
+              <Th>{t("participants.attendance_rate")}</Th>
               <Th></Th>
             </tr>
           </Thead>
           <Tbody>
             {participants.length === 0 ? (
-              <EmptyRow cols={4} message="No participants enrolled" />
+              <EmptyRow cols={4} message={t("trainings.no_enrolled")} />
             ) : participants.map((p) => {
               const rate = getParticipantRate(p.id);
               return (
@@ -367,7 +369,7 @@ export default function TrainingDetailPage() {
                   <Td>
                     <div className="flex items-center gap-1">
                       <Link href={`/participants/${p.id}`} className="text-blue-600 text-xs hover:underline" onClick={(e) => e.stopPropagation()}>
-                        View
+                        {t("common.view")}
                       </Link>
                       {canManage && (
                         <button
@@ -395,28 +397,28 @@ export default function TrainingDetailPage() {
         onConfirm={handleDelete}
         loading={deleting}
         danger
-        title="Delete Training"
-        message="This will permanently delete the training and all its sessions and attendance records. This cannot be undone."
-        confirmLabel="Delete"
+        title={t("trainings.delete_training")}
+        message={t("trainings.delete_confirm")}
+        confirmLabel={t("common.delete")}
       />
 
       {/* Add session modal */}
       <Modal
         open={addSessionOpen}
         onClose={() => setAddSessionOpen(false)}
-        title="Add Session"
+        title={t("trainings.add_session")}
         size="sm"
         footer={
           <>
-            <Button variant="outline" onClick={() => setAddSessionOpen(false)}>Cancel</Button>
-            <Button form="add-session-form" type="submit" loading={addingSession}>Add Session</Button>
+            <Button variant="outline" onClick={() => setAddSessionOpen(false)}>{t("common.cancel")}</Button>
+            <Button form="add-session-form" type="submit" loading={addingSession}>{t("trainings.add_session")}</Button>
           </>
         }
       >
         <form id="add-session-form" onSubmit={handleAddSession} className="space-y-4">
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">
-              Date <span className="text-red-500">*</span>
+              {t("common.date")} <span className="text-red-500">*</span>
             </label>
             <input
               type="date"
@@ -428,7 +430,7 @@ export default function TrainingDetailPage() {
           </div>
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">
-              Time <span className="text-red-500">*</span>
+              {t("trainings.schedule_time")} <span className="text-red-500">*</span>
             </label>
             <input
               type="time"
@@ -445,7 +447,7 @@ export default function TrainingDetailPage() {
       <Modal
         open={enrollOpen}
         onClose={() => setEnrollOpen(false)}
-        title="Add Participants"
+        title={t("trainings.add_participants")}
         size="lg"
       >
         {/* Tab bar */}
@@ -456,7 +458,7 @@ export default function TrainingDetailPage() {
               enrollTab === "existing" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
             }`}
           >
-            Find Existing
+            {t("trainings.find_existing")}
           </button>
           <button
             onClick={() => setEnrollTab("new")}
@@ -464,7 +466,7 @@ export default function TrainingDetailPage() {
               enrollTab === "new" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
             }`}
           >
-            Create New
+            {t("trainings.create_new_participant")}
           </button>
         </div>
 
@@ -475,7 +477,7 @@ export default function TrainingDetailPage() {
               <input
                 value={enrollSearch}
                 onChange={(e) => setEnrollSearch(e.target.value)}
-                placeholder="Search by name..."
+                placeholder={t("trainings.enroll_search_placeholder")}
                 className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
@@ -483,7 +485,7 @@ export default function TrainingDetailPage() {
 
             {filteredForEnroll.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-6">
-                {enrollSearch ? "No matching participants" : "All participants are already enrolled"}
+                {enrollSearch ? t("trainings.no_matching") : t("trainings.all_enrolled")}
               </p>
             ) : (
               <div className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
@@ -498,7 +500,7 @@ export default function TrainingDetailPage() {
                       loading={enrolling.has(p.id)}
                       onClick={() => handleEnroll(p.id)}
                     >
-                      Enroll
+                      {t("trainings.enroll")}
                     </Button>
                   </div>
                 ))}
@@ -511,7 +513,7 @@ export default function TrainingDetailPage() {
           <form onSubmit={handleCreateAndEnroll} className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Full Name <span className="text-red-500">*</span>
+                {t("participants.full_name")} <span className="text-red-500">*</span>
               </label>
               <input
                 required
@@ -522,7 +524,7 @@ export default function TrainingDetailPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t("common.phone")}</label>
               <input
                 value={newParticipantForm.phone}
                 onChange={(e) => setNewParticipantForm((f) => ({ ...f, phone: e.target.value }))}
@@ -531,7 +533,7 @@ export default function TrainingDetailPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t("common.email")}</label>
               <input
                 type="email"
                 value={newParticipantForm.email}
@@ -541,7 +543,7 @@ export default function TrainingDetailPage() {
               />
             </div>
             <Button type="submit" loading={creatingAndEnrolling} className="w-full">
-              Create &amp; Enroll
+              {t("trainings.create_and_enroll")}
             </Button>
           </form>
         )}

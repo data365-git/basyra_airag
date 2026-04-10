@@ -9,9 +9,11 @@ import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { formatDate, getAttendanceColorClass } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
+import { useTranslation } from "@/providers/LanguageProvider";
 
 export default function ReportsPage() {
   const canView = usePermission("reports", "view");
+  const { t } = useTranslation();
   const [trainings, setTrainings] = useState<any[]>([]);
   const [selectedTraining, setSelectedTraining] = useState("");
   const [loading, setLoading] = useState(false);
@@ -66,10 +68,10 @@ export default function ReportsPage() {
   };
 
   const statusTitle: Record<string, string> = {
-    present: "Present",
-    late: "Late",
-    excused: "Excused",
-    absent: "Absent",
+    present: t("common.status.present"),
+    late: t("common.status.late"),
+    excused: t("common.status.excused"),
+    absent: t("common.status.absent"),
   };
 
   const rankedParticipants = [...heatmapData.participants]
@@ -80,7 +82,7 @@ export default function ReportsPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
         <div className="text-4xl mb-4">🔒</div>
-        <h2 className="text-xl font-bold text-gray-900">Access Denied</h2>
+        <h2 className="text-xl font-bold text-gray-900">{t("scanner.access_denied_title")}</h2>
       </div>
     );
   }
@@ -88,8 +90,8 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Reports"
-        subtitle="Attendance analytics and export"
+        title={t("reports.title")}
+        subtitle={t("reports.subtitle")}
         actions={
           selectedTraining && (
             <Button
@@ -97,7 +99,7 @@ export default function ReportsPage() {
               size="sm"
               onClick={() => window.open(`/api/export/attendance?training_id=${selectedTraining}`, "_blank")}
             >
-              <Download size={14} /> Export Excel
+              <Download size={14} /> {t("reports.export_excel")}
             </Button>
           )
         }
@@ -112,7 +114,7 @@ export default function ReportsPage() {
             onChange={(e) => setSelectedTraining(e.target.value)}
             className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">Select a training to view report...</option>
+            <option value="">{t("reports.select_training")}</option>
             {trainings.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
@@ -130,7 +132,7 @@ export default function ReportsPage() {
           {/* Attendance Heatmap */}
           <Card>
             <CardHeader>
-              <CardTitle>Attendance Heatmap</CardTitle>
+              <CardTitle>{t("reports.heatmap")}</CardTitle>
               <div className="flex gap-2 text-xs">
                 {Object.entries(statusTitle).map(([k, v]) => (
                   <span key={k} className="flex items-center gap-1">
@@ -144,14 +146,14 @@ export default function ReportsPage() {
               <table className="text-xs border-collapse">
                 <thead>
                   <tr>
-                    <th className="text-left px-3 py-2 w-40 font-medium text-gray-600">Participant</th>
+                    <th className="text-left px-3 py-2 w-40 font-medium text-gray-600">{t("reports.participant_col")}</th>
                     {heatmapData.sessions.map((s) => (
                       <th key={s.id} className="px-1 py-2 text-center min-w-[36px] font-medium text-gray-500">
                         <div>S{s.session_number}</div>
                         <div className="text-[10px] text-gray-400">{formatDate(s.session_date, "MM/dd")}</div>
                       </th>
                     ))}
-                    <th className="px-3 py-2 text-center font-medium text-gray-600">Rate</th>
+                    <th className="px-3 py-2 text-center font-medium text-gray-600">{t("reports.rate_col")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -184,13 +186,13 @@ export default function ReportsPage() {
           {/* Rankings */}
           <div className="grid lg:grid-cols-2 gap-6">
             <Card>
-              <CardHeader><CardTitle>Attendance Ranking</CardTitle></CardHeader>
+              <CardHeader><CardTitle>{t("reports.ranking")}</CardTitle></CardHeader>
               <Table>
                 <Thead>
                   <tr>
                     <Th>#</Th>
-                    <Th>Participant</Th>
-                    <Th>Rate</Th>
+                    <Th>{t("reports.participant_col")}</Th>
+                    <Th>{t("reports.rate_col")}</Th>
                   </tr>
                 </Thead>
                 <Tbody>
@@ -210,14 +212,14 @@ export default function ReportsPage() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Session Summary</CardTitle></CardHeader>
+              <CardHeader><CardTitle>{t("reports.session_summary")}</CardTitle></CardHeader>
               <Table>
                 <Thead>
                   <tr>
-                    <Th>Session</Th>
-                    <Th>Date</Th>
-                    <Th>Present</Th>
-                    <Th>Rate</Th>
+                    <Th>{t("reports.session_col")}</Th>
+                    <Th>{t("common.date")}</Th>
+                    <Th>{t("reports.present_col")}</Th>
+                    <Th>{t("reports.rate_col")}</Th>
                   </tr>
                 </Thead>
                 <Tbody>
@@ -228,7 +230,7 @@ export default function ReportsPage() {
                     const rate = total > 0 ? Math.round((present / total) * 100) : 0;
                     return (
                       <Tr key={s.id}>
-                        <Td>Session {s.session_number}</Td>
+                        <Td>{t("trainings.session_number", { n: s.session_number })}</Td>
                         <Td>{formatDate(s.session_date, "MMM d")}</Td>
                         <Td>{present}/{total}</Td>
                         <Td>
@@ -245,16 +247,14 @@ export default function ReportsPage() {
       ) : selectedTraining ? (
         <div className="text-center py-16">
           <div className="text-5xl mb-4">📊</div>
-          <p className="text-gray-700 font-semibold">No data yet</p>
-          <p className="text-sm text-gray-400 mt-1">Sessions appear here after they are closed.</p>
+          <p className="text-gray-700 font-semibold">{t("reports.no_data_title")}</p>
+          <p className="text-sm text-gray-400 mt-1">{t("reports.no_data_hint")}</p>
         </div>
       ) : (
         <div className="text-center py-16">
           <div className="text-5xl mb-4">📋</div>
-          <p className="text-gray-700 font-semibold">Select a training to view reports</p>
-          <p className="text-sm text-gray-400 mt-1">
-            Attendance analytics and rankings appear after sessions are closed.
-          </p>
+          <p className="text-gray-700 font-semibold">{t("reports.select_title")}</p>
+          <p className="text-sm text-gray-400 mt-1">{t("reports.select_hint")}</p>
         </div>
       )}
     </div>

@@ -6,34 +6,29 @@ import { cn } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperadmin } from "@/lib/permissions";
-
-const TABS = [
-  { href: "/settings/users",        label: "Users",        perm: "settings.users"        },
-  { href: "/settings/roles",        label: "Roles",        perm: "settings.roles"        },
-  { href: "/settings/categories",   label: "Categories",   perm: "settings.categories"   },
-  { href: "/settings/translations", label: "Translations", perm: "settings.translations" },
-] as const;
+import { useTranslation } from "@/providers/LanguageProvider";
 
 export function SettingsTabs() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { t } = useTranslation();
   const superadmin = isSuperadmin(user);
 
-  // Show a tab if user is superadmin OR has view permission for that section
   const canUsersView        = usePermission("settings.users",        "view");
   const canRolesView        = usePermission("settings.roles",        "view");
   const canCategoriesView   = usePermission("settings.categories",   "view");
   const canTranslationsView = usePermission("settings.translations", "view");
 
-  const permMap: Record<string, boolean> = {
-    "settings.users":        superadmin || canUsersView,
-    "settings.roles":        superadmin || canRolesView,
-    "settings.categories":   superadmin || canCategoriesView,
-    "settings.translations": superadmin || canTranslationsView,
-  };
+  // Profile is always visible to every logged-in user
+  const tabs = [
+    { href: "/settings/profile",      label: t("settings.tab_profile"),      show: true },
+    { href: "/settings/users",        label: t("settings.tab_users"),        show: superadmin || canUsersView },
+    { href: "/settings/roles",        label: t("settings.tab_roles"),        show: superadmin || canRolesView },
+    { href: "/settings/categories",   label: t("settings.tab_categories"),   show: superadmin || canCategoriesView },
+    { href: "/settings/translations", label: t("settings.tab_translations"), show: superadmin || canTranslationsView },
+  ];
 
-  const visibleTabs = TABS.filter((t) => permMap[t.perm]);
-  if (visibleTabs.length === 0) return null;
+  const visibleTabs = tabs.filter((tab) => tab.show);
 
   return (
     <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit flex-wrap">
