@@ -1,0 +1,52 @@
+import type { Metadata, Viewport } from "next";
+import { Toaster } from "react-hot-toast";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: {
+    template: "%s | AttendTrack",
+    default: "AttendTrack — Training Attendance",
+  },
+  description: "Track attendance across multiple trainings with QR code scanning",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "AttendTrack",
+  },
+  formatDetection: { telephone: false },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#3B82F6",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" className="h-full">
+      <head>
+        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+      </head>
+      <body className="h-full bg-gray-50 font-sans antialiased">
+        {children}
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            duration: 3000,
+          }}
+        />
+      </body>
+    </html>
+  );
+}
