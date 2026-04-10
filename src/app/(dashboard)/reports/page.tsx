@@ -243,10 +243,20 @@ export default function ReportsPage() {
           </div>
         </>
       ) : selectedTraining ? (
-        <Card>
-          <p className="text-center text-gray-400 py-8">No closed sessions yet for this training</p>
-        </Card>
-      ) : null}
+        <div className="text-center py-16">
+          <div className="text-5xl mb-4">📊</div>
+          <p className="text-gray-700 font-semibold">No data yet</p>
+          <p className="text-sm text-gray-400 mt-1">Sessions appear here after they are closed.</p>
+        </div>
+      ) : (
+        <div className="text-center py-16">
+          <div className="text-5xl mb-4">📋</div>
+          <p className="text-gray-700 font-semibold">Select a training to view reports</p>
+          <p className="text-sm text-gray-400 mt-1">
+            Attendance analytics and rankings appear after sessions are closed.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

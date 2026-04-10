@@ -45,6 +45,37 @@ export function TrainingCard({ training }: { training: Training & { participant_
             <ChevronRight size={12} className="text-gray-300" />
           </div>
         </div>
+
+        {training.avg_attendance_rate != null && (
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-gray-400">Avg attendance</span>
+              <span
+                className={
+                  training.avg_attendance_rate >= 80
+                    ? "text-green-600 font-medium"
+                    : training.avg_attendance_rate >= 60
+                      ? "text-yellow-600 font-medium"
+                      : "text-red-600 font-medium"
+                }
+              >
+                {training.avg_attendance_rate}%
+              </span>
+            </div>
+            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  training.avg_attendance_rate >= 80
+                    ? "bg-green-500"
+                    : training.avg_attendance_rate >= 60
+                      ? "bg-yellow-400"
+                      : "bg-red-400"
+                }`}
+                style={{ width: `${training.avg_attendance_rate}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </Link>
   );

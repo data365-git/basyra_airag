@@ -2,13 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Users, BookOpen, BarChart3, QrCode } from "lucide-react";
-import Link from "next/link";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { TodaysSessions } from "@/components/dashboard/TodaysSessions";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
-import { TrainingStatusBadge } from "@/components/ui/Badge";
-import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { formatDate, formatTime } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -84,38 +81,8 @@ export default function DashboardPage() {
         />
       )}
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Active trainings */}
-        {hasPermission(user, "trainings", "view") && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Active Trainings</CardTitle>
-              <Link href="/trainings" className="text-sm text-blue-600 hover:underline">View all</Link>
-            </CardHeader>
-            {(activeTrainings || []).length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">No active trainings</p>
-            ) : (
-              <div className="space-y-2">
-                {(activeTrainings || []).map((t: any) => (
-                  <Link key={t.id} href={`/trainings/${t.id}`} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 border border-gray-100">
-                    <div className="w-3 h-10 rounded-sm" style={{ backgroundColor: t.color }} />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">{t.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {formatDate(t.start_date)} — {formatDate(t.end_date)}
-                      </p>
-                    </div>
-                    <TrainingStatusBadge status={t.status} />
-                  </Link>
-                ))}
-              </div>
-            )}
-          </Card>
-        )}
-
-        {/* Alerts */}
-        <AlertsPanel alerts={alerts || []} />
-      </div>
+      {/* Alerts */}
+      <AlertsPanel alerts={alerts || []} />
 
       {/* Recent activity */}
       <ActivityFeed activities={recentActivity || []} />

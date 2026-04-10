@@ -35,10 +35,13 @@ export default function TrainingDetailPage() {
 
   // Enrollment modal state
   const [enrollOpen, setEnrollOpen] = useState(false);
+  const [enrollTab, setEnrollTab] = useState<"existing" | "new">("existing");
   const [enrollSearch, setEnrollSearch] = useState("");
   const [allParticipants, setAllParticipants] = useState<any[]>([]);
   const [enrolling, setEnrolling] = useState<Set<string>>(new Set());
   const [unenrolling, setUnenrolling] = useState<Set<string>>(new Set());
+  const [newParticipantForm, setNewParticipantForm] = useState({ full_name: "", phone: "", email: "" });
+  const [creatingAndEnrolling, setCreatingAndEnrolling] = useState(false);
 
   useEffect(() => { if (id) load(); }, [id]);
 
@@ -78,7 +81,51 @@ export default function TrainingDetailPage() {
     const data = await fetch("/api/participants").then((r) => r.json());
     setAllParticipants(Array.isArray(data) ? data : []);
     setEnrollSearch("");
+    setEnrollTab("existing");
+    setNewParticipantForm({ full_name: "", phone: "", email: "" });
     setEnrollOpen(true);
+  }
+
+  async function handleCreateAndEnroll(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newParticipantForm.full_name.trim()) return;
+    setCreatingAndEnrolling(true);
+
+    const createRes = await fetch("/api/participants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        full_name: newParticipantForm.full_name.trim(),
+        phone: newParticipantForm.phone || null,
+        email: newParticipantForm.email || null,
+      }),
+    });
+
+    if (!createRes.ok) {
+      const err = await createRes.json().catch(() => ({}));
+      toast.error(err.error ?? "Failed to create participant");
+      setCreatingAndEnrolling(false);
+      return;
+    }
+
+    const participant = await createRes.json();
+
+    const enrollRes = await fetch(`/api/trainings/${id}/enroll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participant_id: participant.id }),
+    });
+
+    setCreatingAndEnrolling(false);
+
+    if (enrollRes.ok) {
+      toast.success(`${newParticipantForm.full_name.trim()} created and enrolled`);
+      setNewParticipantForm({ full_name: "", phone: "", email: "" });
+      await load();
+    } else {
+      toast.error("Participant created but could not enroll — please enroll manually");
+      await load();
+    }
   }
 
   const enrolledIds = new Set(participants.map((p) => p.id));
@@ -401,42 +448,103 @@ export default function TrainingDetailPage() {
         title="Add Participants"
         size="lg"
       >
-        <div className="space-y-3">
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={enrollSearch}
-              onChange={(e) => setEnrollSearch(e.target.value)}
-              placeholder="Search by name..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-            />
-          </div>
-
-          {filteredForEnroll.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">
-              {enrollSearch ? "No matching participants" : "All participants are already enrolled"}
-            </p>
-          ) : (
-            <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
-              {filteredForEnroll.map((p) => (
-                <div key={p.id} className="flex items-center justify-between py-2.5 px-1">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{p.full_name}</p>
-                    {p.phone && <p className="text-xs text-gray-500">{p.phone}</p>}
-                  </div>
-                  <Button
-                    size="sm"
-                    loading={enrolling.has(p.id)}
-                    onClick={() => handleEnroll(p.id)}
-                  >
-                    Enroll
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
+        {/* Tab bar */}
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-4">
+          <button
+            onClick={() => setEnrollTab("existing")}
+            className={`flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              enrollTab === "existing" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Find Existing
+          </button>
+          <button
+            onClick={() => setEnrollTab("new")}
+            className={`flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              enrollTab === "new" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Create New
+          </button>
         </div>
+
+        {enrollTab === "existing" && (
+          <div className="space-y-3">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={enrollSearch}
+                onChange={(e) => setEnrollSearch(e.target.value)}
+                placeholder="Search by name..."
+                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+            </div>
+
+            {filteredForEnroll.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">
+                {enrollSearch ? "No matching participants" : "All participants are already enrolled"}
+              </p>
+            ) : (
+              <div className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                {filteredForEnroll.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between py-2.5 px-1">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{p.full_name}</p>
+                      {p.phone && <p className="text-xs text-gray-500">{p.phone}</p>}
+                    </div>
+                    <Button
+                      size="sm"
+                      loading={enrolling.has(p.id)}
+                      onClick={() => handleEnroll(p.id)}
+                    >
+                      Enroll
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {enrollTab === "new" && (
+          <form onSubmit={handleCreateAndEnroll} className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Full Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                required
+                value={newParticipantForm.full_name}
+                onChange={(e) => setNewParticipantForm((f) => ({ ...f, full_name: e.target.value }))}
+                placeholder="e.g. Dilnoza Yusupova"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <input
+                value={newParticipantForm.phone}
+                onChange={(e) => setNewParticipantForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="+998901234567"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={newParticipantForm.email}
+                onChange={(e) => setNewParticipantForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="optional@example.com"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <Button type="submit" loading={creatingAndEnrolling} className="w-full">
+              Create &amp; Enroll
+            </Button>
+          </form>
+        )}
       </Modal>
     </div>
   );

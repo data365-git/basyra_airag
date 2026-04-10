@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, BookOpen, Users, QrCode, BarChart3,
-  Settings, LogOut, ChevronRight, Shield, UserCog,
+  Settings, LogOut, ChevronRight, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -29,8 +29,7 @@ const navItems: NavItem[] = [
 ];
 
 const settingsItems: NavItem[] = [
-  { label: "Users & Roles", href: "/settings/users", icon: UserCog,  page: "settings.users", action: "view" },
-  { label: "Roles",          href: "/settings/roles", icon: Shield,   page: "settings.roles", action: "view" },
+  { label: "Settings", href: "/settings", icon: Settings, page: null, action: "view" },
 ];
 
 export function Sidebar() {
@@ -45,7 +44,10 @@ export function Sidebar() {
     return hasPermission(user, item.page, item.action);
   }
 
-  const showSettings = settingsItems.some(canSee);
+  const showSettings =
+    isSuperadmin(user) ||
+    hasPermission(user, "settings.users", "view") ||
+    hasPermission(user, "settings.roles", "view");
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -92,11 +94,9 @@ export function Sidebar() {
         {showSettings && (
           <>
             <div className="pt-4 pb-1 px-3">
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Settings size={11} /> Settings
-              </span>
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Admin</span>
             </div>
-            {settingsItems.filter(canSee).map((item) => {
+            {settingsItems.map((item) => {
               const active = isActive(item.href);
               return (
                 <Link
@@ -109,6 +109,7 @@ export function Sidebar() {
                 >
                   <item.icon size={18} className={active ? "text-blue-600" : "text-gray-400"} />
                   {item.label}
+                  {active && <ChevronRight size={14} className="ml-auto text-blue-400" />}
                 </Link>
               );
             })}

@@ -11,10 +11,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Get attendance records with participant info
+  // Get attendance records with participant info and override user
   const attendance = await prisma.attendance.findMany({
     where: { sessionId: id },
-    include: { participant: { select: { id: true, fullName: true, phone: true } } },
+    include: {
+      participant: { select: { id: true, fullName: true, phone: true } },
+      overrideBy: { select: { id: true, name: true } },
+    },
   });
 
   // Get enrolled participants not yet in attendance
@@ -53,6 +56,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
       scanned_at: r.scannedAt,
       note: r.note,
+      override_by_name: r.overrideBy?.name ?? null,
+      override_at: r.overrideAt ? r.overrideAt.toISOString() : null,
     })),
     ...pending,
   ].sort((a, b) => {

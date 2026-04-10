@@ -17,10 +17,12 @@ export default function ScannerPage() {
   const [selectedTraining, setSelectedTraining] = useState("");
   const [selectedSession, setSelectedSession] = useState("");
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [scanning, setScanning] = useState(true);
-  const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastScannedRef = useRef<string>("");
   const lastScannedTimeRef = useRef<number>(0);
+
+  // Derived — true only when the selected session is currently open
+  const selectedSessionData = sessions.find((s) => s.id === selectedSession);
+  const sessionIsOpen = selectedSessionData?.status === "open";
 
   useEffect(() => {
     loadTrainings();
@@ -56,17 +58,29 @@ export default function ScannerPage() {
     lastScannedRef.current = token;
     lastScannedTimeRef.current = now;
 
+    // Clear previous result immediately so the new one feels snappy
+    setScanResult(null);
+
     if (!selectedSession) {
-      setScanResult({ type: "unknown", message: "Please select a session first" });
-      showResultAndReset();
+      const result: ScanResult = { type: "unknown", message: "Please select a session first" };
+      setScanResult(result);
+      navigator.vibrate?.([100, 50, 100]);
+      return;
+    }
+
+    if (!sessionIsOpen) {
+      const result: ScanResult = { type: "unknown", message: "Session is not open" };
+      setScanResult(result);
+      navigator.vibrate?.([100, 50, 100]);
       return;
     }
 
     if (!isOnline) {
       await queueScan({ sessionId: selectedSession, qrToken: token, scannedAt: new Date().toISOString() });
       await refreshCount();
-      setScanResult({ type: "success" });
-      showResultAndReset();
+      const result: ScanResult = { type: "success" };
+      setScanResult(result);
+      navigator.vibrate?.(200);
       return;
     }
 
@@ -76,30 +90,27 @@ export default function ScannerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, sessionId: selectedSession }),
       });
-      const data = await res.json();
-      setScanResult(data as ScanResult);
+      const data = (await res.json()) as ScanResult;
+      setScanResult(data);
+      if (data.type === "success") {
+        navigator.vibrate?.(200);
+      } else {
+        navigator.vibrate?.([100, 50, 100]);
+      }
     } catch {
       if (!navigator.onLine) {
         await queueScan({ sessionId: selectedSession, qrToken: token, scannedAt: new Date().toISOString() });
         await refreshCount();
-        setScanResult({ type: "success" });
+        const result: ScanResult = { type: "success" };
+        setScanResult(result);
+        navigator.vibrate?.(200);
       } else {
-        setScanResult({ type: "unknown", message: "Network error" });
+        const result: ScanResult = { type: "unknown", message: "Network error" };
+        setScanResult(result);
+        navigator.vibrate?.([100, 50, 100]);
       }
     }
-
-    showResultAndReset();
-  }, [selectedSession, isOnline, refreshCount]);
-
-  function showResultAndReset() {
-    setScanning(false);
-    if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
-    resultTimerRef.current = setTimeout(() => {
-      setScanResult(null);
-      setScanning(true);
-      lastScannedRef.current = "";
-    }, 2000);
-  }
+  }, [selectedSession, sessionIsOpen, isOnline, refreshCount]);
 
   if (!canScan) {
     return (
@@ -119,7 +130,11 @@ export default function ScannerPage() {
       <div className="bg-gray-800 px-4 py-3 flex gap-2 z-10">
         <select
           value={selectedTraining}
-          onChange={(e) => { setSelectedTraining(e.target.value); setSelectedSession(""); }}
+          onChange={(e) => {
+            setSelectedTraining(e.target.value);
+            setSelectedSession("");
+            setScanResult(null);
+          }}
           className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Select Training...</option>
@@ -129,7 +144,10 @@ export default function ScannerPage() {
         </select>
         <select
           value={selectedSession}
-          onChange={(e) => setSelectedSession(e.target.value)}
+          onChange={(e) => {
+            setSelectedSession(e.target.value);
+            setScanResult(null);
+          }}
           disabled={!selectedTraining}
           className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
         >
@@ -144,9 +162,10 @@ export default function ScannerPage() {
 
       {/* Camera area */}
       <div className="flex-1 relative overflow-hidden">
-        <QRScanner onScan={handleScan} active={scanning && !!selectedSession} />
+        <QRScanner onScan={handleScan} active={sessionIsOpen && !!selectedSession} />
 
-        {!scanResult && selectedSession && (
+        {/* Aiming brackets — only when session is open and no result showing */}
+        {!scanResult && sessionIsOpen && !!selectedSession && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
             <div className="relative w-64 h-64">
               <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-400 rounded-tl-lg" />
@@ -157,6 +176,7 @@ export default function ScannerPage() {
           </div>
         )}
 
+        {/* No session selected */}
         {!selectedSession && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80">
             <div className="text-4xl mb-4">📱</div>
@@ -165,16 +185,30 @@ export default function ScannerPage() {
           </div>
         )}
 
+        {/* Session selected but not open */}
+        {selectedSession && !sessionIsOpen && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80">
+            <div className="text-4xl mb-4">⏳</div>
+            <p className="text-lg font-medium">Session not open yet</p>
+            <p className="text-sm text-white/60 mt-1">Open this session to start scanning attendance</p>
+          </div>
+        )}
+
         <ScanResultOverlay result={scanResult} isOffline={!isOnline} />
       </div>
 
-      {selectedSession && !scanResult && (
-        <div className="bg-gray-800 px-4 py-3 text-center">
-          <p className="text-white/70 text-sm">
-            {scanning ? "Point camera at participant QR code" : "Processing..."}
-          </p>
-        </div>
-      )}
+      {/* Bottom hint bar */}
+      <div className="bg-gray-800 px-4 py-3 text-center">
+        <p className="text-white/70 text-sm">
+          {!selectedSession
+            ? "Select a training and session above"
+            : !sessionIsOpen
+              ? "Open the session to enable scanning"
+              : scanResult
+                ? "Scan next participant to continue"
+                : "Point camera at participant QR code"}
+        </p>
+      </div>
     </div>
   );
 }

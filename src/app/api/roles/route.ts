@@ -9,7 +9,8 @@ const RoleSchema = z.object({
   description: z.string().max(500).optional().nullable(),
   color: z.string().optional(),
   is_superadmin: z.boolean().optional(),
-  permissions: z.record(z.unknown()).optional(),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  permissions: z.any().optional(),
 });
 
 const PatchRoleSchema = RoleSchema.partial().extend({

@@ -2,18 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/Modal";
 import { RoleRow } from "@/components/roles/RoleRow";
 import { RoleModal } from "@/components/roles/RoleModal";
 import { usePermission } from "@/hooks/usePermission";
+import { usePathname } from "next/navigation";
 import type { Role } from "@/types";
 import toast from "react-hot-toast";
 
 export default function RolesPage() {
   const canCreate = usePermission("settings.roles", "create");
   const canManage = usePermission("settings.roles", "edit");
+  const pathname = usePathname();
 
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,9 +52,9 @@ export default function RolesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Roles & Permissions"
+        title="Settings"
         subtitle={`${roles.length} roles defined`}
-        action={
+        actions={
           canCreate ? (
             <Button onClick={() => setModalRole("new")}>
               <Plus size={16} /> New Role
@@ -59,6 +62,30 @@ export default function RolesPage() {
           ) : undefined
         }
       />
+
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+        <Link
+          href="/settings/users"
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            pathname.startsWith("/settings/users")
+              ? "bg-white shadow-sm text-gray-900"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Users
+        </Link>
+        <Link
+          href="/settings/roles"
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            pathname.startsWith("/settings/roles")
+              ? "bg-white shadow-sm text-gray-900"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Roles
+        </Link>
+      </div>
 
       {loading ? (
         <div className="space-y-3">

@@ -60,6 +60,7 @@ export interface Training {
   trainers?: StaffUser[];
   participant_count?: number;
   session_count?: number;
+  avg_attendance_rate?: number | null;
 }
 
 export interface Session {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Shield, Plus } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
@@ -16,6 +17,7 @@ import toast from "react-hot-toast";
 
 export default function UsersPage() {
   const canCreate = usePermission("settings.users", "create");
+  const pathname = usePathname();
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,23 +109,40 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Staff Users"
-        subtitle="Manage staff accounts and role assignments"
+        title="Settings"
+        subtitle="Manage staff accounts and permissions"
         actions={
-          <div className="flex gap-2">
-            {canCreate && (
-              <Button size="sm" onClick={openAdd}>
-                <Plus size={14} /> Add User
-              </Button>
-            )}
-            <Link href="/settings/roles">
-              <Button variant="outline" size="sm">
-                <Shield size={14} /> Manage Roles
-              </Button>
-            </Link>
-          </div>
+          canCreate && (
+            <Button size="sm" onClick={openAdd}>
+              <Plus size={14} /> Add User
+            </Button>
+          )
         }
       />
+
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+        <Link
+          href="/settings/users"
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            pathname.startsWith("/settings/users")
+              ? "bg-white shadow-sm text-gray-900"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Users
+        </Link>
+        <Link
+          href="/settings/roles"
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            pathname.startsWith("/settings/roles")
+              ? "bg-white shadow-sm text-gray-900"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Roles
+        </Link>
+      </div>
 
       {loading ? (
         <TableSkeleton rows={5} cols={4} />

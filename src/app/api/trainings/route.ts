@@ -26,28 +26,62 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
       include: {
         trainingParticipants: { select: { participantId: true } },
-        sessions: { select: { id: true } },
+        sessions: { select: { id: true, status: true } },
       },
     });
 
+    // Batch-compute avg attendance rate for all trainings
+    const closedSessionIds = trainings.flatMap((t) =>
+      t.sessions.filter((s) => s.status === "closed").map((s) => s.id)
+    );
+
+    const attendanceCounts =
+      closedSessionIds.length > 0
+        ? await prisma.attendance.groupBy({
+            by: ["sessionId"],
+            where: {
+              sessionId: { in: closedSessionIds },
+              status: { in: ["present", "late"] },
+            },
+            _count: { id: true },
+          })
+        : [];
+
+    const presentBySession = new Map(
+      attendanceCounts.map((a) => [a.sessionId, a._count.id])
+    );
+
     return NextResponse.json(
-      trainings.map((t) => ({
-        id: t.id,
-        name: t.name,
-        description: t.description,
-        color: t.color,
-        icon: t.icon,
-        start_date: t.startDate.toISOString().slice(0, 10),
-        end_date: t.endDate.toISOString().slice(0, 10),
-        schedule_day: t.scheduleDay,
-        schedule_time: t.scheduleTime,
-        status: t.status,
-        attendance_threshold: t.attendanceThreshold,
-        created_by: t.createdById,
-        created_at: t.createdAt,
-        participant_count: t.trainingParticipants.length,
-        session_count: t.sessions.length,
-      }))
+      trainings.map((t) => {
+        const closedSessions = t.sessions.filter((s) => s.status === "closed");
+        const participantCount = t.trainingParticipants.length;
+        const possible = closedSessions.length * participantCount;
+        const totalPresent = closedSessions.reduce(
+          (sum, s) => sum + (presentBySession.get(s.id) ?? 0),
+          0
+        );
+        const avg_attendance_rate =
+          possible > 0 ? Math.round((totalPresent / possible) * 100) : null;
+
+        return {
+          id: t.id,
+          name: t.name,
+          description: t.description,
+          color: t.color,
+          icon: t.icon,
+          start_date: t.startDate.toISOString().slice(0, 10),
+          end_date: t.endDate.toISOString().slice(0, 10),
+          schedule_day: t.scheduleDay,
+          schedule_time: t.scheduleTime,
+          status: t.status,
+          attendance_threshold: t.attendanceThreshold,
+          created_by: t.createdById,
+          created_at: t.createdAt,
+          participant_count: t.trainingParticipants.length,
+          session_count: t.sessions.length,
+          avg_attendance_rate,
+        };
+      })
     );
   } catch (e) {
     console.error("trainings GET error:", e);

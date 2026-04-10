@@ -172,6 +172,15 @@ export default function SessionDetailPage() {
             onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
             placeholder="Reason for override..."
           />
+          {editingRecord?.override_by_name && (
+            <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
+              Last changed by{" "}
+              <span className="font-medium text-gray-600">{editingRecord.override_by_name}</span>
+              {editingRecord.override_at
+                ? ` · ${formatDate(editingRecord.override_at, "MMM d, h:mm a")}`
+                : ""}
+            </p>
+          )}
         </div>
       </Modal>
     </div>
