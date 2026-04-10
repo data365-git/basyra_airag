@@ -3,24 +3,31 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Edit } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Edit, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { QRCodeDisplay } from "@/components/participants/QRCodeDisplay";
 import { AttendanceBadge, TrainingStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
+import { ConfirmModal } from "@/components/ui/Modal";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { formatDate, getAttendanceColorClass } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
+import toast from "react-hot-toast";
 import type { Participant } from "@/types";
 
 export default function ParticipantProfilePage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const canManage = usePermission("participants", "edit");
+  const canDelete = usePermission("participants", "delete");
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -50,6 +57,20 @@ export default function ParticipantProfilePage() {
     return { total: closed.length, present, absent, excused, rate, streak };
   }
 
+  async function handleDelete() {
+    setDeleting(true);
+    const res = await fetch(`/api/participants/${id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (res.ok) {
+      toast.success("Participant deleted");
+      router.refresh();
+      router.push("/participants");
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Failed to delete");
+    }
+  }
+
   if (loading) return <div className="space-y-4"><CardSkeleton /><CardSkeleton /></div>;
   if (!participant) return <div className="text-center py-16 text-gray-400">Participant not found</div>;
 
@@ -61,11 +82,18 @@ export default function ParticipantProfilePage() {
         back
         backHref="/participants"
         actions={
-          canManage && (
-            <Link href={`/participants/${id}/edit`}>
-              <Button variant="outline" size="sm"><Edit size={14} /> Edit</Button>
-            </Link>
-          )
+          <>
+            {canManage && (
+              <Link href={`/participants/${id}/edit`}>
+                <Button variant="outline" size="sm"><Edit size={14} /> Edit</Button>
+              </Link>
+            )}
+            {canDelete && (
+              <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+                <Trash2 size={14} />
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -182,6 +210,17 @@ export default function ParticipantProfilePage() {
           })}
         </div>
       </div>
+
+      <ConfirmModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDelete}
+        loading={deleting}
+        danger
+        title="Delete Participant"
+        message={`Delete "${participant.full_name}"? This will also remove all their attendance records. This cannot be undone.`}
+        confirmLabel={deleting ? "Deleting…" : "Delete"}
+      />
     </div>
   );
 }

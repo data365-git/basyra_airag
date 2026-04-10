@@ -57,6 +57,7 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
 
     const training = await res.json();
     toast.success(trainingId ? "Training updated" : "Training created");
+    router.refresh();
     router.push(`/trainings/${training.id}`);
   }
 

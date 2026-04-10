@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Edit, Download, Users, Plus, Trash2 } from "lucide-react";
+import { Edit, Download, Plus, Trash2, UserMinus, Search } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { TrainingStatusBadge, SessionStatusBadge, AttendanceBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { CardSkeleton } from "@/components/ui/Skeleton";
-import { ConfirmModal } from "@/components/ui/Modal";
+import { ConfirmModal, Modal } from "@/components/ui/Modal";
 import { formatDate, formatTime, getAttendanceColorClass, DAYS_OF_WEEK } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
 import toast from "react-hot-toast";
@@ -28,6 +28,13 @@ export default function TrainingDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Enrollment modal state
+  const [enrollOpen, setEnrollOpen] = useState(false);
+  const [enrollSearch, setEnrollSearch] = useState("");
+  const [allParticipants, setAllParticipants] = useState<any[]>([]);
+  const [enrolling, setEnrolling] = useState<Set<string>>(new Set());
+  const [unenrolling, setUnenrolling] = useState<Set<string>>(new Set());
+
   useEffect(() => { if (id) load(); }, [id]);
 
   async function load() {
@@ -41,6 +48,54 @@ export default function TrainingDetailPage() {
     setParticipants((trainingRes.participants || []).map((tp: any) => tp.participant));
     setAttendance(Array.isArray(attendanceRes) ? attendanceRes : []);
     setLoading(false);
+  }
+
+  async function openEnrollModal() {
+    const data = await fetch("/api/participants").then((r) => r.json());
+    setAllParticipants(Array.isArray(data) ? data : []);
+    setEnrollSearch("");
+    setEnrollOpen(true);
+  }
+
+  const enrolledIds = new Set(participants.map((p) => p.id));
+
+  const filteredForEnroll = allParticipants.filter(
+    (p) =>
+      !enrolledIds.has(p.id) &&
+      p.full_name.toLowerCase().includes(enrollSearch.toLowerCase())
+  );
+
+  async function handleEnroll(participantId: string) {
+    setEnrolling((s) => new Set(s).add(participantId));
+    const res = await fetch(`/api/trainings/${id}/enroll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participant_id: participantId }),
+    });
+    setEnrolling((s) => { const n = new Set(s); n.delete(participantId); return n; });
+    if (res.ok) {
+      toast.success("Participant enrolled");
+      await load();
+    } else {
+      toast.error("Failed to enroll");
+    }
+  }
+
+  async function handleUnenroll(participantId: string, name: string) {
+    if (!confirm(`Remove "${name}" from this training?`)) return;
+    setUnenrolling((s) => new Set(s).add(participantId));
+    const res = await fetch(`/api/trainings/${id}/enroll`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participant_id: participantId }),
+    });
+    setUnenrolling((s) => { const n = new Set(s); n.delete(participantId); return n; });
+    if (res.ok) {
+      toast.success("Participant removed");
+      await load();
+    } else {
+      toast.error("Failed to remove participant");
+    }
   }
 
   function getParticipantRate(participantId: string) {
@@ -77,6 +132,7 @@ export default function TrainingDetailPage() {
     setDeleting(true);
     await fetch(`/api/trainings/${id}`, { method: "DELETE" });
     toast.success("Training deleted");
+    router.refresh();
     router.push("/trainings");
   }
 
@@ -197,10 +253,10 @@ export default function TrainingDetailPage() {
             >
               <Download size={14} /> QR Codes
             </Button>
-            {canManageParticipants && (
-              <Link href={`/participants?enroll=${id}`}>
-                <Button size="sm"><Plus size={14} /> Add</Button>
-              </Link>
+            {canManage && (
+              <Button size="sm" onClick={openEnrollModal}>
+                <Plus size={14} /> Add
+              </Button>
             )}
           </div>
         </CardHeader>
@@ -214,7 +270,9 @@ export default function TrainingDetailPage() {
             </tr>
           </Thead>
           <Tbody>
-            {participants.length === 0 ? <EmptyRow cols={4} message="No participants enrolled" /> : participants.map((p) => {
+            {participants.length === 0 ? (
+              <EmptyRow cols={4} message="No participants enrolled" />
+            ) : participants.map((p) => {
               const rate = getParticipantRate(p.id);
               return (
                 <Tr key={p.id} onClick={() => router.push(`/participants/${p.id}`)}>
@@ -228,7 +286,21 @@ export default function TrainingDetailPage() {
                     ) : "—"}
                   </Td>
                   <Td>
-                    <Link href={`/participants/${p.id}`} className="text-blue-600 text-xs hover:underline">View</Link>
+                    <div className="flex items-center gap-1">
+                      <Link href={`/participants/${p.id}`} className="text-blue-600 text-xs hover:underline" onClick={(e) => e.stopPropagation()}>
+                        View
+                      </Link>
+                      {canManage && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleUnenroll(p.id, p.full_name); }}
+                          disabled={unenrolling.has(p.id)}
+                          className="ml-2 p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 disabled:opacity-50"
+                          title="Remove from training"
+                        >
+                          <UserMinus size={14} />
+                        </button>
+                      )}
+                    </div>
                   </Td>
                 </Tr>
               );
@@ -237,6 +309,7 @@ export default function TrainingDetailPage() {
         </Table>
       </Card>
 
+      {/* Delete training modal */}
       <ConfirmModal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
@@ -247,6 +320,51 @@ export default function TrainingDetailPage() {
         message="This will permanently delete the training and all its sessions and attendance records. This cannot be undone."
         confirmLabel="Delete"
       />
+
+      {/* Enroll participants modal */}
+      <Modal
+        open={enrollOpen}
+        onClose={() => setEnrollOpen(false)}
+        title="Add Participants"
+        size="lg"
+      >
+        <div className="space-y-3">
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={enrollSearch}
+              onChange={(e) => setEnrollSearch(e.target.value)}
+              placeholder="Search by name..."
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+            />
+          </div>
+
+          {filteredForEnroll.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">
+              {enrollSearch ? "No matching participants" : "All participants are already enrolled"}
+            </p>
+          ) : (
+            <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+              {filteredForEnroll.map((p) => (
+                <div key={p.id} className="flex items-center justify-between py-2.5 px-1">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{p.full_name}</p>
+                    {p.phone && <p className="text-xs text-gray-500">{p.phone}</p>}
+                  </div>
+                  <Button
+                    size="sm"
+                    loading={enrolling.has(p.id)}
+                    onClick={() => handleEnroll(p.id)}
+                  >
+                    Enroll
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
