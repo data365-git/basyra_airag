@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Edit, Download, Plus, Trash2, UserMinus, Search, CalendarPlus } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
-import { TrainingStatusBadge, SessionStatusBadge, AttendanceBadge } from "@/components/ui/Badge";
+import { TrainingStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
@@ -281,20 +281,18 @@ export default function TrainingDetailPage() {
             <tr>
               <Th>#</Th>
               <Th>{t("common.date")}</Th>
-              <Th>{t("common.status")}</Th>
               <Th>{t("trainings.present_col")}</Th>
               <Th>{t("trainings.absent_col")}</Th>
               <Th></Th>
             </tr>
           </Thead>
           <Tbody>
-            {sessions.length === 0 ? <EmptyRow cols={6} message={t("trainings.no_sessions")} /> : sessions.map((s) => {
+            {sessions.length === 0 ? <EmptyRow cols={5} message={t("trainings.no_sessions")} /> : sessions.map((s) => {
               const stats = getSessionStats(s.id);
               return (
                 <Tr key={s.id}>
                   <Td className="font-medium">{t("trainings.session_number", { n: s.session_number })}</Td>
                   <Td>{formatDate(s.session_date)}</Td>
-                  <Td><SessionStatusBadge status={s.status} /></Td>
                   <Td className="text-green-600">{stats.present + stats.late} / {stats.total}</Td>
                   <Td className="text-red-500">{stats.absent}</Td>
                   <Td>
