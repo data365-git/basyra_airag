@@ -5,8 +5,17 @@ const withPWA = require("next-pwa")({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === "development",
+  // Never serve the scanner page or scan API from cache — they need live headers
+  // and real-time server responses; stale cache breaks camera permission + attendance recording
+  exclude: [/\/scanner/],
   runtimeCaching: [
     {
+      // /api/scan must NEVER be cached — each scan must hit the server
+      urlPattern: /\/api\/scan/,
+      handler: "NetworkOnly",
+    },
+    {
+      // Other API routes: network-first, short TTL
       urlPattern: /\/api\//,
       handler: "NetworkFirst",
       options: {
