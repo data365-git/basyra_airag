@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, BookOpen, Users, QrCode, BarChart3,
-  Settings, ChevronRight, ChevronLeft, Shield,
+  Settings, ChevronRight, ChevronLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -29,43 +29,6 @@ const mainNavItems: NavItem[] = [
   { label: "nav.reports",      href: "/reports",      icon: BarChart3,       page: "reports",      action: "view" },
 ];
 
-function UserAvatar({
-  name,
-  avatarUrl,
-}: {
-  name: string;
-  avatarUrl?: string | null;
-}) {
-  const initials = name
-    .split(" ")
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-
-  if (avatarUrl) {
-    return (
-      <img
-        src={avatarUrl}
-        alt={name}
-        className="w-8 h-8 rounded-full object-cover shrink-0"
-        onError={(e) => {
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.display = "none";
-          const sibling = el.nextSibling as HTMLElement | null;
-          sibling?.removeAttribute("style");
-        }}
-      />
-    );
-  }
-
-  return (
-    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm shrink-0">
-      {initials || "?"}
-    </div>
-  );
-}
-
 function SidebarSkeleton() {
   return (
     <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-gray-200 h-screen sticky top-0">
@@ -83,17 +46,8 @@ function SidebarSkeleton() {
           <div key={i} className="h-9 bg-gray-100 rounded-lg" />
         ))}
       </nav>
-      <div className="px-3 pb-1 border-t border-gray-100 pt-2">
+      <div className="px-3 pb-2 border-t border-gray-100 pt-2">
         <div className="h-9 bg-gray-100 rounded-lg animate-pulse" />
-      </div>
-      <div className="px-3 py-3 border-t border-gray-100">
-        <div className="flex items-center gap-3 px-3 py-2.5">
-          <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse shrink-0" />
-          <div className="flex-1 space-y-1">
-            <div className="h-3 bg-gray-200 rounded animate-pulse w-24" />
-            <div className="h-3 bg-gray-100 rounded animate-pulse w-16" />
-          </div>
-        </div>
       </div>
     </aside>
   );
@@ -110,8 +64,6 @@ export function Sidebar() {
   });
 
   if (loading) return <SidebarSkeleton />;
-
-  const superadmin = user?.role?.is_superadmin ?? false;
 
   function canSee(item: NavItem): boolean {
     if (!item.page) return true;
@@ -229,32 +181,6 @@ export function Sidebar() {
         })()}
       </div>
 
-      {/* User strip — read-only, avatar only when collapsed */}
-      <div className="px-2 py-3 border-t border-gray-100">
-        <div
-          className={cn(
-            "flex items-center gap-3 px-2 py-2",
-            collapsed && "justify-center"
-          )}
-          title={collapsed ? `${user?.name ?? ""} · ${user?.role?.name ?? "Staff"}` : undefined}
-        >
-          <UserAvatar name={user?.name ?? ""} avatarUrl={user?.avatar_url} />
-          <div
-            className={cn(
-              "flex-1 min-w-0 overflow-hidden transition-all duration-200",
-              collapsed ? "w-0 opacity-0" : "opacity-100"
-            )}
-          >
-            <div className="text-sm font-medium text-gray-900 truncate">
-              {user?.name || "Loading…"}
-            </div>
-            <div className="flex items-center gap-1 text-xs text-gray-500 truncate">
-              {superadmin && <Shield size={10} className="text-amber-500 shrink-0" />}
-              {user?.role?.name || "Staff"}
-            </div>
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }
