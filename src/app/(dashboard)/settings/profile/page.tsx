@@ -1,13 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Camera } from "lucide-react";
+import { Camera, LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { SettingsTabs } from "@/components/settings/SettingsTabs";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/providers/LanguageProvider";
+import type { Language } from "@/providers/LanguageProvider";
+import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+
+const LANG_OPTIONS: { code: Language; label: string }[] = [
+  { code: "uz", label: "UZ" },
+  { code: "ru", label: "RU" },
+  { code: "en", label: "EN" },
+];
 
 function Avatar({
   name,
@@ -33,11 +42,8 @@ function Avatar({
         className="rounded-full object-cover"
         style={{ width: size * 4, height: size * 4 }}
         onError={(e) => {
-          // Fall back to initials on broken URL
           (e.currentTarget as HTMLImageElement).style.display = "none";
-          (e.currentTarget.nextSibling as HTMLElement | null)?.removeAttribute(
-            "style"
-          );
+          (e.currentTarget.nextSibling as HTMLElement | null)?.removeAttribute("style");
         }}
       />
     );
@@ -55,7 +61,8 @@ function Avatar({
 
 export default function ProfilePage() {
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const { t, language, setLanguage } = useTranslation();
+  const router = useRouter();
 
   const [name, setName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -66,7 +73,6 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
 
-  // Populate form once user loads
   useEffect(() => {
     if (user) {
       setName(user.name ?? "");
@@ -121,6 +127,12 @@ export default function ProfilePage() {
         toast.error(err.error ?? "Failed to save");
       }
     }
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    toast.success(t("auth.sign_out"));
   }
 
   return (
@@ -254,6 +266,44 @@ export default function ProfilePage() {
             </Button>
           </div>
         </form>
+      </Card>
+
+      {/* Language card */}
+      <Card>
+        <h2 className="text-base font-semibold text-gray-900 mb-4">
+          {t("settings.profile.language_section")}
+        </h2>
+        <div className="flex gap-2">
+          {LANG_OPTIONS.map(({ code, label }) => (
+            <button
+              key={code}
+              onClick={() => setLanguage(code)}
+              className={cn(
+                "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors",
+                language === code
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      {/* Account / Logout card */}
+      <Card>
+        <h2 className="text-base font-semibold text-gray-900 mb-4">
+          {t("settings.profile.account_section")}
+        </h2>
+        <Button
+          variant="danger"
+          className="w-full flex items-center justify-center gap-2"
+          onClick={handleLogout}
+        >
+          <LogOut size={16} />
+          {t("auth.sign_out")}
+        </Button>
       </Card>
     </div>
   );

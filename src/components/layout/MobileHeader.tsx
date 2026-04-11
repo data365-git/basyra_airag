@@ -2,19 +2,12 @@
 
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { QrCode, X, LogOut, Shield, Settings } from "lucide-react";
+import { QrCode, X, LogOut, Shield, Settings, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperadmin } from "@/lib/permissions";
 import toast from "react-hot-toast";
 import { useTranslation } from "@/providers/LanguageProvider";
-import type { Language } from "@/providers/LanguageProvider";
 import { cn } from "@/lib/utils";
-
-const LANG_OPTIONS: { code: Language; label: string }[] = [
-  { code: "uz", label: "UZ" },
-  { code: "ru", label: "RU" },
-  { code: "en", label: "EN" },
-];
 
 function UserAvatar({
   name,
@@ -63,7 +56,7 @@ export function MobileHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const superadmin = isSuperadmin(user);
-  const { language, setLanguage, t } = useTranslation();
+  const { t } = useTranslation();
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -79,7 +72,7 @@ export function MobileHeader() {
 
   return (
     <>
-      {/* Header bar — hidden on scanner (scanner covers full screen) */}
+      {/* Header bar — hidden on scanner */}
       <header className={cn(
         "lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-30",
         pathname === "/scanner" && "hidden"
@@ -134,41 +127,27 @@ export function MobileHeader() {
           </button>
         </div>
 
-        {/* Language switcher */}
-        <div className="flex gap-2 mb-3">
-          {LANG_OPTIONS.map(({ code, label }) => (
-            <button
-              key={code}
-              onClick={() => setLanguage(code)}
-              className={cn(
-                "flex-1 py-2 rounded-xl text-sm font-semibold transition-colors",
-                language === code
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
-              )}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="border-t border-gray-100 pt-3 space-y-1">
+          {/* Go to Settings */}
+          <button
+            onClick={goToSettings}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-gray-50 font-medium text-sm transition-colors"
+          >
+            <Settings size={18} className="text-gray-400" />
+            <span className="flex-1 text-left">{t("nav.settings")}</span>
+            <ChevronRight size={16} className="text-gray-300" />
+          </button>
+
+          {/* Logout */}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 font-medium text-sm transition-colors"
+          >
+            <LogOut size={18} />
+            <span className="flex-1 text-left">{t("auth.sign_out")}</span>
+            <ChevronRight size={16} className="text-red-300" />
+          </button>
         </div>
-
-        {/* Settings / Profile button */}
-        <button
-          onClick={goToSettings}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 bg-gray-50 hover:bg-gray-100 font-medium text-sm transition-colors mb-2"
-        >
-          <Settings size={18} className="text-gray-500" />
-          {t("nav.settings")}
-        </button>
-
-        {/* Logout button */}
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 font-medium text-sm transition-colors"
-        >
-          <LogOut size={18} />
-          {t("auth.sign_out")}
-        </button>
 
         {/* Safe area spacer */}
         <div style={{ height: "env(safe-area-inset-bottom)" }} />

@@ -354,5 +354,8 @@
   "scanner.pending_sync": "{n} scans pending sync",
   "scanner.sync_now": "Sync now",
 
-  "trainings.participants_count": "{n} participants"
+  "trainings.participants_count": "{n} participants",
+
+  "settings.profile.language_section": "Language",
+  "settings.profile.account_section": "Account"
 }

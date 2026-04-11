@@ -1,18 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, BookOpen, Users, QrCode, BarChart3,
-  Settings, LogOut, ChevronRight, Shield,
+  Settings, ChevronRight, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/lib/permissions";
 import type { PermPage, PermAction } from "@/types";
-import toast from "react-hot-toast";
 import { useTranslation } from "@/providers/LanguageProvider";
-import type { Language } from "@/providers/LanguageProvider";
 
 interface NavItem {
   label: string;
@@ -22,20 +20,12 @@ interface NavItem {
   action: PermAction;
 }
 
-const navItems: NavItem[] = [
+const mainNavItems: NavItem[] = [
   { label: "nav.dashboard",    href: "/",             icon: LayoutDashboard, page: null,           action: "view" },
   { label: "nav.trainings",    href: "/trainings",    icon: BookOpen,        page: "trainings",    action: "view" },
   { label: "nav.participants", href: "/participants", icon: Users,           page: "participants", action: "view" },
   { label: "nav.scanner",      href: "/scanner",      icon: QrCode,          page: "scanner",      action: "view" },
   { label: "nav.reports",      href: "/reports",      icon: BarChart3,       page: "reports",      action: "view" },
-  // Settings always at the bottom — visible to all (profile is accessible to everyone)
-  { label: "nav.settings",     href: "/settings",     icon: Settings,        page: null,           action: "view" },
-];
-
-const LANG_OPTIONS: { code: Language; label: string }[] = [
-  { code: "uz", label: "UZ" },
-  { code: "ru", label: "RU" },
-  { code: "en", label: "EN" },
 ];
 
 function UserAvatar({
@@ -77,21 +67,14 @@ function UserAvatar({
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { user } = useAuth();
-  const { language, setLanguage, t } = useTranslation();
+  const { t } = useTranslation();
 
   const superadmin = user?.role?.is_superadmin ?? false;
 
   function canSee(item: NavItem): boolean {
     if (!item.page) return true;
     return hasPermission(user, item.page, item.action);
-  }
-
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    toast.success(t("auth.sign_out"));
   }
 
   const isActive = (href: string) =>
@@ -110,9 +93,9 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
+      {/* Main nav */}
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-        {navItems.filter(canSee).map((item) => {
+        {mainNavItems.filter(canSee).map((item) => {
           const active = isActive(item.href);
           return (
             <Link
@@ -131,32 +114,30 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Language switcher */}
-      <div className="px-4 py-2 border-t border-gray-100">
-        <div className="flex gap-1">
-          {LANG_OPTIONS.map(({ code, label }) => (
-            <button
-              key={code}
-              onClick={() => setLanguage(code)}
+      {/* Divider + Settings */}
+      <div className="px-3 pb-1 border-t border-gray-100 pt-2">
+        {(() => {
+          const active = isActive("/settings");
+          return (
+            <Link
+              href="/settings"
               className={cn(
-                "flex-1 py-1.5 rounded-md text-xs font-semibold transition-colors",
-                language === code
-                  ? "bg-blue-600 text-white"
-                  : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                active ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
               )}
             >
-              {label}
-            </button>
-          ))}
-        </div>
+              <Settings size={18} className={active ? "text-blue-600" : "text-gray-400"} />
+              {t("nav.settings")}
+              {active && <ChevronRight size={14} className="ml-auto text-blue-400" />}
+            </Link>
+          );
+        })()}
       </div>
 
-      {/* User footer — click avatar to go to profile */}
+      {/* User strip — read-only */}
       <div className="px-3 py-3 border-t border-gray-100">
         <div className="flex items-center gap-3 px-3 py-2.5">
-          <Link href="/settings/profile" className="shrink-0">
-            <UserAvatar name={user?.name ?? ""} avatarUrl={user?.avatar_url} />
-          </Link>
+          <UserAvatar name={user?.name ?? ""} avatarUrl={user?.avatar_url} />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-gray-900 truncate">{user?.name || "Loading…"}</div>
             <div className="flex items-center gap-1 text-xs text-gray-500 truncate">
@@ -164,13 +145,6 @@ export function Sidebar() {
               {user?.role?.name || "Staff"}
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700"
-            title={t("auth.sign_out")}
-          >
-            <LogOut size={16} />
-          </button>
         </div>
       </div>
     </aside>

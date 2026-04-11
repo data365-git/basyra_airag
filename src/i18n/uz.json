@@ -355,5 +355,8 @@
   "scanner.pending_sync": "{n} ta skan sinxronlanishni kutmoqda",
   "scanner.sync_now": "Hozir sinxronlash",
 
-  "trainings.participants_count": "{n} ta ishtirokchi"
+  "trainings.participants_count": "{n} ta ishtirokchi",
+
+  "settings.profile.language_section": "Til",
+  "settings.profile.account_section": "Hisob"
 }

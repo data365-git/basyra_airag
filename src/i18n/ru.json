@@ -355,5 +355,8 @@
   "scanner.pending_sync": "{n} сканов ожидают синхронизации",
   "scanner.sync_now": "Синхронизировать",
 
-  "trainings.participants_count": "{n} участников"
+  "trainings.participants_count": "{n} участников",
+
+  "settings.profile.language_section": "Язык",
+  "settings.profile.account_section": "Аккаунт"
 }

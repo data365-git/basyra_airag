@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookOpen, Users, QrCode } from "lucide-react";
+import { LayoutDashboard, BookOpen, Users, QrCode, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/lib/permissions";
@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { labelKey: "nav.trainings",    href: "/trainings",    icon: BookOpen,        page: "trainings",    action: "view" },
   { labelKey: "nav.scanner",      href: "/scanner",      icon: QrCode,          page: "scanner",      action: "view" },
   { labelKey: "nav.participants", href: "/participants", icon: Users,           page: "participants", action: "view" },
+  { labelKey: "nav.settings",     href: "/settings",     icon: Settings,        page: null,           action: "view" },
 ];
 
 export function BottomNav() {
