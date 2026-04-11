@@ -179,6 +179,7 @@
   "scanner.processing": "Processing...",
   "scanner.access_denied": "Camera access denied",
   "scanner.no_session_open": "Session is not open yet",
+  "scanner.today": "Today",
   "scanner.select_to_scan": "Select a training and session",
   "scanner.select_to_scan_sub": "to start scanning",
   "scanner.open_to_scan": "Open this session to start scanning",

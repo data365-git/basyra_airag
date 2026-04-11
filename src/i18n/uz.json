@@ -177,6 +177,7 @@
   "scanner.processing": "Qayta ishlanmoqda...",
   "scanner.access_denied": "Kameraga kirish rad etildi",
   "scanner.no_session_open": "Sessiya hali ochilmagan",
+  "scanner.today": "Bugun",
   "scanner.select_to_scan": "Trening va sessiya tanlang",
   "scanner.select_to_scan_sub": "skaner boshlash uchun",
   "scanner.open_to_scan": "Skaner uchun sessiyani oching",

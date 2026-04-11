@@ -41,9 +41,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ type: "unknown", message: "Session not found" });
     }
 
-    // Only allow scans when the session is actively open (not upcoming or closed)
-    if (session.status !== "open") {
-      return NextResponse.json({ type: "session_closed", message: "Session is not open", participant });
+    // Time-based scan window: 15 min before session start → 90 min after
+    const sessionDateStr = session.sessionDate.toISOString().slice(0, 10);
+    const sessionDateTime = new Date(`${sessionDateStr}T${session.sessionTime}`);
+    const windowStart = new Date(sessionDateTime.getTime() - 15 * 60 * 1000);
+    const windowEnd   = new Date(sessionDateTime.getTime() + 90 * 60 * 1000);
+    const scanNow = new Date();
+
+    if (scanNow < windowStart || scanNow > windowEnd) {
+      return NextResponse.json({ type: "session_closed", message: "Not in scan window", participant });
     }
 
     const enrollment = await prisma.trainingParticipant.findUnique({
@@ -74,7 +80,6 @@ export async function POST(request: Request) {
 
     const scannedAt = new Date();
     const threshold = await resolveLateThreshold(session.training.lateThresholdMinutes);
-    const sessionDateStr = session.sessionDate.toISOString().slice(0, 10);
     const { status, minutesLate } = computeAttendanceStatus(
       scannedAt,
       sessionDateStr,

@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
 import { generateSessionDates } from "@/lib/utils";
+import { handlePrismaError } from "@/lib/prismaError";
 
 const PatchTrainingSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -182,7 +183,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     });
   } catch (e) {
     console.error("training PATCH error:", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    return handlePrismaError(e) ?? NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
 
@@ -198,6 +199,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("training DELETE error:", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    return handlePrismaError(e) ?? NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

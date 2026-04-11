@@ -196,18 +196,6 @@ export default function TrainingDetailPage() {
     };
   }
 
-  async function openSession(sessionId: string) {
-    await fetch(`/api/sessions/${sessionId}/open`, { method: "POST" });
-    toast.success(t("dashboard.session_opened"));
-    load();
-  }
-
-  async function closeSession(sessionId: string) {
-    await fetch(`/api/sessions/${sessionId}/close`, { method: "POST" });
-    toast.success(t("dashboard.session_closed"));
-    load();
-  }
-
   async function handleDelete() {
     setDeleting(true);
     await fetch(`/api/trainings/${id}`, { method: "DELETE" });
@@ -310,17 +298,9 @@ export default function TrainingDetailPage() {
                   <Td className="text-green-600">{stats.present + stats.late} / {stats.total}</Td>
                   <Td className="text-red-500">{stats.absent}</Td>
                   <Td>
-                    <div className="flex gap-1">
-                      {s.status === "upcoming" && canManage && (
-                        <Button size="sm" onClick={() => openSession(s.id)}>{t("common.open")}</Button>
-                      )}
-                      {s.status === "open" && canManage && (
-                        <Button size="sm" variant="danger" onClick={() => closeSession(s.id)}>{t("common.close_action")}</Button>
-                      )}
-                      <Link href={`/trainings/${id}/sessions/${s.id}`}>
-                        <Button size="sm" variant="ghost">{t("common.view")}</Button>
-                      </Link>
-                    </div>
+                    <Link href={`/trainings/${id}/sessions/${s.id}`}>
+                      <Button size="sm" variant="ghost">{t("common.view")}</Button>
+                    </Link>
                   </Td>
                 </Tr>
               );
