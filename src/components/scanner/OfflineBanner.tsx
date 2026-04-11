@@ -2,10 +2,12 @@
 
 import { WifiOff, RefreshCw } from "lucide-react";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { useTranslation } from "@/providers/LanguageProvider";
 import { cn } from "@/lib/utils";
 
 export function OfflineBanner() {
   const { isOnline, pendingCount, syncing, syncPending } = useOfflineSync();
+  const { t } = useTranslation();
 
   if (isOnline && pendingCount === 0) return null;
 
@@ -21,14 +23,14 @@ export function OfflineBanner() {
       {!isOnline ? (
         <>
           <WifiOff size={16} className="shrink-0" />
-          <span>Offline mode — {pendingCount} scan{pendingCount !== 1 ? "s" : ""} queued locally</span>
+          <span>{t("scanner.offline_queued", { n: String(pendingCount) })}</span>
         </>
       ) : (
         <>
           <RefreshCw size={16} className={cn("shrink-0", syncing && "animate-spin")} />
-          <span>{syncing ? "Syncing..." : `${pendingCount} scan${pendingCount !== 1 ? "s" : ""} pending sync`}</span>
+          <span>{syncing ? t("scanner.syncing") : t("scanner.pending_sync", { n: String(pendingCount) })}</span>
           {!syncing && (
-            <button onClick={syncPending} className="ml-auto underline text-xs">Sync now</button>
+            <button onClick={syncPending} className="ml-auto underline text-xs">{t("scanner.sync_now")}</button>
           )}
         </>
       )}

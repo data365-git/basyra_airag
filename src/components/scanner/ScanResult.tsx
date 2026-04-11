@@ -2,6 +2,7 @@
 
 import { CheckCircle, AlertTriangle, XCircle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { ScanResult } from "@/types";
 
 interface ScanResultOverlayProps {
@@ -10,37 +11,39 @@ interface ScanResultOverlayProps {
 }
 
 export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps) {
+  const { t } = useTranslation();
+
   if (!result) return null;
 
   const config = {
     success: {
       bg: "bg-green-500",
       icon: <CheckCircle size={48} className="text-white" />,
-      title: "Marked Present",
+      title: t("scanner.result.success"),
       textColor: "text-white",
     },
     already_scanned: {
       bg: "bg-yellow-500",
       icon: <AlertTriangle size={48} className="text-white" />,
-      title: "Already Scanned",
+      title: t("scanner.result.already_scanned"),
       textColor: "text-white",
     },
     not_enrolled: {
       bg: "bg-orange-500",
       icon: <AlertTriangle size={48} className="text-white" />,
-      title: "Not Enrolled",
+      title: t("scanner.result.not_enrolled"),
       textColor: "text-white",
     },
     unknown: {
       bg: "bg-red-500",
       icon: <XCircle size={48} className="text-white" />,
-      title: "Unknown QR Code",
+      title: t("scanner.result.unknown"),
       textColor: "text-white",
     },
     session_closed: {
       bg: "bg-gray-700",
       icon: <Lock size={48} className="text-white" />,
-      title: "Session Closed",
+      title: t("scanner.result.session_closed"),
       textColor: "text-white",
     },
   };
@@ -64,7 +67,7 @@ export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps)
         <p className="text-white/80 text-sm mt-1">{result.message}</p>
       )}
       {isOffline && result.type === "success" && (
-        <p className="text-white/70 text-xs mt-3">Saved locally — will sync when online</p>
+        <p className="text-white/70 text-xs mt-3">{t("scanner.result.saved_offline")}</p>
       )}
     </div>
   );

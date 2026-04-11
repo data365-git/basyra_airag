@@ -9,6 +9,7 @@ import { ConfirmModal } from "@/components/ui/Modal";
 import { SettingsTabs } from "@/components/settings/SettingsTabs";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { usePermission } from "@/hooks/usePermission";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { TrainingCategory } from "@/types";
 import toast from "react-hot-toast";
 
@@ -25,6 +26,7 @@ export default function CategoriesPage() {
   const canCreate = usePermission("settings.categories", "create");
   const canEdit   = usePermission("settings.categories", "edit");
   const canDelete = usePermission("settings.categories", "delete");
+  const { t } = useTranslation();
 
   const [categories, setCategories] = useState<TrainingCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,13 +66,13 @@ export default function CategoriesPage() {
     });
     setAdding(false);
     if (res.ok) {
-      toast.success("Category added");
+      toast.success(t("settings.categories.added"));
       setAddOpen(false);
       setAddForm(emptyForm());
       await load();
     } else {
       const err = await res.json().catch(() => ({}));
-      toast.error(err.error ?? "Failed to add category");
+      toast.error(err.error ?? t("settings.categories.add_failed"));
     }
   }
 
@@ -99,11 +101,11 @@ export default function CategoriesPage() {
     });
     setSaving(false);
     if (res.ok) {
-      toast.success("Category saved");
+      toast.success(t("settings.categories.saved"));
       setEditingId(null);
       await load();
     } else {
-      toast.error("Failed to save");
+      toast.error(t("settings.categories.save_failed"));
     }
   }
 
@@ -117,24 +119,24 @@ export default function CategoriesPage() {
     });
     setDeleting(false);
     if (res.ok) {
-      toast.success("Category deleted");
+      toast.success(t("settings.categories.deleted"));
       setDeletingCat(null);
       await load();
     } else {
       const err = await res.json().catch(() => ({}));
-      toast.error(err.error ?? "Failed to delete");
+      toast.error(err.error ?? t("settings.categories.delete_failed"));
     }
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Settings"
-        subtitle="Manage training categories"
+        title={t("nav.settings")}
+        subtitle={t("settings.categories.subtitle")}
         actions={
           canCreate && (
             <Button size="sm" onClick={() => { setAddForm(emptyForm()); setAddOpen(true); }}>
-              <Plus size={14} /> Add Category
+              <Plus size={14} /> {t("settings.categories.add")}
             </Button>
           )
         }
@@ -148,22 +150,22 @@ export default function CategoriesPage() {
           onSubmit={handleAdd}
           className="border border-blue-200 bg-blue-50 rounded-xl p-4 space-y-3"
         >
-          <p className="text-sm font-semibold text-blue-700">New Category</p>
+          <p className="text-sm font-semibold text-blue-700">{t("settings.categories.new_category")}</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input
-              label="Name (Uzbek) *"
+              label={`${t("settings.categories.name_uz")} *`}
               value={addForm.name_uz}
               onChange={(e) => setAddForm((f) => ({ ...f, name_uz: e.target.value }))}
               required
               autoFocus
             />
             <Input
-              label="Name (Russian)"
+              label={t("settings.categories.name_ru")}
               value={addForm.name_ru}
               onChange={(e) => setAddForm((f) => ({ ...f, name_ru: e.target.value }))}
             />
             <Input
-              label="Name (English)"
+              label={t("settings.categories.name_en")}
               value={addForm.name_en}
               onChange={(e) => setAddForm((f) => ({ ...f, name_en: e.target.value }))}
             />
@@ -171,7 +173,7 @@ export default function CategoriesPage() {
           <div className="flex items-center gap-3">
             <div className="w-32">
               <Input
-                label="Sort Order"
+                label={t("settings.categories.sort_order")}
                 type="number"
                 min={0}
                 value={addForm.sort_order}
@@ -179,8 +181,8 @@ export default function CategoriesPage() {
               />
             </div>
             <div className="flex gap-2 mt-5">
-              <Button type="submit" size="sm" loading={adding}>Save</Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button type="submit" size="sm" loading={adding}>{t("common.save")}</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setAddOpen(false)}>{t("common.cancel")}</Button>
             </div>
           </div>
         </form>
@@ -191,13 +193,13 @@ export default function CategoriesPage() {
         <TableSkeleton rows={5} cols={4} />
       ) : categories.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-sm">No categories yet.</p>
+          <p className="text-sm">{t("settings.categories.no_categories")}</p>
           {canCreate && (
             <button
               className="mt-2 text-sm text-blue-600 hover:underline"
               onClick={() => setAddOpen(true)}
             >
-              Add the first one
+              {t("settings.categories.add_first")}
             </button>
           )}
         </div>
@@ -207,11 +209,11 @@ export default function CategoriesPage() {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-8"></th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Uzbek</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">Russian</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">English</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-20 text-center hidden sm:table-cell">Order</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-20 text-center hidden sm:table-cell">Trainings</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t("settings.categories.uz_col")}</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">{t("settings.categories.ru_col")}</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">{t("settings.categories.en_col")}</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-20 text-center hidden sm:table-cell">{t("settings.categories.order_col")}</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-20 text-center hidden sm:table-cell">{t("settings.categories.trainings_col")}</th>
                 <th className="px-4 py-3 w-24"></th>
               </tr>
             </thead>
@@ -333,13 +335,13 @@ export default function CategoriesPage() {
         onClose={() => setDeletingCat(null)}
         onConfirm={handleDelete}
         loading={deleting}
-        title="Delete Category"
+        title={t("settings.categories.delete_title")}
         message={
           deletingCat
-            ? `Delete "${deletingCat.name_uz}"? This cannot be undone.`
+            ? t("settings.categories.delete_message", { name: deletingCat.name_uz })
             : ""
         }
-        confirmLabel="Delete"
+        confirmLabel={t("common.delete")}
         danger
       />
     </div>

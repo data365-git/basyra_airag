@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Pencil, Trash2, ShieldCheck } from "lucide-r
 import { Button } from "@/components/ui/Button";
 import { PermissionsTable } from "./PermissionsTable";
 import { countAccessiblePages } from "@/lib/permissions";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { Role, RolePermissions } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,7 @@ const TOTAL_PAGES = 6;
 
 export function RoleRow({ role, canManage, onEdit, onDelete }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useTranslation();
 
   const perms = role.permissions as RolePermissions | undefined;
   const accessCount = role.is_superadmin ? TOTAL_PAGES : (perms ? countAccessiblePages(perms) : 0);
@@ -39,7 +41,7 @@ export function RoleRow({ role, canManage, onEdit, onDelete }: Props) {
             <span className="font-semibold text-gray-900">{role.name}</span>
             {role.is_superadmin && (
               <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                <ShieldCheck size={11} /> Superadmin
+                <ShieldCheck size={11} /> {t("settings.roles.superadmin_label")}
               </span>
             )}
           </div>
@@ -50,13 +52,13 @@ export function RoleRow({ role, canManage, onEdit, onDelete }: Props) {
 
         {/* Page count badge */}
         <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full whitespace-nowrap">
-          {accessCount} / {TOTAL_PAGES} pages
+          {t("settings.roles.pages_count", { accessible: String(accessCount), total: String(TOTAL_PAGES) })}
         </span>
 
         {/* User count */}
         {role.user_count !== undefined && (
           <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:block">
-            {role.user_count} {role.user_count === 1 ? "user" : "users"}
+            {t("settings.roles.users_count", { n: String(role.user_count) })}
           </span>
         )}
 
@@ -71,7 +73,7 @@ export function RoleRow({ role, canManage, onEdit, onDelete }: Props) {
               variant="danger"
               onClick={() => onDelete(role)}
               disabled={(role.user_count ?? 0) > 0}
-              title={(role.user_count ?? 0) > 0 ? "Cannot delete — users are assigned this role" : "Delete role"}
+              title={(role.user_count ?? 0) > 0 ? t("settings.roles.cannot_delete") : t("settings.roles.delete_role")}
             >
               <Trash2 size={13} />
             </Button>
@@ -89,12 +91,12 @@ export function RoleRow({ role, canManage, onEdit, onDelete }: Props) {
         <div className="border-t border-gray-100 px-4 py-4">
           {role.is_superadmin ? (
             <p className="text-sm text-amber-700 bg-amber-50 px-4 py-3 rounded-lg">
-              Superadmin — full access to all pages and actions.
+              {t("settings.roles.superadmin_full_access")}
             </p>
           ) : perms ? (
             <PermissionsTable permissions={perms} readOnly />
           ) : (
-            <p className="text-sm text-gray-400">No permissions defined.</p>
+            <p className="text-sm text-gray-400">{t("settings.roles.no_permissions")}</p>
           )}
         </div>
       )}

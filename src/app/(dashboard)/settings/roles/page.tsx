@@ -9,12 +9,14 @@ import { RoleRow } from "@/components/roles/RoleRow";
 import { RoleModal } from "@/components/roles/RoleModal";
 import { usePermission } from "@/hooks/usePermission";
 import { SettingsTabs } from "@/components/settings/SettingsTabs";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { Role } from "@/types";
 import toast from "react-hot-toast";
 
 export default function RolesPage() {
   const canCreate = usePermission("settings.roles", "create");
   const canManage = usePermission("settings.roles", "edit");
+  const { t } = useTranslation();
 
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,24 +40,24 @@ export default function RolesPage() {
     const res = await fetch(`/api/roles/${deletingRole.id}`, { method: "DELETE" });
     setDeleting(false);
     if (res.ok) {
-      toast.success("Role deleted");
+      toast.success(t("settings.roles.deleted"));
       setDeletingRole(null);
       loadRoles();
     } else {
       const err = await res.json().catch(() => ({}));
-      toast.error(err.error ?? "Failed to delete");
+      toast.error(err.error ?? t("settings.roles.delete_failed"));
     }
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Settings"
-        subtitle={`${roles.length} roles defined`}
+        title={t("nav.settings")}
+        subtitle={t("settings.roles.subtitle", { n: String(roles.length) })}
         actions={
           canCreate ? (
             <Button onClick={() => setModalRole("new")}>
-              <Plus size={16} /> New Role
+              <Plus size={16} /> {t("settings.roles.new")}
             </Button>
           ) : undefined
         }
@@ -70,7 +72,7 @@ export default function RolesPage() {
           ))}
         </div>
       ) : roles.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">No roles yet.</div>
+        <div className="text-center py-16 text-gray-400">{t("settings.roles.no_roles")}</div>
       ) : (
         <div className="space-y-3">
           {roles.map((role) => (
@@ -100,13 +102,13 @@ export default function RolesPage() {
         onClose={() => setDeletingRole(null)}
         onConfirm={handleDelete}
         danger
-        title="Delete Role"
+        title={t("settings.roles.delete_title")}
         message={
           deletingRole
-            ? `Delete "${deletingRole.name}"? This cannot be undone.`
+            ? t("settings.roles.delete_message", { name: deletingRole.name })
             : ""
         }
-        confirmLabel={deleting ? "Deleting…" : "Delete"}
+        confirmLabel={deleting ? t("common.deleting") : t("common.delete")}
       />
     </div>
   );

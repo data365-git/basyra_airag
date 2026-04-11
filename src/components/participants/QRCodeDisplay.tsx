@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Download, Printer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { generateQRDataURL, downloadQR } from "@/lib/qr/generate";
+import { useTranslation } from "@/providers/LanguageProvider";
 
 interface QRCodeDisplayProps {
   token: string;
@@ -13,6 +14,7 @@ interface QRCodeDisplayProps {
 
 export function QRCodeDisplay({ token, name, size = 200 }: QRCodeDisplayProps) {
   const [dataUrl, setDataUrl] = useState<string>("");
+  const { t } = useTranslation();
 
   useEffect(() => {
     generateQRDataURL(token).then(setDataUrl);
@@ -29,10 +31,10 @@ export function QRCodeDisplay({ token, name, size = 200 }: QRCodeDisplayProps) {
       <p className="text-sm font-medium text-gray-700 text-center">{name}</p>
       <div className="flex gap-2">
         <Button size="sm" variant="outline" onClick={() => downloadQR(token, name)}>
-          <Download size={14} /> Download
+          <Download size={14} /> {t("common.download")}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => window.print()}>
-          <Printer size={14} /> Print
+          <Printer size={14} /> {t("common.print")}
         </Button>
       </div>
     </div>

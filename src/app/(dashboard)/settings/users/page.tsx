@@ -11,11 +11,13 @@ import { Input, Select } from "@/components/ui/Input";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { usePermission } from "@/hooks/usePermission";
 import { SettingsTabs } from "@/components/settings/SettingsTabs";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { StaffUser, Role } from "@/types";
 import toast from "react-hot-toast";
 
 export default function UsersPage() {
   const canCreate = usePermission("settings.users", "create");
+  const { t } = useTranslation();
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,12 +58,12 @@ export default function UsersPage() {
       body: JSON.stringify({ id: editingUser.id, ...editForm, role_id: editForm.role_id || null }),
     });
     if (res.ok) {
-      toast.success("User updated");
+      toast.success(t("settings.users.updated"));
       const updated = await res.json();
       setUsers((prev) => prev.map((u) => u.id === updated.id ? updated : u));
       setEditingUser(null);
     } else {
-      toast.error("Failed to update");
+      toast.error(t("settings.users.update_failed"));
     }
     setSaving(false);
   }
@@ -88,7 +90,7 @@ export default function UsersPage() {
     if (res.ok) {
       const newUser = await res.json();
       setUsers((prev) => [...prev, newUser].sort((a, b) => a.name.localeCompare(b.name)));
-      toast.success("User created");
+      toast.success(t("settings.users.created"));
       setAddOpen(false);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -99,7 +101,7 @@ export default function UsersPage() {
         }
         setAddErrors(flat);
       } else {
-        toast.error(err.error ?? "Failed to create user");
+        toast.error(err.error ?? t("settings.users.create_failed"));
       }
     }
   }
@@ -107,12 +109,12 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Settings"
-        subtitle="Manage staff accounts and permissions"
+        title={t("nav.settings")}
+        subtitle={t("settings.users.subtitle")}
         actions={
           canCreate && (
             <Button size="sm" onClick={openAdd}>
-              <Plus size={14} /> Add User
+              <Plus size={14} /> {t("settings.users.add")}
             </Button>
           )
         }
@@ -126,15 +128,15 @@ export default function UsersPage() {
         <Table>
           <Thead>
             <tr>
-              <Th>Name</Th>
-              <Th>Email</Th>
-              <Th>Role</Th>
-              <Th>Status</Th>
-              <Th>Actions</Th>
+              <Th>{t("common.name")}</Th>
+              <Th>{t("common.email")}</Th>
+              <Th>{t("settings.users.role_label")}</Th>
+              <Th>{t("common.status")}</Th>
+              <Th>{t("common.actions")}</Th>
             </tr>
           </Thead>
           <Tbody>
-            {users.length === 0 ? <EmptyRow cols={5} message="No staff users" /> : users.map((user) => (
+            {users.length === 0 ? <EmptyRow cols={5} message={t("settings.users.no_users")} /> : users.map((user) => (
               <Tr key={user.id}>
                 <Td className="font-medium">
                   <div className="flex items-center gap-2">
@@ -149,17 +151,17 @@ export default function UsersPage() {
                   {user.role ? (
                     <Badge variant="blue">{user.role.name}</Badge>
                   ) : (
-                    <span className="text-xs text-gray-400">No role</span>
+                    <span className="text-xs text-gray-400">{t("settings.users.no_role")}</span>
                   )}
                 </Td>
                 <Td>
                   <Badge variant={user.is_active ? "green" : "gray"}>
-                    {user.is_active ? "Active" : "Inactive"}
+                    {user.is_active ? t("settings.users.active_label") : t("settings.users.inactive")}
                   </Badge>
                 </Td>
                 <Td>
                   <Button size="sm" variant="ghost" onClick={() => openEdit(user)}>
-                    Edit
+                    {t("common.edit")}
                   </Button>
                 </Td>
               </Tr>
@@ -172,12 +174,12 @@ export default function UsersPage() {
       <Modal
         open={!!editingUser}
         onClose={() => setEditingUser(null)}
-        title="Edit Staff User"
+        title={t("settings.users.edit_title")}
         size="sm"
         footer={
           <>
-            <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
-            <Button onClick={saveUser} loading={saving}>Save</Button>
+            <Button variant="outline" onClick={() => setEditingUser(null)}>{t("common.cancel")}</Button>
+            <Button onClick={saveUser} loading={saving}>{t("common.save")}</Button>
           </>
         }
       >
@@ -188,11 +190,11 @@ export default function UsersPage() {
               <p className="text-xs text-gray-500">{editingUser.email}</p>
             </div>
             <Select
-              label="Role"
+              label={t("settings.users.role_label")}
               value={editForm.role_id}
               onChange={(e) => setEditForm((f) => ({ ...f, role_id: e.target.value }))}
             >
-              <option value="">No role (no permissions)</option>
+              <option value="">{t("settings.users.no_role_option")}</option>
               {roles.map((r) => (
                 <option key={r.id} value={r.id}>{r.name}</option>
               ))}
@@ -204,7 +206,7 @@ export default function UsersPage() {
                 onChange={(e) => setEditForm((f) => ({ ...f, is_active: e.target.checked }))}
                 className="w-4 h-4 rounded text-blue-600"
               />
-              <span className="text-sm font-medium text-gray-900">Active account</span>
+              <span className="text-sm font-medium text-gray-900">{t("settings.users.active_account")}</span>
             </label>
           </div>
         )}
@@ -214,25 +216,25 @@ export default function UsersPage() {
       <Modal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        title="Add Staff User"
+        title={t("settings.users.add_title")}
         size="sm"
         footer={
           <>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button form="add-user-form" type="submit" loading={adding}>Create User</Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>{t("common.cancel")}</Button>
+            <Button form="add-user-form" type="submit" loading={adding}>{t("settings.users.create_user")}</Button>
           </>
         }
       >
         <form id="add-user-form" onSubmit={handleAddUser} className="space-y-4">
           <Input
-            label="Full Name"
+            label={t("settings.users.full_name")}
             value={addForm.name}
             onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
             error={addErrors.name}
             required
           />
           <Input
-            label="Email"
+            label={t("common.email")}
             type="email"
             value={addForm.email}
             onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))}
@@ -240,20 +242,20 @@ export default function UsersPage() {
             required
           />
           <Input
-            label="Password"
+            label={t("settings.users.password_label")}
             type="password"
             value={addForm.password}
             onChange={(e) => setAddForm((f) => ({ ...f, password: e.target.value }))}
             error={addErrors.password}
-            hint="Minimum 6 characters"
+            hint={t("settings.users.password_hint")}
             required
           />
           <Select
-            label="Role"
+            label={t("settings.users.role_label")}
             value={addForm.role_id}
             onChange={(e) => setAddForm((f) => ({ ...f, role_id: e.target.value }))}
           >
-            <option value="">No role (no permissions)</option>
+            <option value="">{t("settings.users.no_role_option")}</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
