@@ -166,18 +166,6 @@ export default function ScannerPage() {
       <div className="flex-1 relative overflow-hidden">
         <QRScanner onScan={handleScan} active={sessionIsOpen && !!selectedSession} />
 
-        {/* Aiming brackets — only when session is open and no result showing */}
-        {!scanResult && sessionIsOpen && !!selectedSession && (
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-            <div className="relative w-64 h-64">
-              <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-400 rounded-tl-lg" />
-              <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-400 rounded-tr-lg" />
-              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-400 rounded-bl-lg" />
-              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-400 rounded-br-lg" />
-            </div>
-          </div>
-        )}
-
         {/* No session selected */}
         {!selectedSession && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80">
