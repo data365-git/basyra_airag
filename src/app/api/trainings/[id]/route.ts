@@ -12,6 +12,7 @@ const PatchTrainingSchema = z.object({
   icon: z.string().optional(),
   status: z.enum(["upcoming", "active", "completed"]).optional(),
   attendance_threshold: z.number().int().min(0).max(100).optional(),
+  late_threshold_minutes: z.number().int().min(0).max(120).nullable().optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   schedule_days: z.array(z.number().int().min(0).max(6))
@@ -58,6 +59,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       schedule_time: training.scheduleTime,
       status: training.status,
       attendance_threshold: training.attendanceThreshold,
+      late_threshold_minutes: training.lateThresholdMinutes,
       created_by: training.createdById,
       created_at: training.createdAt,
       sessions: training.sessions.map((s) => ({
@@ -108,6 +110,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (d.icon !== undefined) data.icon = d.icon;
     if (d.status !== undefined) data.status = d.status;
     if (d.attendance_threshold !== undefined) data.attendanceThreshold = d.attendance_threshold;
+    if ("late_threshold_minutes" in d) data.lateThresholdMinutes = d.late_threshold_minutes ?? null;
     if (d.start_date !== undefined) data.startDate = new Date(d.start_date);
     if (d.end_date !== undefined) data.endDate = new Date(d.end_date);
     if (d.schedule_days !== undefined) data.scheduleDays = d.schedule_days;
@@ -173,6 +176,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       schedule_time: training.scheduleTime,
       status: training.status,
       attendance_threshold: training.attendanceThreshold,
+      late_threshold_minutes: training.lateThresholdMinutes,
       created_by: training.createdById,
       created_at: training.createdAt,
     });

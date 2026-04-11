@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getUser } from "@/lib/getUser";
 import type { PendingScan } from "@/types";
+import { resolveLateThreshold, computeAttendanceStatus } from "@/lib/lateDetection";
 
 export async function POST(request: Request) {
   const user = await getUser();
@@ -23,7 +24,11 @@ export async function POST(request: Request) {
 
       const session = await prisma.session.findUnique({
         where: { id: scan.sessionId },
-        select: { trainingId: true },
+        select: {
+          trainingId: true,
+          sessionDate: true,
+          training: { select: { lateThresholdMinutes: true, scheduleTime: true } },
+        },
       });
       if (!session) continue;
 
@@ -47,12 +52,22 @@ export async function POST(request: Request) {
       });
 
       if (!existing) {
+        const scannedAt = new Date(scan.scannedAt);
+        const threshold = await resolveLateThreshold(session.training.lateThresholdMinutes);
+        const sessionDateStr = session.sessionDate.toISOString().slice(0, 10);
+        const { status } = computeAttendanceStatus(
+          scannedAt,
+          sessionDateStr,
+          session.training.scheduleTime,
+          threshold
+        );
+
         await prisma.attendance.create({
           data: {
             sessionId: scan.sessionId,
             participantId: participant.id,
-            status: "present",
-            scannedAt: new Date(scan.scannedAt),
+            status,
+            scannedAt,
             scannedById: user.sub,
             syncedFromOffline: true,
           },

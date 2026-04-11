@@ -224,6 +224,7 @@
   "settings.tab_roles": "Роли",
   "settings.tab_categories": "Категории",
   "settings.tab_translations": "Переводы",
+  "settings.tab_system": "Система",
 
   "settings.profile.title": "Мой профиль",
   "settings.profile.avatar_label": "Фото профиля",
@@ -358,5 +359,21 @@
   "trainings.participants_count": "{n} участников",
 
   "settings.profile.language_section": "Язык",
-  "settings.profile.account_section": "Аккаунт"
+  "settings.profile.account_section": "Аккаунт",
+
+  "settings.system.title": "Системные настройки",
+  "settings.system.subtitle": "Глобальные параметры по умолчанию для всех тренингов",
+  "settings.system.saved": "Настройки сохранены",
+  "settings.system.late_threshold_label": "Порог опоздания (минуты)",
+  "settings.system.late_threshold_hint": "Сканирование после указанного количества минут с начала сессии считается опозданием. 0 = отключено.",
+  "settings.system.late_threshold_disabled": "Определение опозданий отключено (0 минут — все сканирования помечаются как Присутствие)",
+
+  "scanner.result.late": "Опоздание",
+  "scanner.result.late_minutes": "{n} мин после начала сессии",
+
+  "trainings.late_threshold_label": "Порог опоздания",
+  "trainings.late_threshold_global": "Использовать глобальный",
+  "trainings.late_threshold_custom": "Настроить для этого тренинга",
+  "trainings.late_threshold_hint": "Минут после начала сессии до отметки Опоздание (0 = отключено)",
+  "trainings.late_threshold_global_hint": "Будет применён системный порог по умолчанию (из Системных настроек)"
 }

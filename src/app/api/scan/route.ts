@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
+import { resolveLateThreshold, computeAttendanceStatus } from "@/lib/lateDetection";
 
 export async function POST(request: Request) {
   const user = await getFullUser();
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
 
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
+      include: { training: { select: { lateThresholdMinutes: true, scheduleTime: true } } },
     });
 
     if (!session) {
@@ -70,16 +72,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ type: "already_scanned", message: "Already marked present", participant });
     }
 
+    const scannedAt = new Date();
+    const threshold = await resolveLateThreshold(session.training.lateThresholdMinutes);
+    const sessionDateStr = session.sessionDate.toISOString().slice(0, 10);
+    const { status, minutesLate } = computeAttendanceStatus(
+      scannedAt,
+      sessionDateStr,
+      session.training.scheduleTime,
+      threshold
+    );
+
     await prisma.attendance.create({
       data: {
         sessionId,
         participantId: participant.id,
-        status: "present",
-        scannedAt: new Date(),
+        status,
+        scannedAt,
         scannedById: user.id,
       },
     });
 
+    if (status === "late") {
+      return NextResponse.json({ type: "late", message: "Marked late", participant, minutesLate });
+    }
     return NextResponse.json({ type: "success", message: "Marked present", participant });
   } catch (err) {
     console.error("Scan error:", err);

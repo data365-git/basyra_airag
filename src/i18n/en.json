@@ -226,6 +226,7 @@
   "settings.tab_roles": "Roles",
   "settings.tab_categories": "Categories",
   "settings.tab_translations": "Translations",
+  "settings.tab_system": "System",
 
   "settings.profile.title": "My Profile",
   "settings.profile.avatar_label": "Profile Photo",
@@ -357,5 +358,21 @@
   "trainings.participants_count": "{n} participants",
 
   "settings.profile.language_section": "Language",
-  "settings.profile.account_section": "Account"
+  "settings.profile.account_section": "Account",
+
+  "settings.system.title": "System Settings",
+  "settings.system.subtitle": "Global defaults applied to all trainings unless overridden",
+  "settings.system.saved": "Settings saved",
+  "settings.system.late_threshold_label": "Late Arrival Threshold (minutes)",
+  "settings.system.late_threshold_hint": "Scans after this many minutes from session start are marked Late. Set 0 to disable late detection.",
+  "settings.system.late_threshold_disabled": "Late detection is disabled (0 minutes — all scans marked Present)",
+
+  "scanner.result.late": "Arrived Late",
+  "scanner.result.late_minutes": "{n} min after session start",
+
+  "trainings.late_threshold_label": "Late Arrival Threshold",
+  "trainings.late_threshold_global": "Use global default",
+  "trainings.late_threshold_custom": "Custom for this training",
+  "trainings.late_threshold_hint": "Minutes after session start before a scan is marked Late (0 = disabled)",
+  "trainings.late_threshold_global_hint": "The system default threshold will apply (set in System Settings)"
 }

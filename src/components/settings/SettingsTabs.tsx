@@ -26,6 +26,7 @@ export function SettingsTabs() {
     { href: "/settings/roles",        label: t("settings.tab_roles"),        show: superadmin || canRolesView },
     { href: "/settings/categories",   label: t("settings.tab_categories"),   show: superadmin || canCategoriesView },
     { href: "/settings/translations", label: t("settings.tab_translations"), show: superadmin || canTranslationsView },
+    { href: "/settings/system",       label: t("settings.tab_system"),       show: superadmin },
   ];
 
   const visibleTabs = tabs.filter((tab) => tab.show);

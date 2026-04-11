@@ -70,6 +70,7 @@ export interface Training {
   schedule_time: string;
   status: "upcoming" | "active" | "completed";
   attendance_threshold: number;
+  late_threshold_minutes?: number | null;
   category_id?: string | null;
   category?: TrainingCategory | null;
   created_by: string | null;
@@ -142,9 +143,17 @@ export interface AttendanceAudit {
 }
 
 export interface ScanResult {
-  type: "success" | "already_scanned" | "not_enrolled" | "unknown" | "session_closed";
+  type: "success" | "already_scanned" | "not_enrolled" | "unknown" | "session_closed" | "late";
   participant?: Participant;
   message?: string;
+  minutesLate?: number;
+}
+
+export interface SystemSetting {
+  key: string;
+  value: string;
+  updated_at: string;
+  updated_by: string | null;
 }
 
 export interface PendingScan {

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, AlertTriangle, XCircle, Lock } from "lucide-react";
+import { CheckCircle, AlertTriangle, XCircle, Lock, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/providers/LanguageProvider";
 import type { ScanResult } from "@/types";
@@ -46,6 +46,12 @@ export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps)
       title: t("scanner.result.session_closed"),
       textColor: "text-white",
     },
+    late: {
+      bg: "bg-amber-500",
+      icon: <Clock size={48} className="text-white" />,
+      title: t("scanner.result.late"),
+      textColor: "text-white",
+    },
   };
 
   const c = config[result.type as keyof typeof config] ?? config.unknown;
@@ -63,10 +69,15 @@ export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps)
           {result.participant.full_name}
         </p>
       )}
+      {result.type === "late" && result.minutesLate !== undefined && result.minutesLate > 0 && (
+        <p className="text-white/90 text-sm mt-1">
+          {t("scanner.result.late_minutes", { n: String(result.minutesLate) })}
+        </p>
+      )}
       {result.message && result.type === "not_enrolled" && (
         <p className="text-white/80 text-sm mt-1">{result.message}</p>
       )}
-      {isOffline && result.type === "success" && (
+      {isOffline && (result.type === "success" || result.type === "late") && (
         <p className="text-white/70 text-xs mt-3">{t("scanner.result.saved_offline")}</p>
       )}
     </div>

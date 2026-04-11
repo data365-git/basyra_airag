@@ -396,6 +396,15 @@ async function main() {
   }
 
   console.log("Training categories created.");
+
+  // System settings — global defaults
+  await prisma.systemSetting.upsert({
+    where: { key: "late_threshold_minutes" },
+    update: {},
+    create: { key: "late_threshold_minutes", value: "15" },
+  });
+
+  console.log("System settings seeded.");
   console.log("Seed complete!");
 }
 

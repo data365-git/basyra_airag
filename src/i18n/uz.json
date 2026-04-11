@@ -224,6 +224,7 @@
   "settings.tab_roles": "Rollar",
   "settings.tab_categories": "Kategoriyalar",
   "settings.tab_translations": "Tarjimalar",
+  "settings.tab_system": "Tizim",
 
   "settings.profile.title": "Mening profilim",
   "settings.profile.avatar_label": "Profil rasmi",
@@ -358,5 +359,21 @@
   "trainings.participants_count": "{n} ta ishtirokchi",
 
   "settings.profile.language_section": "Til",
-  "settings.profile.account_section": "Hisob"
+  "settings.profile.account_section": "Hisob",
+
+  "settings.system.title": "Tizim sozlamalari",
+  "settings.system.subtitle": "Barcha treninglar uchun global standartlar (alohida o'rnatilmagan bo'lsa)",
+  "settings.system.saved": "Sozlamalar saqlandi",
+  "settings.system.late_threshold_label": "Kechikish chegarasi (daqiqa)",
+  "settings.system.late_threshold_hint": "Sessiya boshlanganidan keyin shu daqiqa o'tgach skanerlangan ishtirokchilar 'Kech qoldi' deb belgilanadi. 0 = o'chirilgan.",
+  "settings.system.late_threshold_disabled": "Kechikish aniqlash o'chirilgan (0 daqiqa — barcha skanlar 'Keldi' deb belgilanadi)",
+
+  "scanner.result.late": "Kech qoldi",
+  "scanner.result.late_minutes": "Sessiya boshlanganidan {n} daqiqa keyin",
+
+  "trainings.late_threshold_label": "Kechikish chegarasi",
+  "trainings.late_threshold_global": "Global standartdan foydalanish",
+  "trainings.late_threshold_custom": "Bu trening uchun alohida",
+  "trainings.late_threshold_hint": "Sessiya boshlanganidan keyin necha daqiqadan so'ng 'Kech qoldi' belgilanadi (0 = o'chirilgan)",
+  "trainings.late_threshold_global_hint": "Tizim sozlamalaridagi global chegara qo'llaniladi"
 }

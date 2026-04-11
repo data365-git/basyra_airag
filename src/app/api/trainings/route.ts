@@ -18,6 +18,7 @@ const CreateTrainingSchema = z.object({
     .transform((days) => [...new Set(days)].sort((a, b) => a - b)),
   schedule_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format"),
   attendance_threshold: z.number().int().min(0).max(100).optional(),
+  late_threshold_minutes: z.number().int().min(0).max(120).nullable().optional(),
 }).refine(
   (d) => new Date(d.end_date) >= new Date(d.start_date),
   { message: "End date must be on or after start date", path: ["end_date"] }
@@ -78,6 +79,7 @@ export async function GET() {
           schedule_time: t.scheduleTime,
           status: t.status,
           attendance_threshold: t.attendanceThreshold,
+          late_threshold_minutes: t.lateThresholdMinutes,
           created_by: t.createdById,
           created_at: t.createdAt,
           participant_count: t.trainingParticipants.length,
@@ -108,7 +110,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { name, description, color, icon, start_date, end_date, schedule_days, schedule_time, attendance_threshold } = parsed.data;
+    const { name, description, color, icon, start_date, end_date, schedule_days, schedule_time, attendance_threshold, late_threshold_minutes } = parsed.data;
 
     const training = await prisma.training.create({
       data: {
@@ -121,6 +123,7 @@ export async function POST(request: Request) {
         scheduleDays: schedule_days,
         scheduleTime: schedule_time,
         attendanceThreshold: attendance_threshold ?? 80,
+        lateThresholdMinutes: late_threshold_minutes ?? null,
         createdById: user.id,
       },
     });

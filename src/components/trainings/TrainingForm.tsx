@@ -20,6 +20,7 @@ interface TrainingFormProps {
     schedule_days: number[];
     schedule_time: string;
     attendance_threshold: number;
+    late_threshold_minutes: number | null;
   }>;
   trainingId?: string;
 }
@@ -28,6 +29,15 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
   const router = useRouter();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  // null = use global default; number = custom override
+  const initialLate = defaultValues?.late_threshold_minutes;
+  const [lateMode, setLateMode] = useState<"global" | "custom">(
+    initialLate !== null && initialLate !== undefined ? "custom" : "global"
+  );
+  const [customLateMinutes, setCustomLateMinutes] = useState<number>(
+    initialLate !== null && initialLate !== undefined ? initialLate : 15
+  );
+
   const [form, setForm] = useState({
     name: defaultValues?.name || "",
     description: defaultValues?.description || "",
@@ -84,6 +94,7 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
     const body = {
       ...form,
       schedule_days: [...new Set(form.schedule_days)].sort((a, b) => a - b),
+      late_threshold_minutes: lateMode === "custom" ? customLateMinutes : null,
     };
 
     const res = await fetch(url, {
@@ -219,6 +230,52 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
         onChange={(e) => set("attendance_threshold", parseInt(e.target.value))}
         hint={t("trainings.threshold_hint")}
       />
+
+      {/* Late arrival threshold */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">
+          {t("trainings.late_threshold_label")}
+        </label>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => setLateMode("global")}
+            className={cn(
+              "flex-1 py-2 rounded-lg text-sm font-medium border transition-colors",
+              lateMode === "global"
+                ? "bg-blue-600 border-blue-600 text-white"
+                : "bg-white border-gray-300 text-gray-600 hover:border-blue-400"
+            )}
+          >
+            {t("trainings.late_threshold_global")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setLateMode("custom")}
+            className={cn(
+              "flex-1 py-2 rounded-lg text-sm font-medium border transition-colors",
+              lateMode === "custom"
+                ? "bg-blue-600 border-blue-600 text-white"
+                : "bg-white border-gray-300 text-gray-600 hover:border-blue-400"
+            )}
+          >
+            {t("trainings.late_threshold_custom")}
+          </button>
+        </div>
+        {lateMode === "custom" && (
+          <Input
+            type="number"
+            min={0}
+            max={120}
+            value={customLateMinutes}
+            onChange={(e) => setCustomLateMinutes(parseInt(e.target.value) || 0)}
+            hint={t("trainings.late_threshold_hint")}
+          />
+        )}
+        {lateMode === "global" && (
+          <p className="text-xs text-gray-400">{t("trainings.late_threshold_global_hint")}</p>
+        )}
+      </div>
 
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" onClick={() => router.back()}>

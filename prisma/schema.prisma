@@ -50,6 +50,7 @@ model Training {
   scheduleTime         String                @map("schedule_time")
   status               String                @default("upcoming")
   attendanceThreshold  Int                   @default(80) @map("attendance_threshold")
+  lateThresholdMinutes Int?                  @map("late_threshold_minutes")
   categoryId           String?               @map("category_id")
   category             TrainingCategory?     @relation(fields: [categoryId], references: [id])
   createdById          String?               @map("created_by")
@@ -145,6 +146,15 @@ model Attendance {
 
   @@unique([sessionId, participantId])
   @@map("attendance")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  @@map("system_settings")
 }
 
 model AttendanceAudit {
