@@ -6,7 +6,7 @@ const SECRET = new TextEncoder().encode(
 );
 
 const COOKIE_NAME = "attendtrack_session";
-const EXPIRY = "7d";
+const EXPIRY = "24h";
 
 export interface JWTPayload {
   sub: string;

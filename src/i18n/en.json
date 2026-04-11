@@ -59,6 +59,8 @@
   "auth.invalid_credentials": "Invalid email or password",
   "auth.demo_credentials": "Demo: admin@demo.com / demo1234",
   "auth.sign_out": "Sign out",
+  "auth.welcome_back": "Welcome back!",
+  "auth.staff_login": "Staff login",
 
   "dashboard.greeting_morning": "Good morning, {name} 👋",
   "dashboard.greeting_afternoon": "Good afternoon, {name} 👋",

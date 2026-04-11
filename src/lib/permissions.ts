@@ -37,6 +37,8 @@ export function hasPermission(
   if (page === "settings.translations") {
     return (perms.settings?.translations as Record<string, boolean> | undefined)?.[action] === true;
   }
+  // Note: optional chaining above is intentional — roles created before these keys were
+  // added may lack them in the DB JSON. The type is required but we guard gracefully.
 
   const bucket = (perms as unknown as Record<string, Record<string, boolean>>)[page];
   return bucket?.[action] === true;

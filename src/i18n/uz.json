@@ -57,6 +57,8 @@
   "auth.invalid_credentials": "Email yoki parol noto'g'ri",
   "auth.demo_credentials": "Demo: admin@demo.com / demo1234",
   "auth.sign_out": "Chiqish",
+  "auth.welcome_back": "Xush kelibsiz!",
+  "auth.staff_login": "Xodim kirishi",
 
   "dashboard.greeting_morning": "Xayrli tong, {name} 👋",
   "dashboard.greeting_afternoon": "Xayrli kun, {name} 👋",

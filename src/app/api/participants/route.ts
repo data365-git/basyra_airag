@@ -13,6 +13,9 @@ const CreateParticipantSchema = z.object({
 
 export async function GET(request: Request) {
   try {
+    const caller = await getFullUser();
+    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const trainingId = searchParams.get("training_id");
     const search = searchParams.get("search");

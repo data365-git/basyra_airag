@@ -21,8 +21,8 @@ export interface RolePermissions {
   settings: {
     users:        { view: boolean; create: boolean; edit: boolean; delete: boolean };
     roles:        { view: boolean; create: boolean; edit: boolean; delete: boolean };
-    categories?:  { view: boolean; create: boolean; edit: boolean; delete: boolean };
-    translations?:{ view: boolean; edit: boolean };
+    categories:   { view: boolean; create: boolean; edit: boolean; delete: boolean };
+    translations: { view: boolean; edit: boolean };
   };
 }
 
