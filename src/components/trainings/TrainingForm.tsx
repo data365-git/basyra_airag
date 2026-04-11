@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { DAYS_OF_WEEK, DAYS_SHORT, generateSessionDates, cn } from "@/lib/utils";
+import { DAYS_OF_WEEK, DAYS_SHORT, WEEK_DISPLAY_ORDER, generateSessionDates, cn } from "@/lib/utils";
 import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 
@@ -172,13 +172,13 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
           {t("trainings.schedule_day")} <span className="text-red-500">*</span>
         </label>
         <div className="flex gap-1.5 flex-wrap">
-          {DAYS_OF_WEEK.map((name, i) => {
-            const selected = form.schedule_days.includes(i);
+          {WEEK_DISPLAY_ORDER.map((dayIndex) => {
+            const selected = form.schedule_days.includes(dayIndex);
             return (
               <button
-                key={i}
+                key={dayIndex}
                 type="button"
-                onClick={() => toggleDay(i)}
+                onClick={() => toggleDay(dayIndex)}
                 className={cn(
                   "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
                   selected
@@ -186,7 +186,7 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
                     : "bg-white border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600"
                 )}
               >
-                {DAYS_SHORT[i]}
+                {DAYS_SHORT[dayIndex]}
               </button>
             );
           })}

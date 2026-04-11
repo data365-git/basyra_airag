@@ -14,6 +14,10 @@ export const DAYS_OF_WEEK = [
 
 export const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** Display order for day-picker UIs: Monday first, Sunday last.
+ *  Values are getDay() indices — unchanged, only the iteration order changes. */
+export const WEEK_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
 /** Format an array of day indices into a human-readable string.
  *  [6] → "Saturday"
  *  [0, 6] → "Sunday & Saturday"
