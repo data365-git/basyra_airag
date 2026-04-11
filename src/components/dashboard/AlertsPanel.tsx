@@ -1,7 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { AlertTriangle, ChevronRight } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getAttendanceColorClass } from "@/lib/utils";
+import { useTranslation } from "@/providers/LanguageProvider";
 
 interface Alert {
   participantId: string;
@@ -13,17 +16,19 @@ interface Alert {
 }
 
 export function AlertsPanel({ alerts }: { alerts: Alert[] }) {
+  const { t } = useTranslation();
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
           <AlertTriangle size={16} className="text-yellow-600" />
-          <CardTitle>Low Attendance Alerts</CardTitle>
+          <CardTitle>{t("dashboard.alerts")}</CardTitle>
         </div>
       </CardHeader>
 
       {alerts.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-6">All participants above threshold</p>
+        <p className="text-sm text-gray-400 text-center py-6">{t("dashboard.all_above_threshold")}</p>
       ) : (
         <div className="space-y-2">
           {alerts.slice(0, 8).map((alert, i) => (

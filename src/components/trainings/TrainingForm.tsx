@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { DAYS_OF_WEEK, DAYS_SHORT, generateSessionDates, cn } from "@/lib/utils";
+import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 
 const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16"];
@@ -25,6 +26,7 @@ interface TrainingFormProps {
 
 export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     name: defaultValues?.name || "",
@@ -46,12 +48,10 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
       const days = prev.schedule_days.includes(day)
         ? prev.schedule_days.filter((d) => d !== day)
         : [...prev.schedule_days, day];
-      // Keep at least 1 selected
       return { ...prev, schedule_days: days.length ? days : prev.schedule_days };
     });
   }
 
-  // Live session count preview
   const sessionCount = useMemo(() => {
     if (!form.start_date || !form.end_date || form.schedule_days.length === 0) return null;
     try {
@@ -73,7 +73,7 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
     e.preventDefault();
 
     if (form.schedule_days.length === 0) {
-      toast.error("Select at least one day of the week");
+      toast.error(t("trainings.day_required"));
       return;
     }
 
@@ -83,7 +83,6 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
 
     const body = {
       ...form,
-      // Always send sorted, deduplicated array
       schedule_days: [...new Set(form.schedule_days)].sort((a, b) => a - b),
     };
 
@@ -95,13 +94,13 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      toast.error(err.error ?? "Failed to save training");
+      toast.error(err.error ?? t("trainings.save_failed"));
       setLoading(false);
       return;
     }
 
     const training = await res.json();
-    toast.success(trainingId ? "Training updated" : "Training created");
+    toast.success(trainingId ? t("trainings.updated") : t("trainings.created"));
     router.refresh();
     router.push(`/trainings/${training.id}`);
   }
@@ -109,7 +108,7 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5 max-w-xl">
       <Input
-        label="Training Name"
+        label={t("trainings.name_label")}
         value={form.name}
         onChange={(e) => set("name", e.target.value)}
         placeholder="e.g. Veb-dasturlash kursi"
@@ -117,14 +116,14 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
       />
 
       <Textarea
-        label="Description"
+        label={t("common.description")}
         value={form.description}
         onChange={(e) => set("description", e.target.value)}
         placeholder="Optional description..."
       />
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{t("common.color")}</label>
         <div className="flex gap-2 flex-wrap">
           {COLORS.map((c) => (
             <button
@@ -142,14 +141,14 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <Input
-          label="Start Date"
+          label={t("trainings.start_date")}
           type="date"
           value={form.start_date}
           onChange={(e) => set("start_date", e.target.value)}
           required
         />
         <Input
-          label="End Date"
+          label={t("trainings.end_date")}
           type="date"
           value={form.end_date}
           onChange={(e) => set("end_date", e.target.value)}
@@ -157,10 +156,9 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
         />
       </div>
 
-      {/* Day-of-week pill selector */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Day of Week <span className="text-red-500">*</span>
+          {t("trainings.schedule_day")} <span className="text-red-500">*</span>
         </label>
         <div className="flex gap-1.5 flex-wrap">
           {DAYS_OF_WEEK.map((name, i) => {
@@ -183,7 +181,6 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
           })}
         </div>
 
-        {/* Live preview */}
         {sessionCount !== null && (
           <p className="mt-2 text-sm text-gray-500 flex items-center gap-1.5">
             <span>📅</span>
@@ -200,13 +197,13 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
         )}
         {sessionCount === 0 && form.start_date && form.end_date && (
           <p className="mt-1 text-xs text-red-500">
-            No sessions fall in this date range — check your dates or day selection.
+            {t("trainings.no_sessions_warning")}
           </p>
         )}
       </div>
 
       <Input
-        label="Time"
+        label={t("trainings.schedule_time")}
         type="time"
         value={form.schedule_time}
         onChange={(e) => set("schedule_time", e.target.value)}
@@ -214,21 +211,21 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
       />
 
       <Input
-        label="Low Attendance Alert Threshold (%)"
+        label={t("trainings.threshold")}
         type="number"
         min={0}
         max={100}
         value={form.attendance_threshold}
         onChange={(e) => set("attendance_threshold", parseInt(e.target.value))}
-        hint="Alert when participant falls below this attendance rate"
+        hint={t("trainings.threshold_hint")}
       />
 
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button type="submit" loading={loading} disabled={form.schedule_days.length === 0 || sessionCount === 0}>
-          {trainingId ? "Save Changes" : "Create Training"}
+          {trainingId ? t("common.save") : t("trainings.new")}
         </Button>
       </div>
     </form>

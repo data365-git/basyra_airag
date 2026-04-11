@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { SessionStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { formatTime } from "@/lib/utils";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { Session } from "@/types";
 
 interface TodaysSessionsProps {
@@ -15,17 +16,19 @@ interface TodaysSessionsProps {
 }
 
 export function TodaysSessions({ sessions, onOpen, onClose }: TodaysSessionsProps) {
+  const { t } = useTranslation();
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
           <Clock size={16} className="text-blue-600" />
-          <CardTitle>Today&apos;s Sessions</CardTitle>
+          <CardTitle>{t("dashboard.today_sessions")}</CardTitle>
         </div>
       </CardHeader>
 
       {sessions.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-6">No sessions scheduled today</p>
+        <p className="text-sm text-gray-400 text-center py-6">{t("dashboard.no_today_sessions")}</p>
       ) : (
         <div className="space-y-2">
           {sessions.map((session) => (
@@ -37,19 +40,19 @@ export function TodaysSessions({ sessions, onOpen, onClose }: TodaysSessionsProp
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{session.training?.name}</p>
                 <p className="text-xs text-gray-500">
-                  Session {session.session_number} · {formatTime(session.session_time)}
+                  {t("trainings.session_number", { n: String(session.session_number) })} · {formatTime(session.session_time)}
                 </p>
               </div>
               <SessionStatusBadge status={session.status} />
               <div className="flex gap-1">
                 {session.status === "upcoming" && (
                   <Button size="sm" variant="primary" onClick={() => onOpen(session.id)}>
-                    Open
+                    {t("common.open")}
                   </Button>
                 )}
                 {session.status === "open" && (
                   <Button size="sm" variant="danger" onClick={() => onClose(session.id)}>
-                    Close
+                    {t("common.close_action")}
                   </Button>
                 )}
                 <Link href={`/trainings/${session.training_id}/sessions/${session.id}`}>

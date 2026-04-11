@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { PermissionsTable } from "./PermissionsTable";
 import { emptyPermissions, PRESET_COLORS } from "@/lib/permissions";
+import { useTranslation } from "@/providers/LanguageProvider";
 import type { Role, RolePermissions } from "@/types";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -18,6 +19,7 @@ interface Props {
 
 export function RoleModal({ role, onClose, onSaved }: Props) {
   const isEdit = !!role;
+  const { t } = useTranslation();
 
   const [name, setName] = useState(role?.name ?? "");
   const [description, setDescription] = useState(role?.description ?? "");
@@ -39,7 +41,7 @@ export function RoleModal({ role, onClose, onSaved }: Props) {
   }, [role]);
 
   async function handleSave() {
-    if (!name.trim()) { toast.error("Role name is required"); return; }
+    if (!name.trim()) { toast.error(t("settings.roles.name_required")); return; }
     setSaving(true);
 
     const payload = { name: name.trim(), description: description.trim() || null, color, is_superadmin: isSuperadmin, permissions };
@@ -54,12 +56,12 @@ export function RoleModal({ role, onClose, onSaved }: Props) {
 
     setSaving(false);
     if (res.ok) {
-      toast.success(isEdit ? "Role updated" : "Role created");
+      toast.success(isEdit ? t("settings.roles.updated") : t("settings.roles.created"));
       onSaved();
       onClose();
     } else {
       const err = await res.json().catch(() => ({}));
-      toast.error(err.error ?? "Failed to save role");
+      toast.error(err.error ?? t("trainings.save_failed"));
     }
   }
 
@@ -69,7 +71,7 @@ export function RoleModal({ role, onClose, onSaved }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">
-            {isEdit ? `Edit "${role!.name}"` : "Create Role"}
+            {isEdit ? t("settings.roles.edit_title", { name: role!.name }) : t("settings.roles.new")}
           </h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
             <X size={18} />
@@ -79,13 +81,13 @@ export function RoleModal({ role, onClose, onSaved }: Props) {
         <div className="px-6 py-5 space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Name *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">{t("settings.roles.name_label")} *</label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Trainer, Coordinator" />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">{t("common.description")}</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -97,7 +99,7 @@ export function RoleModal({ role, onClose, onSaved }: Props) {
 
           {/* Color */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t("common.color")}</label>
             <div className="flex flex-wrap gap-2">
               {PRESET_COLORS.map((c) => (
                 <button
@@ -119,7 +121,7 @@ export function RoleModal({ role, onClose, onSaved }: Props) {
             <Shield size={18} className="text-amber-600 mt-0.5 shrink-0" />
             <div className="flex-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-amber-900">Superadmin</span>
+                <span className="text-sm font-medium text-amber-900">{t("settings.roles.superadmin_label")}</span>
                 <button
                   role="switch"
                   aria-checked={isSuperadmin}
@@ -136,7 +138,7 @@ export function RoleModal({ role, onClose, onSaved }: Props) {
                 </button>
               </div>
               <p className="text-xs text-amber-700 mt-1">
-                Bypasses all permission checks — full access to everything
+                {t("settings.roles.superadmin_hint")}
               </p>
             </div>
           </div>
@@ -144,23 +146,23 @@ export function RoleModal({ role, onClose, onSaved }: Props) {
           {/* Permissions table */}
           {!isSuperadmin && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Permissions</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{t("settings.roles.permissions")}</label>
               <PermissionsTable permissions={permissions} onChange={setPermissions} />
             </div>
           )}
 
           {isSuperadmin && (
             <p className="text-sm text-amber-700 bg-amber-50 px-4 py-3 rounded-lg">
-              Superadmin has access to all pages and actions — no granular permissions needed.
+              {t("settings.roles.superadmin_note")}
             </p>
           )}
         </div>
 
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
           <Button onClick={handleSave} loading={saving}>
-            {isEdit ? "Save changes" : "Create role"}
+            {isEdit ? t("common.save") : t("common.create")}
           </Button>
         </div>
       </div>

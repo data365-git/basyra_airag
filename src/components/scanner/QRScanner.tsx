@@ -203,7 +203,7 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
       <p className="text-xs text-white/40 mb-2 text-center">{label}</p>
       <label className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors cursor-pointer">
         <ImageIcon size={14} />
-        Take Photo of QR Code
+        {t("scanner.take_photo")}
         <input
           type="file"
           accept="image/*"
@@ -257,11 +257,11 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
           >
             <Camera size={64} className="text-blue-400" />
             <div>
-              <p className="text-xl font-semibold">Tap to start camera</p>
-              <p className="text-sm text-white/60 mt-1">Point at a participant&apos;s QR code</p>
+              <p className="text-xl font-semibold">{t("scanner.tap_to_start")}</p>
+              <p className="text-sm text-white/60 mt-1">{t("scanner.point_camera")}</p>
             </div>
           </button>
-          <FileCaptureFallback label="No camera stream? Use your camera app:" />
+          <FileCaptureFallback label={t("scanner.file_fallback_hint")} />
         </div>
       )}
 
@@ -269,8 +269,8 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
       {permState === "requesting" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center p-8 gap-4">
           <Camera size={48} className="text-white/60 animate-pulse" />
-          <p className="text-lg font-medium">Starting camera…</p>
-          <p className="text-sm text-white/60">Allow camera access when prompted</p>
+          <p className="text-lg font-medium">{t("scanner.requesting")}</p>
+          <p className="text-sm text-white/60">{t("scanner.allow_camera")}</p>
         </div>
       )}
 
@@ -278,15 +278,15 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
       {permState === "in_use" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center p-8 gap-4">
           <CameraOff size={48} className="text-orange-400" />
-          <p className="text-lg font-medium">Camera is in use</p>
-          <p className="text-sm text-white/60">Another app is using the camera. Close it and try again.</p>
+          <p className="text-lg font-medium">{t("scanner.in_use_title")}</p>
+          <p className="text-sm text-white/60">{t("scanner.in_use_hint")}</p>
           <button
             onClick={retryCamera}
             className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
           >
-            <RefreshCw size={14} /> Try Again
+            <RefreshCw size={14} /> {t("scanner.try_again")}
           </button>
-          <FileCaptureFallback label="Or scan via photo:" />
+          <FileCaptureFallback label={t("scanner.file_fallback_hint")} />
         </div>
       )}
 
@@ -304,9 +304,9 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
         <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center p-6 gap-4 overflow-y-auto">
           <CameraOff size={48} className="text-red-400 shrink-0" />
           <div>
-            <p className="text-lg font-semibold">Camera Access Blocked</p>
+            <p className="text-lg font-semibold">{t("scanner.camera_denied_title")}</p>
             <p className="text-sm text-white/60 mt-1">
-              Fix it in your browser settings, then tap Try Again.
+              {t("scanner.denied_hint_short")}
             </p>
           </div>
 
@@ -328,17 +328,17 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
               onClick={() => { window.location.href = "app-settings:"; }}
               className="flex-1 px-4 py-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors"
             >
-              Open Settings
+              {t("scanner.open_settings")}
             </button>
             <button
               onClick={retryCamera}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
             >
-              <RefreshCw size={14} /> Try Again
+              <RefreshCw size={14} /> {t("scanner.try_again")}
             </button>
           </div>
 
-          <FileCaptureFallback label="Or scan via photo instead:" />
+          <FileCaptureFallback label={t("scanner.file_fallback_hint")} />
         </div>
       )}
     </div>

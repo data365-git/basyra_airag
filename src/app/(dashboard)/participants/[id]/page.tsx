@@ -15,12 +15,14 @@ import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { formatDate, getAttendanceColorClass } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
+import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 import type { Participant } from "@/types";
 
 export default function ParticipantProfilePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { t } = useTranslation();
   const canManage = usePermission("participants", "edit");
   const canDelete = usePermission("participants", "delete");
   const [participant, setParticipant] = useState<Participant | null>(null);
@@ -62,17 +64,17 @@ export default function ParticipantProfilePage() {
     const res = await fetch(`/api/participants/${id}`, { method: "DELETE" });
     setDeleting(false);
     if (res.ok) {
-      toast.success("Participant deleted");
+      toast.success(t("participants.deleted"));
       router.refresh();
       router.push("/participants");
     } else {
       const err = await res.json().catch(() => ({}));
-      toast.error(err.error ?? "Failed to delete");
+      toast.error(err.error ?? t("common.no_data"));
     }
   }
 
   if (loading) return <div className="space-y-4"><CardSkeleton /><CardSkeleton /></div>;
-  if (!participant) return <div className="text-center py-16 text-gray-400">Participant not found</div>;
+  if (!participant) return <div className="text-center py-16 text-gray-400">{t("participants.not_found")}</div>;
 
   return (
     <div className="space-y-6">
@@ -85,7 +87,7 @@ export default function ParticipantProfilePage() {
           <>
             {canManage && (
               <Link href={`/participants/${id}/edit`}>
-                <Button variant="outline" size="sm"><Edit size={14} /> Edit</Button>
+                <Button variant="outline" size="sm"><Edit size={14} /> {t("common.edit")}</Button>
               </Link>
             )}
             {canDelete && (
@@ -100,23 +102,23 @@ export default function ParticipantProfilePage() {
       <div className="grid lg:grid-cols-3 gap-6">
         {/* QR Code */}
         <Card>
-          <CardTitle className="mb-4">QR Code</CardTitle>
+          <CardTitle className="mb-4">{t("participants.qr_code")}</CardTitle>
           <QRCodeDisplay token={participant.qr_token} name={participant.full_name} />
           <div className="mt-4 pt-4 border-t space-y-2 text-sm">
             {participant.phone && (
               <div className="flex justify-between">
-                <span className="text-gray-500">Phone</span>
+                <span className="text-gray-500">{t("common.phone")}</span>
                 <span className="font-medium">{participant.phone}</span>
               </div>
             )}
             {participant.email && (
               <div className="flex justify-between">
-                <span className="text-gray-500">Email</span>
+                <span className="text-gray-500">{t("common.email")}</span>
                 <span className="font-medium">{participant.email}</span>
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-gray-500">Registered</span>
+              <span className="text-gray-500">{t("participants.registered_col")}</span>
               <span className="font-medium">{formatDate(participant.created_at)}</span>
             </div>
           </div>
@@ -126,7 +128,7 @@ export default function ParticipantProfilePage() {
         <div className="lg:col-span-2 space-y-4">
           {history.length === 0 ? (
             <Card>
-              <p className="text-gray-400 text-center py-6">Not enrolled in any training</p>
+              <p className="text-gray-400 text-center py-6">{t("participants.no_trainings")}</p>
             </Card>
           ) : history.map((item) => {
             const stats = getStats(item.sessions);
@@ -145,11 +147,11 @@ export default function ParticipantProfilePage() {
                 {/* Stats row */}
                 <div className="grid grid-cols-5 gap-2 mb-4">
                   {[
-                    { label: "Sessions", value: stats.total },
-                    { label: "Present", value: stats.present, cls: "text-green-600" },
-                    { label: "Absent", value: stats.absent, cls: "text-red-500" },
-                    { label: "Excused", value: stats.excused, cls: "text-blue-600" },
-                    { label: "Streak", value: `${stats.streak}🔥` },
+                    { label: t("participants.sessions_col"), value: stats.total },
+                    { label: t("common.status.present"), value: stats.present, cls: "text-green-600" },
+                    { label: t("common.status.absent"), value: stats.absent, cls: "text-red-500" },
+                    { label: t("common.status.excused"), value: stats.excused, cls: "text-blue-600" },
+                    { label: t("participants.streak"), value: `${stats.streak}🔥` },
                   ].map((s) => (
                     <div key={s.label} className="text-center">
                       <div className={`text-lg font-bold ${s.cls || "text-gray-900"}`}>{s.value}</div>
@@ -174,16 +176,16 @@ export default function ParticipantProfilePage() {
                 {/* Session history */}
                 <details>
                   <summary className="text-sm text-blue-600 cursor-pointer hover:underline">
-                    View session history ({item.sessions.length} sessions)
+                    {t("participants.view_history", { n: item.sessions.length })}
                   </summary>
                   <div className="mt-3">
                     <Table>
                       <Thead>
                         <tr>
                           <Th>#</Th>
-                          <Th>Date</Th>
-                          <Th>Status</Th>
-                          <Th>Note</Th>
+                          <Th>{t("common.date")}</Th>
+                          <Th>{t("common.status")}</Th>
+                          <Th>{t("common.note")}</Th>
                         </tr>
                       </Thead>
                       <Tbody>
@@ -217,9 +219,9 @@ export default function ParticipantProfilePage() {
         onConfirm={handleDelete}
         loading={deleting}
         danger
-        title="Delete Participant"
+        title={t("participants.delete_title")}
         message={`Delete "${participant.full_name}"? This will also remove all their attendance records. This cannot be undone.`}
-        confirmLabel={deleting ? "Deleting…" : "Delete"}
+        confirmLabel={deleting ? t("common.deleting") : t("common.delete")}
       />
     </div>
   );

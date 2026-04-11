@@ -6,6 +6,7 @@ import { Upload, CheckCircle, XCircle, SkipForward } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 
 interface CSVRow {
@@ -18,6 +19,7 @@ interface CSVRow {
 
 export default function ImportParticipantsPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<CSVRow[]>([]);
   const [importing, setImporting] = useState(false);
@@ -91,7 +93,7 @@ export default function ImportParticipantsPage() {
     );
 
     setResult({ created: data.created, skipped: data.skipped });
-    toast.success(`Imported ${data.created} participant${data.created === 1 ? "" : "s"}${data.skipped > 0 ? `, skipped ${data.skipped} duplicate${data.skipped === 1 ? "" : "s"}` : ""}`);
+    toast.success(t("participants.import_success", { n: String(data.created) }));
   }
 
   function goToParticipants() {
@@ -101,24 +103,29 @@ export default function ImportParticipantsPage() {
 
   return (
     <div>
-      <PageHeader title="Import Participants" subtitle="Bulk import from CSV file" back backHref="/participants" />
+      <PageHeader
+        title={t("participants.import_title")}
+        subtitle={t("participants.import_subtitle")}
+        back
+        backHref="/participants"
+      />
 
       <Card className="mb-6 max-w-xl">
-        <h3 className="font-semibold text-gray-900 mb-2">CSV Format</h3>
-        <p className="text-sm text-gray-500 mb-3">Your CSV file should have these columns (first row = headers):</p>
+        <h3 className="font-semibold text-gray-900 mb-2">{t("participants.csv_format")}</h3>
+        <p className="text-sm text-gray-500 mb-3">{t("participants.csv_columns_hint")}</p>
         <code className="block text-xs bg-gray-50 p-3 rounded-lg text-gray-700">
           full_name,phone,email<br />
           Dilnoza Yusupova,+998901234567,dilnoza@example.com<br />
           Bobur Karimov,+998901234568,
         </code>
         <p className="text-xs text-gray-400 mt-2">
-          Rows with a duplicate phone number will be skipped. All valid rows are saved atomically — if the import fails, no partial data is saved.
+          {t("participants.csv_duplicate_hint")}
         </p>
       </Card>
 
       <div className="flex gap-3 mb-6">
         <Button variant="outline" onClick={() => fileRef.current?.click()}>
-          <Upload size={16} /> Choose CSV File
+          <Upload size={16} /> {t("participants.choose_file")}
         </Button>
         <input
           ref={fileRef}
@@ -129,12 +136,12 @@ export default function ImportParticipantsPage() {
         />
         {rows.length > 0 && !result && (
           <Button onClick={importAll} loading={importing}>
-            Import {rows.length} Participants
+            {t("participants.import_n", { n: String(rows.length) })}
           </Button>
         )}
         {result && (
           <Button onClick={goToParticipants}>
-            View Participants ({result.created} imported)
+            {t("participants.view_imported", { n: String(result.created) })}
           </Button>
         )}
       </div>
@@ -150,7 +157,7 @@ export default function ImportParticipantsPage() {
 
       {rows.length > 0 && (
         <div className="space-y-2">
-          <p className="text-sm text-gray-600 font-medium">{rows.length} rows found</p>
+          <p className="text-sm text-gray-600 font-medium">{t("participants.rows_found", { n: String(rows.length) })}</p>
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {rows.map((row, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0">

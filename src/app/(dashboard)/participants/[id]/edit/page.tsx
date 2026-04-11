@@ -6,11 +6,13 @@ import { PageHeader } from "@/components/layout/Header";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { CardSkeleton } from "@/components/ui/Skeleton";
+import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 
 export default function EditParticipantPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ full_name: "", phone: "", email: "" });
@@ -51,11 +53,11 @@ export default function EditParticipantPage() {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      toast.error(err.error ?? "Failed to save");
+      toast.error(err.error ?? t("trainings.save_failed"));
       return;
     }
 
-    toast.success("Participant updated");
+    toast.success(t("participants.updated"));
     router.refresh();
     router.push(`/participants/${id}`);
   }
@@ -65,28 +67,28 @@ export default function EditParticipantPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Edit Participant"
+        title={t("participants.edit_title")}
         back
         backHref={`/participants/${id}`}
       />
 
       <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
         <Input
-          label="Full Name"
+          label={t("participants.full_name")}
           value={form.full_name}
           onChange={(e) => set("full_name", e.target.value)}
           placeholder="Enter full name"
           required
         />
         <Input
-          label="Phone"
+          label={t("common.phone")}
           type="tel"
           value={form.phone}
           onChange={(e) => set("phone", e.target.value)}
           placeholder="+998 90 123 45 67"
         />
         <Input
-          label="Email"
+          label={t("common.email")}
           type="email"
           value={form.email}
           onChange={(e) => set("email", e.target.value)}
@@ -95,10 +97,10 @@ export default function EditParticipantPage() {
 
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" onClick={() => router.back()}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button type="submit" loading={saving}>
-            Save Changes
+            {t("common.save")}
           </Button>
         </div>
       </form>

@@ -1,6 +1,9 @@
+"use client";
+
 import { CheckCircle, Clock } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { formatDate } from "@/lib/utils";
+import { useTranslation } from "@/providers/LanguageProvider";
 
 interface ActivityItem {
   id: string;
@@ -11,17 +14,19 @@ interface ActivityItem {
 }
 
 export function ActivityFeed({ activities }: { activities: ActivityItem[] }) {
+  const { t } = useTranslation();
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
           <Clock size={16} className="text-green-600" />
-          <CardTitle>Recent Scans</CardTitle>
+          <CardTitle>{t("dashboard.recent_activity")}</CardTitle>
         </div>
       </CardHeader>
 
       {activities.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-6">No recent scan activity</p>
+        <p className="text-sm text-gray-400 text-center py-6">{t("dashboard.no_activity")}</p>
       ) : (
         <div className="space-y-2">
           {activities.slice(0, 10).map((item) => (
@@ -37,7 +42,7 @@ export function ActivityFeed({ activities }: { activities: ActivityItem[] }) {
                   <span className="text-gray-500"> · {item.session?.training?.name}</span>
                 </p>
                 <p className="text-xs text-gray-400">
-                  Session {item.session?.session_number} · {item.scanned_at ? formatDate(item.scanned_at, "h:mm a") : "—"}
+                  {t("trainings.session_number", { n: String(item.session?.session_number) })} · {item.scanned_at ? formatDate(item.scanned_at, "h:mm a") : "—"}
                 </p>
               </div>
             </div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/layout/Header";
 import { TrainingForm } from "@/components/trainings/TrainingForm";
+import { useTranslation } from "@/providers/LanguageProvider";
 
 function EditFormSkeleton() {
   return (
@@ -65,6 +66,7 @@ function EditFormSkeleton() {
 
 export default function EditTrainingPage() {
   const { id } = useParams<{ id: string }>();
+  const { t } = useTranslation();
   const [training, setTraining] = useState<any>(null);
 
   useEffect(() => {
@@ -76,7 +78,7 @@ export default function EditTrainingPage() {
 
   return (
     <div>
-      <PageHeader title="Edit Training" back backHref={`/trainings/${id}`} />
+      <PageHeader title={t("trainings.edit")} back backHref={`/trainings/${id}`} />
       {training ? (
         <TrainingForm defaultValues={training} trainingId={id} />
       ) : (

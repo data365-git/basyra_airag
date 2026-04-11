@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/layout/Header";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 
 export default function NewParticipantPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ full_name: "", phone: "", email: "" });
 
@@ -27,44 +29,44 @@ export default function NewParticipantPage() {
     });
 
     if (!res.ok) {
-      toast.error("Failed to create participant");
+      toast.error(t("participants.create_failed"));
       setLoading(false);
       return;
     }
 
     const participant = await res.json();
-    toast.success("Participant created");
+    toast.success(t("participants.created"));
     router.push(`/participants/${participant.id}`);
   }
 
   return (
     <div>
-      <PageHeader title="Add Participant" back backHref="/participants" />
+      <PageHeader title={t("participants.add")} back backHref="/participants" />
       <form onSubmit={handleSubmit} className="space-y-5 max-w-md">
         <Input
-          label="Full Name"
+          label={t("participants.full_name")}
           value={form.full_name}
           onChange={(e) => set("full_name", e.target.value)}
           placeholder="e.g. Dilnoza Yusupova"
           required
         />
         <Input
-          label="Phone Number"
+          label={t("common.phone")}
           type="tel"
           value={form.phone}
           onChange={(e) => set("phone", e.target.value)}
           placeholder="+998 90 123 4567"
         />
         <Input
-          label="Email"
+          label={t("common.email")}
           type="email"
           value={form.email}
           onChange={(e) => set("email", e.target.value)}
           placeholder="optional@example.com"
         />
         <div className="flex gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
-          <Button type="submit" loading={loading}>Create Participant</Button>
+          <Button type="button" variant="outline" onClick={() => router.back()}>{t("common.cancel")}</Button>
+          <Button type="submit" loading={loading}>{t("participants.add")}</Button>
         </div>
       </form>
     </div>
