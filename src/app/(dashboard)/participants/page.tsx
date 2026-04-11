@@ -40,7 +40,7 @@ export default function ParticipantsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t("participants.title")}</h1>
-          <p className="text-gray-500 text-sm mt-1">{participants.length} registered</p>
+          <p className="text-gray-500 text-sm mt-1">{t("participants.registered_count", { n: String(participants.length) })}</p>
         </div>
         {canManage && (
           <div className="flex gap-2">

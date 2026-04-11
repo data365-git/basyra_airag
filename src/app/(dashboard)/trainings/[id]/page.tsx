@@ -42,6 +42,7 @@ export default function TrainingDetailPage() {
   const [allParticipants, setAllParticipants] = useState<any[]>([]);
   const [enrolling, setEnrolling] = useState<Set<string>>(new Set());
   const [unenrolling, setUnenrolling] = useState<Set<string>>(new Set());
+  const [unenrollConfirm, setUnenrollConfirm] = useState<{ participantId: string; name: string } | null>(null);
   const [newParticipantForm, setNewParticipantForm] = useState({ full_name: "", phone: "", email: "" });
   const [creatingAndEnrolling, setCreatingAndEnrolling] = useState(false);
 
@@ -125,7 +126,7 @@ export default function TrainingDetailPage() {
       setNewParticipantForm({ full_name: "", phone: "", email: "" });
       await load();
     } else {
-      toast.error("Participant created but could not enroll — please enroll manually");
+      toast.error(t("trainings.enroll_created_not_enrolled"));
       await load();
     }
   }
@@ -150,12 +151,14 @@ export default function TrainingDetailPage() {
       toast.success(t("trainings.participant_enrolled"));
       await load();
     } else {
-      toast.error("Failed to enroll");
+      toast.error(t("trainings.enroll_failed"));
     }
   }
 
-  async function handleUnenroll(participantId: string, name: string) {
-    if (!confirm(`Remove "${name}" from this training?`)) return;
+  async function confirmUnenroll() {
+    if (!unenrollConfirm) return;
+    const { participantId } = unenrollConfirm;
+    setUnenrollConfirm(null);
     setUnenrolling((s) => new Set(s).add(participantId));
     const res = await fetch(`/api/trainings/${id}/enroll`, {
       method: "DELETE",
@@ -167,8 +170,12 @@ export default function TrainingDetailPage() {
       toast.success(t("trainings.participant_removed"));
       await load();
     } else {
-      toast.error("Failed to remove participant");
+      toast.error(t("trainings.unenroll_failed"));
     }
+  }
+
+  function handleUnenroll(participantId: string, name: string) {
+    setUnenrollConfirm({ participantId, name });
   }
 
   function getParticipantRate(participantId: string) {
@@ -400,6 +407,17 @@ export default function TrainingDetailPage() {
         title={t("trainings.delete_training")}
         message={t("trainings.delete_confirm")}
         confirmLabel={t("common.delete")}
+      />
+
+      {/* Unenroll participant modal */}
+      <ConfirmModal
+        open={!!unenrollConfirm}
+        onClose={() => setUnenrollConfirm(null)}
+        onConfirm={confirmUnenroll}
+        danger
+        title={t("trainings.unenroll_title")}
+        message={t("trainings.unenroll_message", { name: unenrollConfirm?.name ?? "" })}
+        confirmLabel={t("trainings.unenroll_confirm_label")}
       />
 
       {/* Add session modal */}

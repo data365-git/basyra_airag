@@ -378,5 +378,15 @@
   "trainings.late_threshold_global": "Использовать глобальный",
   "trainings.late_threshold_custom": "Настроить для этого тренинга",
   "trainings.late_threshold_hint": "Минут после начала сессии до отметки Опоздание (0 = отключено)",
-  "trainings.late_threshold_global_hint": "Будет применён системный порог по умолчанию (из Системных настроек)"
+  "trainings.late_threshold_global_hint": "Будет применён системный порог по умолчанию (из Системных настроек)",
+
+  "trainings.enroll_failed": "Не удалось добавить участника",
+  "trainings.unenroll_failed": "Не удалось удалить участника",
+  "trainings.enroll_created_not_enrolled": "Участник создан, но не удалось записать — запишите вручную",
+  "trainings.unenroll_title": "Удалить участника",
+  "trainings.unenroll_message": "Удалить \"{name}\" из этого тренинга? Записи о посещаемости сохранятся.",
+  "trainings.unenroll_confirm_label": "Удалить",
+
+  "participants.registered_count": "{n} зарегистрировано",
+  "participants.delete_message": "Удалить \"{name}\"? Все записи о посещаемости также будут удалены. Это действие нельзя отменить."
 }

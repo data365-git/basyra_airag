@@ -220,7 +220,7 @@ export default function ParticipantProfilePage() {
         loading={deleting}
         danger
         title={t("participants.delete_title")}
-        message={`Delete "${participant.full_name}"? This will also remove all their attendance records. This cannot be undone.`}
+        message={t("participants.delete_message", { name: participant.full_name })}
         confirmLabel={deleting ? t("common.deleting") : t("common.delete")}
       />
     </div>

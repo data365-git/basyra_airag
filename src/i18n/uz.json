@@ -378,5 +378,15 @@
   "trainings.late_threshold_global": "Global standartdan foydalanish",
   "trainings.late_threshold_custom": "Bu trening uchun alohida",
   "trainings.late_threshold_hint": "Sessiya boshlanganidan keyin necha daqiqadan so'ng 'Kech qoldi' belgilanadi (0 = o'chirilgan)",
-  "trainings.late_threshold_global_hint": "Tizim sozlamalaridagi global chegara qo'llaniladi"
+  "trainings.late_threshold_global_hint": "Tizim sozlamalaridagi global chegara qo'llaniladi",
+
+  "trainings.enroll_failed": "Ishtirokchini qo'shib bo'lmadi",
+  "trainings.unenroll_failed": "Ishtirokchini olib bo'lmadi",
+  "trainings.enroll_created_not_enrolled": "Ishtirokchi yaratildi, lekin ro'yxatga qo'shib bo'lmadi — qo'lda qo'shing",
+  "trainings.unenroll_title": "Ishtirokchini olib tashlash",
+  "trainings.unenroll_message": "\"{name}\" ni treningdan olib tashlansinmi? Davomat yozuvlari saqlanib qoladi.",
+  "trainings.unenroll_confirm_label": "Olib tashlash",
+
+  "participants.registered_count": "{n} ta ro'yxatda",
+  "participants.delete_message": "\"{name}\" o'chirilsinmi? Barcha davomat yozuvlari ham o'chiriladi. Bu amalni bekor qilib bo'lmaydi."
 }

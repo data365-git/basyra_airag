@@ -377,5 +377,15 @@
   "trainings.late_threshold_global": "Use global default",
   "trainings.late_threshold_custom": "Custom for this training",
   "trainings.late_threshold_hint": "Minutes after session start before a scan is marked Late (0 = disabled)",
-  "trainings.late_threshold_global_hint": "The system default threshold will apply (set in System Settings)"
+  "trainings.late_threshold_global_hint": "The system default threshold will apply (set in System Settings)",
+
+  "trainings.enroll_failed": "Failed to enroll participant",
+  "trainings.unenroll_failed": "Failed to remove participant",
+  "trainings.enroll_created_not_enrolled": "Participant created but could not enroll — please enroll manually",
+  "trainings.unenroll_title": "Remove Participant",
+  "trainings.unenroll_message": "Remove \"{name}\" from this training? Their attendance records will remain.",
+  "trainings.unenroll_confirm_label": "Remove",
+
+  "participants.registered_count": "{n} registered",
+  "participants.delete_message": "Delete \"{name}\"? This will also remove all their attendance records. This cannot be undone."
 }
