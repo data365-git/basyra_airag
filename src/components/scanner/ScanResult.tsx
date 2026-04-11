@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, AlertTriangle, XCircle, WifiOff } from "lucide-react";
+import { CheckCircle, AlertTriangle, XCircle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ScanResult } from "@/types";
 
@@ -39,13 +39,13 @@ export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps)
     },
     session_closed: {
       bg: "bg-gray-700",
-      icon: <WifiOff size={48} className="text-white" />,
+      icon: <Lock size={48} className="text-white" />,
       title: "Session Closed",
       textColor: "text-white",
     },
   };
 
-  const c = config[result.type];
+  const c = config[result.type as keyof typeof config] ?? config.unknown;
 
   return (
     <div className={cn(

@@ -1,14 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, CameraOff } from "lucide-react";
+import { Camera, CameraOff, RefreshCw } from "lucide-react";
 import { useTranslation } from "@/providers/LanguageProvider";
 
-type PermState = "idle" | "ready" | "requesting" | "active" | "denied" | "unsupported";
+type PermState =
+  | "idle"        // no active session — parent overlays show through
+  | "ready"       // session open, waiting for user tap
+  | "requesting"  // camera starting
+  | "active"      // camera running, scanning
+  | "denied"      // NotAllowedError — need iOS settings change
+  | "in_use"      // NotReadableError — camera locked by another app
+  | "unsupported"; // no camera hardware
 
 interface QRScannerProps {
   onScan: (token: string) => void;
-  active: boolean; // true when a session is selected AND open
+  active: boolean;
 }
 
 export function QRScanner({ onScan, active }: QRScannerProps) {
@@ -16,17 +23,15 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
   const [permState, setPermState] = useState<PermState>("idle");
   const { t } = useTranslation();
 
-  // Always call the latest version of onScan without restarting the scanner
+  // Keep onScan ref current so session changes don't require camera restart
   const onScanRef = useRef(onScan);
   useEffect(() => { onScanRef.current = onScan; }, [onScan]);
 
-  // React to session open/close changes
+  // Session open/close → transition states
   useEffect(() => {
     if (active) {
-      // Session became available → show tap-to-start if we're idle
       setPermState((prev) => (prev === "idle" ? "ready" : prev));
     } else {
-      // Session closed / deselected → immediately hide UI, then stop camera
       const scanner = scannerRef.current;
       scannerRef.current = null;
       setPermState("idle");
@@ -36,14 +41,12 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
     }
   }, [active]);
 
-  // Hard cleanup on unmount (e.g. navigating away)
+  // Hard cleanup on page navigation
   useEffect(() => {
     return () => {
       const scanner = scannerRef.current;
       scannerRef.current = null;
-      if (scanner) {
-        scanner.stop().catch(() => {});
-      }
+      if (scanner) scanner.stop().catch(() => {});
     };
   }, []);
 
@@ -61,41 +64,62 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
       scannerRef.current = scanner;
 
       await scanner.start(
-        { facingMode: "environment" },
+        // Soft preference — falls back to any camera if rear is unavailable/overconstrained
+        { facingMode: { ideal: "environment" } },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText: string) => {
-          // Always delegate to the latest onScan via ref
           onScanRef.current(decodedText.trim());
         },
-        undefined // suppress per-frame "not found" errors
+        undefined // suppress per-frame "QR not found" errors
       );
 
       setPermState("active");
     } catch (err: any) {
       console.error("Camera start failed:", err);
-      // Clean up partially-initialised scanner
       if (scannerRef.current) {
         try { scannerRef.current.clear(); } catch {}
         scannerRef.current = null;
       }
-      const msg = (err?.message ?? "").toLowerCase();
+
+      const name = (err?.name ?? "").toLowerCase();
+      const msg  = (err?.message ?? "").toLowerCase();
+
       if (
-        msg.includes("notfound") ||
+        name.includes("notallowed") ||
+        name.includes("permissiondenied") ||
+        msg.includes("permission") ||
+        msg.includes("denied")
+      ) {
+        setPermState("denied");
+      } else if (
+        name.includes("notfound") ||
+        name.includes("devicesnotfound") ||
         msg.includes("no devices") ||
         msg.includes("no camera") ||
         msg.includes("could not find")
       ) {
         setPermState("unsupported");
+      } else if (
+        name.includes("notreadable") ||
+        name.includes("abort") ||
+        msg.includes("in use") ||
+        msg.includes("busy")
+      ) {
+        setPermState("in_use");
       } else {
-        // NotAllowedError, OverconstrainedError, generic errors → treat as denied
+        // OverconstrainedError, unknown — retry without facingMode constraint
         setPermState("denied");
       }
     }
   }
 
-  // ── UI states ────────────────────────────────────────────────────────────────
+  async function retryCamera() {
+    // Reset to ready so user can tap again
+    setPermState("ready");
+  }
 
-  // idle → null lets the parent overlays ("select a session", etc.) show through
+  // ── UI ──────────────────────────────────────────────────────────────────────
+
   if (permState === "idle") return null;
 
   if (permState === "unsupported") {
@@ -108,18 +132,63 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
     );
   }
 
-  if (permState === "denied") {
+  if (permState === "in_use") {
     return (
       <div className="flex flex-col items-center justify-center h-full text-white text-center p-8 gap-4">
-        <CameraOff size={48} className="text-red-400" />
-        <p className="text-lg font-medium">{t("scanner.camera_denied_title")}</p>
-        <p className="text-sm text-white/60">{t("scanner.camera_denied_hint")}</p>
+        <CameraOff size={48} className="text-orange-400" />
+        <p className="text-lg font-medium">Camera is in use</p>
+        <p className="text-sm text-white/60">
+          Another app is using the camera. Close it and try again.
+        </p>
         <button
-          onClick={() => window.location.reload()}
-          className="mt-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+          onClick={retryCamera}
+          className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
         >
-          {t("scanner.reload_page")}
+          <RefreshCw size={14} /> Try Again
         </button>
+      </div>
+    );
+  }
+
+  if (permState === "denied") {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-white text-center p-6 gap-4 max-w-sm mx-auto">
+        <CameraOff size={48} className="text-red-400 shrink-0" />
+        <div>
+          <p className="text-lg font-semibold">Camera Access Blocked</p>
+          <p className="text-sm text-white/60 mt-1">
+            The browser has blocked camera access. Fix it in one of these ways:
+          </p>
+        </div>
+
+        {/* iOS Safari instructions */}
+        <div className="w-full bg-white/10 rounded-xl p-4 text-left text-sm space-y-1.5">
+          <p className="font-semibold text-white/90 mb-2">iPhone / iPad:</p>
+          <p className="text-white/70">1. Open <strong>Settings</strong></p>
+          <p className="text-white/70">2. Scroll down → <strong>Safari</strong></p>
+          <p className="text-white/70">3. Tap <strong>Camera</strong></p>
+          <p className="text-white/70">4. Find this site → set to <strong>Allow</strong></p>
+          <div className="border-t border-white/10 pt-2 mt-2">
+            <p className="text-white/50 text-xs">
+              Or tap <strong>AA</strong> in the address bar → Website Settings → Camera → Allow
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 w-full">
+          <button
+            onClick={() => { window.location.href = "app-settings:"; }}
+            className="flex-1 px-4 py-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors"
+          >
+            Open Settings
+          </button>
+          <button
+            onClick={retryCamera}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+          >
+            <RefreshCw size={14} /> Try Again
+          </button>
+        </div>
       </div>
     );
   }
@@ -144,7 +213,9 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
           <Camera size={64} className="text-blue-400" />
           <div>
             <p className="text-xl font-semibold">Tap to start camera</p>
-            <p className="text-sm text-white/60 mt-1">Point at a participant&apos;s QR code</p>
+            <p className="text-sm text-white/60 mt-1">
+              Point at a participant&apos;s QR code
+            </p>
           </div>
         </button>
       </div>
@@ -156,7 +227,7 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
     <div className="w-full h-full relative">
       <div id="qr-reader" className="w-full h-full" />
 
-      {/* Aiming brackets — live here so they only show when camera is actually running */}
+      {/* Aiming brackets — only visible while camera is actually running */}
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
         <div className="relative w-64 h-64">
           <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-400 rounded-tl-lg" />
