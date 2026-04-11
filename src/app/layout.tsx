@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "react-hot-toast";
+import { LanguageProvider } from "@/providers/LanguageProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -41,13 +42,15 @@ export default function RootLayout({
         <meta http-equiv="Permissions-Policy" content="camera=*" />
       </head>
       <body className="h-full bg-gray-50 font-sans antialiased">
-        {children}
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            duration: 3000,
-          }}
-        />
+        <LanguageProvider>
+          {children}
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              duration: 3000,
+            }}
+          />
+        </LanguageProvider>
       </body>
     </html>
   );
