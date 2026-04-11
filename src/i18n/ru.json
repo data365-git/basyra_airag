@@ -355,6 +355,9 @@
   "scanner.syncing": "Синхронизация...",
   "scanner.pending_sync": "{n} сканов ожидают синхронизации",
   "scanner.sync_now": "Синхронизировать",
+  "scanner.synced_count": "{n} сканов синхронизировано",
+  "scanner.sync_errors": "{n} сканов не удалось синхронизировать",
+  "scanner.sync_failed": "Синхронизация не удалась — повтор при подключении",
 
   "trainings.participants_count": "{n} участников",
 

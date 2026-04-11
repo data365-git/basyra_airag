@@ -75,6 +75,17 @@ export async function POST(request: Request) {
       }
     }
 
+    // Duplicate email check
+    if (email) {
+      const existing = await prisma.participant.findFirst({ where: { email } });
+      if (existing) {
+        return NextResponse.json(
+          { error: "A participant with this email already exists", field: "email" },
+          { status: 409 }
+        );
+      }
+    }
+
     const participant = await prisma.participant.create({
       data: {
         fullName: full_name,

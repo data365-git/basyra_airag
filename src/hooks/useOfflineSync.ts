@@ -4,9 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import { getPendingScans, markSynced, clearSynced, getPendingCount } from "@/lib/db/offline";
 import { useOnlineStatus } from "./useOnlineStatus";
+import { useTranslation } from "@/providers/LanguageProvider";
 
 export function useOfflineSync() {
   const isOnline = useOnlineStatus();
+  const { t } = useTranslation();
   const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
 
@@ -43,21 +45,17 @@ export function useOfflineSync() {
         await refreshCount();
 
         if (result.synced > 0) {
-          toast.success(
-            `${result.synced} offline scan${result.synced === 1 ? "" : "s"} synced successfully`
-          );
+          toast.success(t("scanner.synced_count", { n: String(result.synced) }));
         }
         if (result.errors?.length > 0) {
-          toast.error(
-            `${result.errors.length} scan${result.errors.length === 1 ? "" : "s"} failed to sync`
-          );
+          toast.error(t("scanner.sync_errors", { n: String(result.errors.length) }));
         }
       } else {
-        toast.error("Offline sync failed — will retry when online");
+        toast.error(t("scanner.sync_failed"));
       }
     } catch (error) {
       console.error("Sync failed:", error);
-      toast.error("Offline sync failed — will retry when online");
+      toast.error(t("scanner.sync_failed"));
     } finally {
       setSyncing(false);
     }

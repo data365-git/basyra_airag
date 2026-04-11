@@ -355,6 +355,9 @@
   "scanner.syncing": "Sinxronlanmoqda...",
   "scanner.pending_sync": "{n} ta skan sinxronlanishni kutmoqda",
   "scanner.sync_now": "Hozir sinxronlash",
+  "scanner.synced_count": "{n} ta skan sinxronlandi",
+  "scanner.sync_errors": "{n} ta skan sinxronlanmadi",
+  "scanner.sync_failed": "Sinxronlash xatosi — onlayn bo'lganda qayta uriniladi",
 
   "trainings.participants_count": "{n} ta ishtirokchi",
 

@@ -354,6 +354,9 @@
   "scanner.syncing": "Syncing...",
   "scanner.pending_sync": "{n} scans pending sync",
   "scanner.sync_now": "Sync now",
+  "scanner.synced_count": "{n} scans synced",
+  "scanner.sync_errors": "{n} scans failed to sync",
+  "scanner.sync_failed": "Sync failed — will retry when online",
 
   "trainings.participants_count": "{n} participants",
 
