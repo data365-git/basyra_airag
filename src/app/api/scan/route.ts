@@ -3,10 +3,8 @@ import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
 import { resolveLateThreshold, computeAttendanceStatus } from "@/lib/lateDetection";
-import {
-  getSessionState,
-  loadSystemWindowSettings,
-} from "@/lib/sessionWindow";
+import { getSessionState } from "@/lib/sessionWindow";
+import { loadSystemWindowSettings } from "@/lib/sessionWindow.server";
 
 export async function POST(request: Request) {
   const user = await getFullUser();

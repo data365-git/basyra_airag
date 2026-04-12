@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
-import {
-  getSessionState,
-  loadSystemWindowSettings,
-} from "@/lib/sessionWindow";
+import { getSessionState } from "@/lib/sessionWindow";
+import { loadSystemWindowSettings } from "@/lib/sessionWindow.server";
 
 export async function GET() {
   const user = await getFullUser();

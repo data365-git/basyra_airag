@@ -176,22 +176,5 @@ export function formatCountdown(totalSeconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-/**
- * Load system window settings from the DB.
- * Exported for use by API routes.
- */
-export async function loadSystemWindowSettings(): Promise<SystemWindowSettings> {
-  // Dynamic import to keep this file importable on client side without Prisma
-  const { default: prisma } = await import("@/lib/prisma");
-
-  const keys = ["scan_window_before_minutes", "scan_window_after_minutes", "timezone"];
-  const rows = await prisma.systemSetting.findMany({ where: { key: { in: keys } } });
-
-  const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-
-  return {
-    before:   parseInt(map["scan_window_before_minutes"] ?? String(DEFAULT_WINDOW_BEFORE), 10) || DEFAULT_WINDOW_BEFORE,
-    after:    parseInt(map["scan_window_after_minutes"]  ?? String(DEFAULT_WINDOW_AFTER),  10) || DEFAULT_WINDOW_AFTER,
-    timezone: map["timezone"] ?? TIMEZONE,
-  };
-}
+// NOTE: loadSystemWindowSettings() lives in sessionWindow.server.ts (server-only).
+// Do NOT import Prisma from this file — it is used by client components.
