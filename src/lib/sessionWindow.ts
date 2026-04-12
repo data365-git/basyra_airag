@@ -1,114 +1,48 @@
 /**
- * Session Scan Window — single source of truth for all session lifecycle logic.
+ * Session state — single source of truth.
  *
- * Rules:
- *   - Session state is ALWAYS derived from the clock, never stored.
- *   - isCancelled / forceClosed are the only stored overrides.
- *   - All time comparisons use Asia/Tashkent timezone.
- *   - Three-level window config: system default → training override.
+ * Rule: a session is scannable on its calendar day in Asia/Tashkent.
+ * No time-based open/close window — scanning is allowed any time that day.
+ * Late status is computed separately in lateDetection.ts.
  *
- * Session states:
- *   upcoming      — window not open yet (before opensAt)
- *   active        — scan window is open (opensAt ≤ now ≤ closesAt)
- *   ended         — window has closed naturally (now > closesAt)
- *   cancelled     — isCancelled = true
- *   force_closed  — forceClosed = true
+ * States:
+ *   active      — today (Tashkent) === session date, not cancelled
+ *   upcoming    — session date is in the future
+ *   ended       — session date is in the past
+ *   cancelled   — isCancelled = true (admin override)
+ *   force_closed — forceClosed = true (admin override)
  */
 
-// date-fns-tz is used for future DST-aware expansions; toZonedTime kept as potential helper
-// import { toZonedTime } from "date-fns-tz";
 import type { SessionState } from "@/types";
-
 export type { SessionState };
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-export const DEFAULT_WINDOW_BEFORE = 30;   // minutes before session start
-export const DEFAULT_WINDOW_AFTER  = 120;  // minutes after session start
-export const TIMEZONE = "Asia/Tashkent";
+export const TIMEZONE = "Asia/Tashkent"; // UTC+5, no DST
 
-export interface SessionWindowInput {
-  sessionDate: Date | string;  // DB Date or YYYY-MM-DD string
-  sessionTime: string;         // HH:MM
-  isCancelled?: boolean;
-  forceClosed?: boolean;
-  // Per-training overrides (null/undefined = use system default)
-  scanWindowBefore?: number | null;
-  scanWindowAfter?: number | null;
-}
-
-export interface SessionWindowResult {
-  /** When the scan window opens (windowBefore minutes before session start) */
-  opensAt: Date;
-  /** When the scan window closes (windowAfter minutes after session start) */
-  closesAt: Date;
-  /** The exact session start moment */
-  sessionDateTime: Date;
-  /** Effective window size used (resolved) */
-  windowBefore: number;
-  windowAfter: number;
-}
-
+// Kept for interface compatibility with existing callers; no longer drives logic
 export interface SystemWindowSettings {
   before: number;
   after: number;
   timezone: string;
 }
 
-// ─── Helper ──────────────────────────────────────────────────────────────────
-
-/**
- * Build a proper UTC Date from a session date + time, interpreting them as
- * local time in Asia/Tashkent (+05:00).
- *
- * The session date from Postgres is stored as a DB Date (midnight UTC).
- * The session time is a "HH:MM" string representing local (Tashkent) time.
- * We construct a string like "YYYY-MM-DDTHH:MM:00+05:00" and parse it.
- */
-function buildSessionDateTime(
-  sessionDate: Date | string,
-  sessionTime: string
-): Date {
-  // Get the date portion as YYYY-MM-DD
-  const datePart =
-    typeof sessionDate === "string"
-      ? sessionDate.slice(0, 10)
-      : sessionDate.toISOString().slice(0, 10);
-
-  // Asia/Tashkent is always UTC+5 (no DST)
-  const iso = `${datePart}T${sessionTime}:00+05:00`;
-  return new Date(iso);
+export interface SessionWindowInput {
+  sessionDate: string;   // "YYYY-MM-DD" plain text — no timezone conversion
+  sessionTime: string;   // "HH:MM" — for display and late calculation only
+  isCancelled?: boolean;
+  forceClosed?: boolean;
 }
 
-// ─── Core functions ───────────────────────────────────────────────────────────
+// ─── Core helpers ─────────────────────────────────────────────────────────────
 
 /**
- * Compute the concrete open/close timestamps for a session's scan window.
- *
- * Priority (highest first):
- *   1. Per-training override (scanWindowBefore / scanWindowAfter)
- *   2. System settings passed in `settings`
- *   3. Hard-coded defaults (DEFAULT_WINDOW_BEFORE / DEFAULT_WINDOW_AFTER)
+ * Today's date string in Asia/Tashkent (UTC+5, no DST).
+ * Safe to call on both server and client.
  */
-export function getSessionWindow(
-  session: SessionWindowInput,
-  settings?: Partial<SystemWindowSettings>
-): SessionWindowResult {
-  const windowBefore =
-    session.scanWindowBefore ??
-    settings?.before ??
-    DEFAULT_WINDOW_BEFORE;
-
-  const windowAfter =
-    session.scanWindowAfter ??
-    settings?.after ??
-    DEFAULT_WINDOW_AFTER;
-
-  const sessionDateTime = buildSessionDateTime(session.sessionDate, session.sessionTime);
-  const opensAt  = new Date(sessionDateTime.getTime() - windowBefore * 60_000);
-  const closesAt = new Date(sessionDateTime.getTime() + windowAfter  * 60_000);
-
-  return { opensAt, closesAt, sessionDateTime, windowBefore, windowAfter };
+export function getTodayInTashkent(now: Date = new Date()): string {
+  const localMs = now.getTime() + 5 * 60 * 60 * 1000;
+  return new Date(localMs).toISOString().slice(0, 10); // "YYYY-MM-DD"
 }
 
 /**
@@ -116,54 +50,28 @@ export function getSessionWindow(
  *
  * This is THE only place session state is computed — every feature calls this.
  *
- * @param session   - Session record (needs sessionDate, sessionTime, isCancelled, forceClosed)
- * @param settings  - System window settings (pulled from SystemSetting table)
- * @param now       - Reference time (default: new Date()); injectable for testing
+ * @param session  - Needs sessionDate ("YYYY-MM-DD"), isCancelled, forceClosed
+ * @param _settings - Ignored (kept for call-site compatibility)
+ * @param now      - Reference time (default: new Date()); injectable for testing
  */
 export function getSessionState(
   session: SessionWindowInput,
-  settings?: Partial<SystemWindowSettings>,
+  _settings?: Partial<SystemWindowSettings>,
   now: Date = new Date()
 ): SessionState {
-  // Overrides take priority over time
   if (session.isCancelled) return "cancelled";
   if (session.forceClosed) return "force_closed";
 
-  const { opensAt, closesAt } = getSessionWindow(session, settings);
+  const today = getTodayInTashkent(now);
+  const date  = session.sessionDate.slice(0, 10);
 
-  if (now < opensAt)  return "upcoming";
-  if (now <= closesAt) return "active";
+  if (date === today) return "active";
+  if (date >  today)  return "upcoming";
   return "ended";
 }
 
 /**
- * Convenience: seconds until the scan window opens (for countdown display).
- * Returns 0 if already past opensAt.
- */
-export function secondsUntilOpen(
-  session: SessionWindowInput,
-  settings?: Partial<SystemWindowSettings>,
-  now: Date = new Date()
-): number {
-  const { opensAt } = getSessionWindow(session, settings);
-  return Math.max(0, Math.floor((opensAt.getTime() - now.getTime()) / 1000));
-}
-
-/**
- * Convenience: seconds until the scan window closes (for countdown display).
- * Returns 0 if already past closesAt.
- */
-export function secondsUntilClose(
-  session: SessionWindowInput,
-  settings?: Partial<SystemWindowSettings>,
-  now: Date = new Date()
-): number {
-  const { closesAt } = getSessionWindow(session, settings);
-  return Math.max(0, Math.floor((closesAt.getTime() - now.getTime()) / 1000));
-}
-
-/**
- * Format seconds as MM:SS or HH:MM:SS string.
+ * Format seconds as MM:SS or HH:MM:SS.
  */
 export function formatCountdown(totalSeconds: number): string {
   const h = Math.floor(totalSeconds / 3600);

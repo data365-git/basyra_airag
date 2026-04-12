@@ -55,10 +55,9 @@ export function computeAttendanceStatus(
     return { status: "present", minutesLate: 0 };
   }
 
-  // Build session start time in UTC (sessionDate is stored as a date, sessionTime as "HH:MM")
-  const [year, month, day] = sessionDate.split("-").map(Number);
-  const [hour, minute] = sessionTime.split(":").map(Number);
-  const sessionStart = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  // Build session start time in Asia/Tashkent (UTC+5).
+  // sessionDate is "YYYY-MM-DD" and sessionTime is "HH:MM" — both local Tashkent time.
+  const sessionStart = new Date(`${sessionDate}T${sessionTime}:00+05:00`);
 
   const diffMs = scannedAt.getTime() - sessionStart.getTime();
   const minutesLate = Math.floor(diffMs / 60_000);

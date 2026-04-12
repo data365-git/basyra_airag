@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Edit2, Clock, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Edit2, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { QRScanner } from "@/components/scanner/QRScanner";
 import { ScanResultOverlay } from "@/components/scanner/ScanResult";
 import { OfflineBanner } from "@/components/scanner/OfflineBanner";
@@ -11,13 +11,7 @@ import { useServerStatus } from "@/hooks/useServerStatus";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
 import { formatTime } from "@/lib/utils";
-import {
-  getSessionState,
-  secondsUntilOpen,
-  formatCountdown,
-  DEFAULT_WINDOW_BEFORE,
-  DEFAULT_WINDOW_AFTER,
-} from "@/lib/sessionWindow";
+import { getSessionState } from "@/lib/sessionWindow";
 import type { ScanResult, SessionState } from "@/types";
 
 // ─── UI State machine ─────────────────────────────────────────────────────────
@@ -37,35 +31,17 @@ type ScannerUIState =
 // ─── Supporting types ─────────────────────────────────────────────────────────
 
 interface ResolvedSession {
-  id:                 string;
-  session_number:     number;
-  session_date:       string;
-  session_time:       string;
-  scan_window_before: number;
-  scan_window_after:  number;
-  isCancelled?:       boolean;
-  forceClosed?:       boolean;
+  id:             string;
+  session_number: number;
+  session_date:   string;
+  session_time:   string;
+  isCancelled?:   boolean;
+  forceClosed?:   boolean;
 }
 
 interface ResolvedTraining {
   id:   string;
   name: string;
-}
-
-// ─── Countdown ────────────────────────────────────────────────────────────────
-
-function CountdownBlock({ secondsLeft, label }: { secondsLeft: number; label: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="flex items-center gap-2 text-yellow-400 mb-1">
-        <Clock size={20} />
-        <span className="text-sm font-medium">{label}</span>
-      </div>
-      <div className="font-mono text-4xl font-bold text-white tracking-widest">
-        {formatCountdown(secondsLeft)}
-      </div>
-    </div>
-  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -89,7 +65,6 @@ export default function ScannerPage() {
 
   // Live session window state (ticker)
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
-  const [countdown,    setCountdown]    = useState(0);
   const [scanCount,    setScanCount]    = useState(0);
   const [scanResult,   setScanResult]   = useState<ScanResult | null>(null);
 
@@ -105,12 +80,10 @@ export default function ScannerPage() {
     if ((uiState === "override" || uiState === "needs_session") && selectedSession) {
       const found = allSessions.find((s: any) => s.id === selectedSession);
       if (found) return {
-        id:                 found.id,
-        session_number:     found.session_number,
-        session_date:       found.session_date,
-        session_time:       found.session_time,
-        scan_window_before: DEFAULT_WINDOW_BEFORE,
-        scan_window_after:  DEFAULT_WINDOW_AFTER,
+        id:             found.id,
+        session_number: found.session_number,
+        session_date:   found.session_date,
+        session_time:   found.session_time,
       };
     }
     return null;
@@ -193,29 +166,23 @@ export default function ScannerPage() {
     } catch {}
   }
 
-  // ── Session window ticker ─────────────────────────────────────────────────
+  // ── Session state ticker ──────────────────────────────────────────────────
+  // State only changes at midnight (date flip) — check every 60 s is enough.
   useEffect(() => {
     if (tickRef.current) clearInterval(tickRef.current);
     if (!effectiveSession) { setSessionState(null); return; }
 
-    const windowInput = {
-      sessionDate:      effectiveSession.session_date,
-      sessionTime:      effectiveSession.session_time,
-      isCancelled:      effectiveSession.isCancelled ?? false,
-      forceClosed:      effectiveSession.forceClosed  ?? false,
-      scanWindowBefore: effectiveSession.scan_window_before,
-      scanWindowAfter:  effectiveSession.scan_window_after,
+    const input = {
+      sessionDate: effectiveSession.session_date,
+      sessionTime: effectiveSession.session_time,
+      isCancelled: effectiveSession.isCancelled ?? false,
+      forceClosed: effectiveSession.forceClosed  ?? false,
     };
 
-    const tick = () => {
-      const now   = new Date();
-      const state = getSessionState(windowInput, undefined, now);
-      setSessionState(state);
-      setCountdown(state === "upcoming" ? secondsUntilOpen(windowInput, undefined, now) : 0);
-    };
+    const tick = () => setSessionState(getSessionState(input, undefined, new Date()));
 
     tick();
-    tickRef.current = setInterval(tick, 1000);
+    tickRef.current = setInterval(tick, 60_000);
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
   }, [effectiveSession?.id]);
 
@@ -406,7 +373,7 @@ export default function ScannerPage() {
     if (uiState === "no_active_training")  return "";
     if (uiState === "no_session_today")    return t("scanner.select_above");
     if (!effectiveSession)                 return t("scanner.select_above");
-    if (showUpcoming)                      return t("scanner.window_opening_soon");
+    if (showUpcoming)                      return t("scanner.session_future");
     if (showCancelled || showEnded)        return t("scanner.session_closed_hint");
     if (scanResult)                        return t("scanner.scan_next");
     return t("scanner.point_camera");
@@ -441,14 +408,13 @@ export default function ScannerPage() {
           </div>
         )}
 
-        {/* Upcoming: countdown */}
+        {/* Upcoming: future date */}
         {showUpcoming && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 px-6">
-            <CountdownBlock secondsLeft={countdown} label={t("scanner.opens_in")} />
-            {training && session && (
-              <p className="text-white/50 text-xs mt-6">
-                {training.name} · {t("scanner.session_short")} {session.session_number}
-              </p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 px-6 text-center">
+            <div className="text-4xl mb-4">📅</div>
+            <p className="text-white text-lg font-medium">{t("scanner.session_future")}</p>
+            {effectiveSession && (
+              <p className="text-white/50 text-sm mt-2">{effectiveSession.session_date}</p>
             )}
           </div>
         )}

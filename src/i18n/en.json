@@ -181,6 +181,7 @@
   "scanner.no_session_open": "Session is not open yet",
   "scanner.today": "Today",
   "scanner.no_session_today": "No session scheduled today",
+  "scanner.session_future": "This session is scheduled for a future date",
   "scanner.no_active_training": "No active training found",
   "scanner.select_to_scan": "Select a training and session",
   "scanner.select_to_scan_sub": "to start scanning",

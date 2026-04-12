@@ -3,8 +3,7 @@ import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
 import { resolveLateThreshold, computeAttendanceStatus } from "@/lib/lateDetection";
-import { getSessionState } from "@/lib/sessionWindow";
-import { loadSystemWindowSettings } from "@/lib/sessionWindow.server";
+import { getTodayInTashkent } from "@/lib/sessionWindow";
 
 export async function POST(request: Request) {
   const user = await getFullUser();
@@ -44,8 +43,6 @@ export async function POST(request: Request) {
           select: {
             lateThresholdMinutes: true,
             scheduleTime: true,
-            scanWindowBefore: true,
-            scanWindowAfter: true,
           },
         },
       },
@@ -59,31 +56,24 @@ export async function POST(request: Request) {
     const scanTime = scannedAt ? new Date(scannedAt) : new Date();
 
     // ── 4. Check session state ───────────────────────────────────────────────
-    const settings = await loadSystemWindowSettings();
-    const windowInput = {
-      sessionDate:      session.sessionDate,
-      sessionTime:      session.sessionTime,
-      isCancelled:      session.isCancelled,
-      forceClosed:      session.forceClosed,
-      scanWindowBefore: session.training.scanWindowBefore,
-      scanWindowAfter:  session.training.scanWindowAfter,
-    };
+    // A session is scannable any time on its calendar day (Asia/Tashkent).
+    // No time-based window — late vs. present is computed below from scan time.
 
-    const state = getSessionState(windowInput, settings, scanTime);
-
-    if (state === "cancelled") {
+    if (session.isCancelled) {
       return NextResponse.json({ type: "session_cancelled", message: "Session has been cancelled", participant });
     }
-    if (state === "force_closed") {
+    if (session.forceClosed) {
       return NextResponse.json({ type: "force_closed", message: "Session was closed by admin", participant });
     }
-    if (state === "upcoming") {
-      return NextResponse.json({ type: "not_started", message: "Scan window not open yet", participant });
+
+    const todayTashkent = getTodayInTashkent(scanTime);
+    if (session.sessionDate !== todayTashkent) {
+      if (session.sessionDate > todayTashkent) {
+        return NextResponse.json({ type: "not_started", message: "Session not scheduled yet", participant });
+      }
+      return NextResponse.json({ type: "window_closed", message: "Session was on a different day", participant });
     }
-    if (state === "ended") {
-      return NextResponse.json({ type: "window_closed", message: "Scan window has closed", participant });
-    }
-    // state === "active" — proceed
+    // Same calendar day — proceed
 
     // ── 5. Check enrollment ──────────────────────────────────────────────────
     const enrollment = await prisma.trainingParticipant.findUnique({

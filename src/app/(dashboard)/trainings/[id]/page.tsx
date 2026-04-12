@@ -14,7 +14,7 @@ import { ConfirmModal, Modal } from "@/components/ui/Modal";
 import { formatDate, formatTime, getAttendanceColorClass, formatScheduleDays } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
-import { getSessionState, DEFAULT_WINDOW_BEFORE, DEFAULT_WINDOW_AFTER } from "@/lib/sessionWindow";
+import { getSessionState } from "@/lib/sessionWindow";
 import type { SessionState } from "@/types";
 import toast from "react-hot-toast";
 
@@ -22,36 +22,23 @@ import toast from "react-hot-toast";
 
 function SessionStateBadge({
   session,
-  trainingWindowBefore,
-  trainingWindowAfter,
 }: {
   session: { session_date: string; session_time: string; is_cancelled?: boolean; force_closed?: boolean };
-  trainingWindowBefore?: number | null;
-  trainingWindowAfter?: number | null;
 }) {
   const [state, setState] = useState<SessionState | null>(null);
 
   useEffect(() => {
     const compute = () => {
-      const s = getSessionState(
-        {
-          sessionDate:      session.session_date,
-          sessionTime:      session.session_time,
-          isCancelled:      session.is_cancelled ?? false,
-          forceClosed:      session.force_closed ?? false,
-          scanWindowBefore: trainingWindowBefore,
-          scanWindowAfter:  trainingWindowAfter,
-        },
-        {
-          before: DEFAULT_WINDOW_BEFORE,
-          after:  DEFAULT_WINDOW_AFTER,
-        }
-      );
+      const s = getSessionState({
+        sessionDate: session.session_date,
+        sessionTime: session.session_time,
+        isCancelled: session.is_cancelled ?? false,
+        forceClosed: session.force_closed ?? false,
+      });
       setState(s);
     };
     compute();
-    // Only tick while session might be upcoming or active
-    const interval = setInterval(compute, 30_000);
+    const interval = setInterval(compute, 60_000);
     return () => clearInterval(interval);
   }, [session.session_date, session.session_time, session.is_cancelled, session.force_closed]);
 
@@ -379,11 +366,7 @@ export default function TrainingDetailPage() {
                   <Td className="font-medium">
                     <div className="flex items-center gap-2">
                       {t("trainings.session_number", { n: s.session_number })}
-                      <SessionStateBadge
-                        session={s}
-                        trainingWindowBefore={training?.scan_window_before}
-                        trainingWindowAfter={training?.scan_window_after}
-                      />
+                      <SessionStateBadge session={s} />
                     </div>
                   </Td>
                   <Td>{formatDate(s.session_date)}</Td>

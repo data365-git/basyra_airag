@@ -179,6 +179,7 @@
   "scanner.no_session_open": "Сессия ещё не открыта",
   "scanner.today": "Сегодня",
   "scanner.no_session_today": "Сегодня сессия не запланирована",
+  "scanner.session_future": "Эта сессия запланирована на будущую дату",
   "scanner.no_active_training": "Активный тренинг не найден",
   "scanner.select_to_scan": "Выберите тренинг и сессию",
   "scanner.select_to_scan_sub": "чтобы начать сканирование",

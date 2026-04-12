@@ -179,6 +179,7 @@
   "scanner.no_session_open": "Sessiya hali ochilmagan",
   "scanner.today": "Bugun",
   "scanner.no_session_today": "Bugun sessiya rejalashtirilmagan",
+  "scanner.session_future": "Bu sessiya kelajakdagi sana uchun rejalashtirilgan",
   "scanner.no_active_training": "Faol trening topilmadi",
   "scanner.select_to_scan": "Trening va sessiya tanlang",
   "scanner.select_to_scan_sub": "skaner boshlash uchun",
