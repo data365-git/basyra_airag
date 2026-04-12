@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, Check, X, GripVertical } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
@@ -23,6 +24,7 @@ interface CategoryForm {
 const emptyForm = (): CategoryForm => ({ name_uz: "", name_ru: "", name_en: "", sort_order: 0 });
 
 export default function CategoriesPage() {
+  const router = useRouter();
   const canCreate = usePermission("settings.categories", "create");
   const canEdit   = usePermission("settings.categories", "edit");
   const canDelete = usePermission("settings.categories", "delete");
@@ -70,6 +72,7 @@ export default function CategoriesPage() {
       setAddOpen(false);
       setAddForm(emptyForm());
       await load();
+      router.refresh();
     } else {
       const err = await res.json().catch(() => ({}));
       toast.error(err.error ?? t("settings.categories.add_failed"));
@@ -104,6 +107,7 @@ export default function CategoriesPage() {
       toast.success(t("settings.categories.saved"));
       setEditingId(null);
       await load();
+      router.refresh();
     } else {
       toast.error(t("settings.categories.save_failed"));
     }
@@ -122,6 +126,7 @@ export default function CategoriesPage() {
       toast.success(t("settings.categories.deleted"));
       setDeletingCat(null);
       await load();
+      router.refresh();
     } else {
       const err = await res.json().catch(() => ({}));
       toast.error(err.error ?? t("settings.categories.delete_failed"));

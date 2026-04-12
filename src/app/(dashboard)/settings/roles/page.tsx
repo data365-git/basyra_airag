@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
@@ -14,6 +15,7 @@ import type { Role } from "@/types";
 import toast from "react-hot-toast";
 
 export default function RolesPage() {
+  const router = useRouter();
   const canCreate = usePermission("settings.roles", "create");
   const canManage = usePermission("settings.roles", "edit");
   const { t } = useTranslation();
@@ -43,6 +45,7 @@ export default function RolesPage() {
       toast.success(t("settings.roles.deleted"));
       setDeletingRole(null);
       loadRoles();
+      router.refresh();
     } else {
       const err = await res.json().catch(() => ({}));
       toast.error(err.error ?? t("settings.roles.delete_failed"));
@@ -92,7 +95,7 @@ export default function RolesPage() {
         <RoleModal
           role={modalRole === "new" ? null : modalRole}
           onClose={() => setModalRole(null)}
-          onSaved={loadRoles}
+          onSaved={() => { loadRoles(); router.refresh(); }}
         />
       )}
 

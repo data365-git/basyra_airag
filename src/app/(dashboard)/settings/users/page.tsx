@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +17,7 @@ import type { StaffUser, Role } from "@/types";
 import toast from "react-hot-toast";
 
 export default function UsersPage() {
+  const router = useRouter();
   const canCreate = usePermission("settings.users", "create");
   const { t } = useTranslation();
   const [users, setUsers] = useState<StaffUser[]>([]);
@@ -62,6 +64,7 @@ export default function UsersPage() {
       const updated = await res.json();
       setUsers((prev) => prev.map((u) => u.id === updated.id ? updated : u));
       setEditingUser(null);
+      router.refresh();
     } else {
       toast.error(t("settings.users.update_failed"));
     }
@@ -92,6 +95,7 @@ export default function UsersPage() {
       setUsers((prev) => [...prev, newUser].sort((a, b) => a.name.localeCompare(b.name)));
       toast.success(t("settings.users.created"));
       setAddOpen(false);
+      router.refresh();
     } else {
       const err = await res.json().catch(() => ({}));
       if (err.fields) {
