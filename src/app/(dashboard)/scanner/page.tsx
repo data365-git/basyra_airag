@@ -289,23 +289,32 @@ export default function ScannerPage() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ token, sessionId: effectiveSession.id }),
       });
-      const data = (await res.json()) as ScanResult;
+      const data = await res.json();
+
+      // Server error (500, auth, etc.) — treat as unknown with server message
+      if (!res.ok && !data.type) {
+        setScanResult({ type: "unknown", message: data.message || data.error || t("scanner.network_error") });
+        navigator.vibrate?.([100, 50, 100]);
+        return;
+      }
+
+      const result = data as ScanResult;
 
       // Admin manually set this person absent — ask before overriding
-      if (data.type === "needs_confirmation" && data.participant && data.needs_confirmation) {
+      if (result.type === "needs_confirmation" && result.participant && result.needs_confirmation) {
         setPendingOverride({
           token,
           sessionId:   effectiveSession.id,
-          participant: data.participant,
-          setByAdmin:  data.needs_confirmation.setByAdmin,
-          setAt:       data.needs_confirmation.setAt,
+          participant: result.participant,
+          setByAdmin:  result.needs_confirmation.setByAdmin,
+          setAt:       result.needs_confirmation.setAt,
         });
         return; // no result overlay, no vibration — not an error
       }
 
-      setScanResult(data);
+      setScanResult(result);
 
-      if (data.type === "success" || data.type === "late") {
+      if (result.type === "success" || result.type === "late") {
         navigator.vibrate?.(200);
         setScanCount((c) => c + 1);
       } else {
