@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
+import { getTodayInTashkent } from "@/lib/sessionWindow";
 
 // Always hit the DB fresh — never serve a cached sessions list with stale UUIDs
 export const dynamic = "force-dynamic";
@@ -30,13 +31,15 @@ export async function GET(request: Request) {
 
     return NextResponse.json(
       sessions.map((s) => ({
-        id: s.id,
-        training_id: s.trainingId,
+        id:             s.id,
+        training_id:    s.trainingId,
         session_number: s.sessionNumber,
-        session_date: s.sessionDate,
-        session_time: s.sessionTime,
-        status: s.status,
-        created_at: s.createdAt,
+        session_date:   s.sessionDate,
+        session_time:   s.sessionTime,
+        status:         s.status,
+        is_cancelled:   s.isCancelled,
+        force_closed:   s.forceClosed,
+        created_at:     s.createdAt,
       }))
     );
   } catch (e) {
@@ -75,7 +78,7 @@ export async function POST(request: Request) {
     });
     const nextNumber = (last?.sessionNumber ?? 0) + 1;
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getTodayInTashkent();
     const status = session_date < todayStr ? "closed" : "upcoming";
 
     const session = await prisma.session.create({
@@ -89,13 +92,15 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({
-      id: session.id,
-      training_id: session.trainingId,
+      id:             session.id,
+      training_id:    session.trainingId,
       session_number: session.sessionNumber,
-      session_date: session.sessionDate,
-      session_time: session.sessionTime,
-      status: session.status,
-      created_at: session.createdAt,
+      session_date:   session.sessionDate,
+      session_time:   session.sessionTime,
+      status:         session.status,
+      is_cancelled:   session.isCancelled,
+      force_closed:   session.forceClosed,
+      created_at:     session.createdAt,
     }, { status: 201 });
   } catch (e) {
     console.error("sessions POST error:", e);
