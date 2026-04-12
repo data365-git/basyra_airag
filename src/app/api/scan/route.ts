@@ -130,27 +130,16 @@ export async function POST(request: Request) {
     });
 
     if (existing) {
-      const { status: existingStatus, method: existingMethod } = existing;
+      const { status: existingStatus } = existing;
 
-      // ── True QR duplicate — person already physically scanned ────────────
-      if (
-        (existingStatus === "present" || existingStatus === "late") &&
-        existingMethod === "qr"
-      ) {
+      // ── Person is already confirmed present or late — true duplicate ──────
+      // Block regardless of method: status is the ground truth.
+      if (existingStatus === "present" || existingStatus === "late") {
         return NextResponse.json({
           type: "already_recorded",
           message: "Already scanned",
           participant,
           scannedAt: existing.scannedAt,
-        });
-      }
-
-      // ── Admin already marked present manually — don't overwrite ──────────
-      if (existingStatus === "present" && existingMethod === "manual") {
-        return NextResponse.json({
-          type: "already_recorded",
-          message: "Already marked present by administrator",
-          participant,
         });
       }
 
@@ -163,7 +152,9 @@ export async function POST(request: Request) {
         });
       }
 
-      // ── Absent (system auto-fill, manual admin, or legacy) — QR wins ──────
+      // ── Absent (any source: auto-fill, manual admin, legacy) — QR wins ────
+      // This covers: absent set by admin, absent auto-filled at session close,
+      // and any legacy record whose method field is unreliable.
       // Update the existing record in-place; write audit trail.
       const isOfflineSync = !!scannedAt;
 
