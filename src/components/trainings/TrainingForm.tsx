@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { DAYS_OF_WEEK, DAYS_SHORT, WEEK_DISPLAY_ORDER, generateSessionDates, cn } from "@/lib/utils";
+import { DAYS_OF_WEEK_UZ, DAYS_SHORT_UZ, WEEK_DISPLAY_ORDER, generateSessionDates, cn } from "@/lib/utils";
 import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 
@@ -74,9 +74,9 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
   const scheduleSummary = useMemo(() => {
     const sorted = [...form.schedule_days].sort((a, b) => a - b);
     if (sorted.length === 0) return "";
-    if (sorted.length === 1) return `every ${DAYS_OF_WEEK[sorted[0]]}`;
-    if (sorted.length === 2) return `every ${DAYS_OF_WEEK[sorted[0]]} & ${DAYS_OF_WEEK[sorted[1]]}`;
-    return `every ${sorted.map((d) => DAYS_SHORT[d]).join(", ")}`;
+    if (sorted.length === 1) return `har ${DAYS_OF_WEEK_UZ[sorted[0]]}`;
+    if (sorted.length === 2) return `har ${DAYS_OF_WEEK_UZ[sorted[0]]} & ${DAYS_OF_WEEK_UZ[sorted[1]]}`;
+    return `har ${sorted.map((d) => DAYS_SHORT_UZ[d]).join(", ")}`;
   }, [form.schedule_days]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -186,7 +186,7 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
                     : "bg-white border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600"
                 )}
               >
-                {DAYS_SHORT[dayIndex]}
+                {DAYS_SHORT_UZ[dayIndex]}
               </button>
             );
           })}

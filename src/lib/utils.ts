@@ -14,21 +14,35 @@ export const DAYS_OF_WEEK = [
 
 export const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** Uzbek short day names indexed by JS getDay() (0 = Sunday, 1 = Monday … 6 = Saturday). */
+export const DAYS_SHORT_UZ = ["Ya", "Du", "Se", "Ch", "Pa", "Ju", "Sh"];
+
+/** Uzbek full day names indexed by JS getDay() (0 = Sunday, 1 = Monday … 6 = Saturday). */
+export const DAYS_OF_WEEK_UZ = [
+  "Yakshanba",
+  "Dushanba",
+  "Seshanba",
+  "Chorshanba",
+  "Payshanba",
+  "Juma",
+  "Shanba",
+];
+
 /** Display order for day-picker UIs: Monday first, Sunday last.
  *  Values are getDay() indices — unchanged, only the iteration order changes. */
 export const WEEK_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
-/** Format an array of day indices into a human-readable string.
- *  [6] → "Saturday"
- *  [0, 6] → "Sunday & Saturday"
- *  [1, 3, 5] → "Mon, Wed, Fri"
+/** Format an array of day indices into a human-readable Uzbek string.
+ *  [6] → "Shanba"
+ *  [0, 6] → "Yakshanba & Shanba"
+ *  [1, 3, 5] → "Du, Ch, Ju"
  */
 export function formatScheduleDays(days: number[]): string {
   if (!days || days.length === 0) return "—";
   const sorted = [...days].sort((a, b) => a - b);
-  if (sorted.length === 1) return DAYS_OF_WEEK[sorted[0]];
-  if (sorted.length === 2) return `${DAYS_OF_WEEK[sorted[0]]} & ${DAYS_OF_WEEK[sorted[1]]}`;
-  return sorted.map((d) => DAYS_SHORT[d]).join(", ");
+  if (sorted.length === 1) return DAYS_OF_WEEK_UZ[sorted[0]];
+  if (sorted.length === 2) return `${DAYS_OF_WEEK_UZ[sorted[0]]} & ${DAYS_OF_WEEK_UZ[sorted[1]]}`;
+  return sorted.map((d) => DAYS_SHORT_UZ[d]).join(", ");
 }
 
 export function cn(...inputs: ClassValue[]) {
