@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Camera, CameraOff, RefreshCw, ImageIcon } from "lucide-react";
+import { Camera, CameraOff, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/providers/LanguageProvider";
 
@@ -95,15 +95,19 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) { rafRef.current = requestAnimationFrame(scanLoop); return; }
 
-    ctx.drawImage(video, 0, 0, w, h);
-    const imageData = ctx.getImageData(0, 0, w, h);
+    try {
+      ctx.drawImage(video, 0, 0, w, h);
+      const imageData = ctx.getImageData(0, 0, w, h);
 
-    import("jsqr").then(({ default: jsQR }) => {
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "dontInvert",
-      });
-      if (code?.data) onScanRef.current(code.data.trim());
-    }).catch(() => {});
+      import("jsqr").then(({ default: jsQR }) => {
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "dontInvert",
+        });
+        if (code?.data) onScanRef.current(code.data.trim());
+      }).catch(() => {});
+    } catch {
+      // frame failed (low memory / video not ready on iOS) — skip silently
+    }
 
     if (mountedRef.current) {
       rafRef.current = requestAnimationFrame(scanLoop);
@@ -187,46 +191,9 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
     }
   }
 
-  async function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const bitmap = await createImageBitmap(file);
-    const canvas = document.createElement("canvas");
-    canvas.width  = bitmap.width;
-    canvas.height = bitmap.height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(bitmap, 0, 0);
-    const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
-    const { default: jsQR } = await import("jsqr");
-    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "dontInvert",
-    });
-    if (code?.data) onScanRef.current(code.data.trim());
-  }
-
   function retryCamera() {
     setPermState("ready");
   }
-
-  // ── Overlay components ────────────────────────────────────────────────────
-
-  const FileCaptureFallback = ({ label }: { label: string }) => (
-    <div className="w-full max-w-xs border-t border-white/10 pt-4 mt-2">
-      <p className="text-xs text-white/40 mb-2 text-center">{label}</p>
-      <label className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors cursor-pointer">
-        <ImageIcon size={14} />
-        {t("scanner.take_photo")}
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleFileInput}
-        />
-      </label>
-    </div>
-  );
 
   // ── Single return — video is ALWAYS in the DOM ────────────────────────────
   // This is the fix: permState === "requesting" used to render a spinner with
@@ -274,7 +241,6 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
               <p className="text-sm text-white/60 mt-1">{t("scanner.point_camera")}</p>
             </div>
           </button>
-          <FileCaptureFallback label={t("scanner.file_fallback_hint")} />
         </div>
       )}
 
@@ -299,7 +265,6 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
           >
             <RefreshCw size={14} /> {t("scanner.try_again")}
           </button>
-          <FileCaptureFallback label={t("scanner.file_fallback_hint")} />
         </div>
       )}
 
@@ -312,7 +277,7 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
         </div>
       )}
 
-      {/* Denied — iOS instructions + file capture fallback */}
+      {/* Denied — iOS instructions */}
       {permState === "denied" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center p-6 gap-4 overflow-y-auto">
           <CameraOff size={48} className="text-red-400 shrink-0" />
@@ -350,8 +315,6 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
               <RefreshCw size={14} /> {t("scanner.try_again")}
             </button>
           </div>
-
-          <FileCaptureFallback label={t("scanner.file_fallback_hint")} />
         </div>
       )}
     </div>

@@ -1,33 +1,33 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Edit2, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Check, CheckCircle, XCircle, Loader2, ChevronDown } from "lucide-react";
 import { QRScanner } from "@/components/scanner/QRScanner";
 import { ScanResultOverlay } from "@/components/scanner/ScanResult";
 import { ConfirmOverrideSheet } from "@/components/scanner/ConfirmOverrideSheet";
+import { ScannerBottomSheet } from "@/components/scanner/ScannerBottomSheet";
 import { OfflineBanner } from "@/components/scanner/OfflineBanner";
 import { queueScan } from "@/lib/db/offline";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useServerStatus } from "@/hooks/useServerStatus";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
-import { formatTime } from "@/lib/utils";
-import { getSessionState } from "@/lib/sessionWindow";
+import { formatTime, cn } from "@/lib/utils";
+import { getSessionState, getTodayInTashkent } from "@/lib/sessionWindow";
 import type { ScanResult, SessionState, Participant } from "@/types";
 
 // ─── UI State machine ─────────────────────────────────────────────────────────
-// Every render path is driven by one of these states.
-// Dropdowns only appear in: needs_training, needs_session, override.
-// Everything else renders exactly one piece of UI — no conditionals stacking.
+// Drives which overlays appear and whether the camera is active.
+// Pill buttons are always rendered — state only affects their appearance.
 
 type ScannerUIState =
   | "loading"            // fetching context on mount
-  | "auto_ready"         // chip + camera (zero interaction required)
-  | "needs_training"     // multiple trainings → show training dropdown
-  | "needs_session"      // training chosen, no today session → show session dropdown
+  | "auto_ready"         // auto-selected training + session (zero interaction required)
+  | "needs_training"     // multiple trainings, none selected yet
+  | "needs_session"      // training chosen, no today session / none selected
   | "no_session_today"   // one training, nothing scheduled today
   | "no_active_training" // no active/upcoming training at all
-  | "override";          // user tapped the pencil icon → full manual dropdowns
+  | "override";          // user manually changed training or session
 
 // ─── Supporting types ─────────────────────────────────────────────────────────
 
@@ -58,11 +58,15 @@ export default function ScannerPage() {
   const [training, setTraining]       = useState<ResolvedTraining | null>(null);
   const [session,  setSession]        = useState<ResolvedSession  | null>(null);
 
-  // For needs_training / override: all available trainings + their sessions
+  // Manual selections (used when user overrides auto-select)
   const [allTrainings,     setAllTrainings]     = useState<any[]>([]);
   const [allSessions,      setAllSessions]      = useState<any[]>([]);
   const [selectedTraining, setSelectedTraining] = useState("");
   const [selectedSession,  setSelectedSession]  = useState("");
+
+  // Bottom sheet open state
+  const [trainingSheetOpen, setTrainingSheetOpen] = useState(false);
+  const [sessionSheetOpen,  setSessionSheetOpen]  = useState(false);
 
   // Live session window state (ticker)
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
@@ -72,8 +76,8 @@ export default function ScannerPage() {
   // Pending override: when API returns needs_confirmation, store context here
   // to re-send with forceOverride=true if operator confirms.
   const [pendingOverride, setPendingOverride] = useState<{
-    token:      string;
-    sessionId:  string;
+    token:       string;
+    sessionId:   string;
     participant: Participant;
     setByAdmin?: string | null;
     setAt?:      string | null;
@@ -83,20 +87,29 @@ export default function ScannerPage() {
   const lastScannedTimeRef = useRef<number>(0);
   const tickRef            = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Effective session (what the camera scans for) ─────────────────────────
-  // In auto_ready: the resolved session
-  // In override / needs_session: the manually chosen session
+  // ── Effective training / session ──────────────────────────────────────────
+  // Manual choice (selectedTraining/Session) wins; auto-selected falls back.
+  const effectiveTraining: ResolvedTraining | null = (() => {
+    if (selectedTraining) {
+      const found = allTrainings.find((tr: any) => tr.id === selectedTraining);
+      if (found) return { id: found.id, name: found.name };
+    }
+    return training; // from context (auto_ready)
+  })();
+
   const effectiveSession: ResolvedSession | null = (() => {
-    if (uiState === "auto_ready" && session) return session;
-    if ((uiState === "override" || uiState === "needs_session") && selectedSession) {
+    if (selectedSession) {
       const found = allSessions.find((s: any) => s.id === selectedSession);
       if (found) return {
         id:             found.id,
         session_number: found.session_number,
         session_date:   found.session_date,
         session_time:   found.session_time,
+        isCancelled:    found.is_cancelled,
+        forceClosed:    found.force_closed,
       };
     }
+    if (uiState === "auto_ready" && session) return session;
     return null;
   })();
 
@@ -114,8 +127,8 @@ export default function ScannerPage() {
       fetch("/api/trainings").then((r) => r.json()),
     ]);
 
-    const context   = contextRes.status   === "fulfilled" ? contextRes.value   : null;
-    const trainings = trainingsRes.status === "fulfilled" ? trainingsRes.value  : [];
+    const context   = contextRes.status   === "fulfilled" ? contextRes.value  : null;
+    const trainings = trainingsRes.status === "fulfilled" ? trainingsRes.value : [];
 
     const activeTrainings = (Array.isArray(trainings) ? trainings : []).filter(
       (tr: any) => tr.status === "active" || tr.status === "upcoming"
@@ -125,6 +138,11 @@ export default function ScannerPage() {
     // ── State machine decision ─────────────────────────────────────────────
     if (context?.autoSelected) {
       // Perfect: one training, one session today — go straight to ready
+      // Guard against malformed API response (missing training/session fields)
+      if (!context.training || !context.session) {
+        setUiState("no_active_training");
+        return;
+      }
       setTraining(context.training);
       setSession(context.session);
       setUiState("auto_ready");
@@ -139,24 +157,18 @@ export default function ScannerPage() {
 
     if (activeTrainings.length === 1) {
       // One training but context API didn't find today's session
-      setTraining({ id: activeTrainings[0].id, name: activeTrainings[0].name });
-      setSelectedTraining(activeTrainings[0].id);
+      const tr = activeTrainings[0];
+      setTraining({ id: tr.id, name: tr.name });
+      setSelectedTraining(tr.id);
       setUiState("no_session_today");
-      // Preload sessions for the override dropdown
-      loadSessionsForTraining(activeTrainings[0].id);
+      // Preload sessions for the session sheet
+      loadSessionsForTraining(tr.id);
       return;
     }
 
     // Multiple active trainings — let admin pick
     setUiState("needs_training");
   }
-
-  // ── When training is chosen in needs_training / override ─────────────────
-  useEffect(() => {
-    if (selectedTraining && (uiState === "needs_training" || uiState === "override")) {
-      loadSessionsForTraining(selectedTraining);
-    }
-  }, [selectedTraining]);
 
   async function loadSessionsForTraining(trainingId: string) {
     try {
@@ -165,7 +177,7 @@ export default function ScannerPage() {
       setAllSessions(list);
 
       // Auto-select today's session if available
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getTodayInTashkent();
       const todaySession = list.find((s: any) => s.session_date === today);
       if (todaySession) {
         setSelectedSession(todaySession.id);
@@ -213,13 +225,37 @@ export default function ScannerPage() {
     } catch {}
   }
 
-  // ── Enter override mode (pencil icon) ─────────────────────────────────────
-  function enterOverride() {
-    if (training) setSelectedTraining(training.id);
-    if (session)  setSelectedSession(session.id);
-    if (training) loadSessionsForTraining(training.id);
-    setUiState("override");
+  // ── Training sheet handlers ───────────────────────────────────────────────
+  function handleSelectTraining(id: string) {
+    setTrainingSheetOpen(false);
+    setSelectedTraining(id);
+    setSelectedSession("");
+    setAllSessions([]);
     setScanResult(null);
+    // Move out of auto_ready so effectiveSession uses selectedSession
+    if (uiState === "auto_ready") setUiState("override");
+    else if (uiState === "no_session_today") setUiState("override");
+    else setUiState("override");
+    loadSessionsForTraining(id);
+  }
+
+  // ── Session sheet handlers ────────────────────────────────────────────────
+  async function openSessionSheet() {
+    const tid = selectedTraining || training?.id;
+    if (tid && allSessions.length === 0) {
+      await loadSessionsForTraining(tid);
+    }
+    setSessionSheetOpen(true);
+  }
+
+  function handleSelectSession(id: string) {
+    setSessionSheetOpen(false);
+    setSelectedSession(id);
+    setScanResult(null);
+    // Move out of auto_ready so effectiveSession uses selectedSession
+    if (uiState === "auto_ready" || uiState === "no_session_today") {
+      setUiState("override");
+    }
   }
 
   // ── Scan handler ──────────────────────────────────────────────────────────
@@ -259,10 +295,10 @@ export default function ScannerPage() {
       if (data.type === "needs_confirmation" && data.participant && data.needs_confirmation) {
         setPendingOverride({
           token,
-          sessionId:  effectiveSession.id,
+          sessionId:   effectiveSession.id,
           participant: data.participant,
-          setByAdmin: data.needs_confirmation.setByAdmin,
-          setAt:      data.needs_confirmation.setAt,
+          setByAdmin:  data.needs_confirmation.setByAdmin,
+          setAt:       data.needs_confirmation.setAt,
         });
         return; // no result overlay, no vibration — not an error
       }
@@ -329,106 +365,28 @@ export default function ScannerPage() {
   const showCancelled = !!effectiveSession && (sessionState === "cancelled" || sessionState === "force_closed");
   const showEnded     = !!effectiveSession && sessionState === "ended";
 
-  // ── Selector bar: ONE exclusive render path per uiState ──────────────────
-  function renderSelectorBar() {
-    switch (uiState) {
-      case "loading":
-        return (
-          <div className="flex-1 flex items-center justify-center gap-2 text-white/50 text-sm py-1">
-            <Loader2 size={14} className="animate-spin" />
-            {t("common.loading")}
-          </div>
-        );
+  // ── Pill button labels ────────────────────────────────────────────────────
+  const trainingLabel = effectiveTraining?.name ?? t("scanner.select_training");
+  const trainingSelected = !!effectiveTraining;
 
-      case "auto_ready":
-        return (
-          <div className="flex-1 flex items-center justify-between bg-blue-600/30 border border-blue-500/50 rounded-lg px-3 py-2">
-            <div className="min-w-0">
-              <p className="text-white text-sm font-medium truncate">{training?.name}</p>
-              <p className="text-blue-300 text-xs">
-                {t("scanner.today")} · {formatTime(session?.session_time ?? "")}
-              </p>
-            </div>
-            <button
-              onClick={enterOverride}
-              className="ml-2 p-1.5 rounded-md hover:bg-white/10 text-blue-300 hover:text-white transition-colors shrink-0"
-              aria-label="Override selection"
-            >
-              <Edit2 size={14} />
-            </button>
-          </div>
-        );
+  const sessionLabel = effectiveSession
+    ? `${t("trainings.session_number", { n: String(effectiveSession.session_number) })} · ${formatTime(effectiveSession.session_time)}`
+    : uiState === "no_session_today"
+    ? t("scanner.no_session_today")
+    : t("scanner.select_session");
+  const sessionSelected = !!effectiveSession;
 
-      case "no_session_today":
-        return (
-          <div className="flex-1 flex items-center justify-between bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2">
-            <div className="min-w-0">
-              <p className="text-white text-sm font-medium truncate">{training?.name}</p>
-              <p className="text-gray-400 text-xs">{t("scanner.no_session_today")}</p>
-            </div>
-            <button
-              onClick={enterOverride}
-              className="ml-2 p-1.5 rounded-md hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
-              aria-label="Pick session manually"
-            >
-              <Edit2 size={14} />
-            </button>
-          </div>
-        );
+  const noTrainingForSession = !effectiveTraining;
 
-      case "no_active_training":
-        return (
-          <div className="flex-1 flex items-center justify-center text-gray-400 text-sm py-1">
-            {t("scanner.no_active_training")}
-          </div>
-        );
-
-      case "needs_training":
-      case "needs_session":
-      case "override":
-        return (
-          <>
-            <select
-              value={selectedTraining}
-              onChange={(e) => {
-                setSelectedTraining(e.target.value);
-                setSelectedSession("");
-                setScanResult(null);
-              }}
-              className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">{t("scanner.select_training")}</option>
-              {allTrainings.map((tr: any) => (
-                <option key={tr.id} value={tr.id}>{tr.name}</option>
-              ))}
-            </select>
-            <select
-              value={selectedSession}
-              onChange={(e) => { setSelectedSession(e.target.value); setScanResult(null); }}
-              disabled={!selectedTraining}
-              className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              <option value="">{t("scanner.select_session")}</option>
-              {allSessions.map((s: any) => (
-                <option key={s.id} value={s.id}>
-                  {t("trainings.session_number", { n: s.session_number })} — {s.session_date}
-                </option>
-              ))}
-            </select>
-          </>
-        );
-    }
-  }
+  const todayStr = getTodayInTashkent();
 
   // ── Hint bar text ─────────────────────────────────────────────────────────
   function hintText() {
-    if (uiState === "loading")             return "";
-    if (uiState === "no_active_training")  return "";
-    if (uiState === "no_session_today")    return t("scanner.select_above");
-    if (!effectiveSession)                 return t("scanner.select_above");
-    if (showUpcoming)                      return t("scanner.session_future");
-    if (showCancelled || showEnded)        return t("scanner.session_closed_hint");
-    if (scanResult)                        return t("scanner.scan_next");
+    if (uiState === "loading" || uiState === "no_active_training") return "";
+    if (!effectiveSession)          return t("scanner.select_session");
+    if (showUpcoming)               return t("scanner.session_future");
+    if (showCancelled || showEnded) return t("scanner.session_closed_hint");
+    if (scanResult)                 return t("scanner.scan_next");
     return t("scanner.point_camera");
   }
 
@@ -436,9 +394,50 @@ export default function ScannerPage() {
     <div className="fixed inset-0 z-40 lg:relative lg:z-auto lg:inset-auto flex flex-col bg-gray-900 lg:h-[calc(100vh-2rem)] lg:rounded-2xl overflow-hidden">
       <OfflineBanner />
 
-      {/* ── Selector bar — exactly ONE path renders ─────────────────────── */}
+      {/* ── Selector bar — always two pill buttons ───────────────────────── */}
       <div className="bg-gray-800 px-4 py-3 flex gap-2 z-10">
-        {renderSelectorBar()}
+        {uiState === "loading" ? (
+          <div className="flex-1 flex items-center justify-center gap-2 text-white/50 text-sm py-1">
+            <Loader2 size={14} className="animate-spin" />
+            {t("common.loading")}
+          </div>
+        ) : uiState === "no_active_training" ? (
+          <div className="flex-1 flex items-center justify-center text-gray-400 text-sm py-1">
+            {t("scanner.no_active_training")}
+          </div>
+        ) : (
+          <>
+            {/* Training pill */}
+            <button
+              onClick={() => setTrainingSheetOpen(true)}
+              className={cn(
+                "flex-1 flex items-center justify-between gap-2 px-3 py-2 rounded-full border text-sm font-medium transition-colors min-w-0",
+                trainingSelected
+                  ? "bg-blue-600/30 border-blue-500/50 text-white"
+                  : "bg-gray-700/60 border-gray-600 text-white/60"
+              )}
+            >
+              <span className="truncate min-w-0">{trainingLabel}</span>
+              <ChevronDown size={14} className="shrink-0 text-white/50" />
+            </button>
+
+            {/* Session pill */}
+            <button
+              onClick={openSessionSheet}
+              disabled={noTrainingForSession}
+              className={cn(
+                "flex-1 flex items-center justify-between gap-2 px-3 py-2 rounded-full border text-sm font-medium transition-colors min-w-0",
+                sessionSelected
+                  ? "bg-blue-600/30 border-blue-500/50 text-white"
+                  : "bg-gray-700/60 border-gray-600 text-white/60",
+                "disabled:opacity-40 disabled:cursor-not-allowed"
+              )}
+            >
+              <span className="truncate min-w-0">{sessionLabel}</span>
+              <ChevronDown size={14} className="shrink-0 text-white/50" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* ── Camera area ──────────────────────────────────────────────────── */}
@@ -446,7 +445,7 @@ export default function ScannerPage() {
         <QRScanner onScan={handleScan} active={cameraActive} />
 
         {/* Idle: no effective session */}
-        {!effectiveSession && uiState !== "loading" && (
+        {!effectiveSession && uiState !== "loading" && uiState !== "no_active_training" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80 px-6">
             <div className="text-4xl mb-4">📱</div>
             <p className="text-lg font-medium">{t("scanner.select_to_scan")}</p>
@@ -458,6 +457,14 @@ export default function ScannerPage() {
         {uiState === "loading" && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80">
             <Loader2 size={32} className="animate-spin text-white/40" />
+          </div>
+        )}
+
+        {/* No active training */}
+        {uiState === "no_active_training" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80 px-6">
+            <div className="text-4xl mb-4">📋</div>
+            <p className="text-lg font-medium">{t("scanner.no_active_training")}</p>
           </div>
         )}
 
@@ -516,6 +523,90 @@ export default function ScannerPage() {
             onCancel={handleCancelOverride}
           />
         )}
+
+        {/* ── Training bottom sheet ─────────────────────────────────────── */}
+        <ScannerBottomSheet
+          open={trainingSheetOpen}
+          onClose={() => setTrainingSheetOpen(false)}
+          title={t("scanner.select_training")}
+        >
+          {allTrainings.length === 0 ? (
+            <p className="text-white/50 text-sm text-center py-8">{t("scanner.no_active_training")}</p>
+          ) : (
+            allTrainings.map((tr: any) => {
+              const isSelected = effectiveTraining?.id === tr.id;
+              return (
+                <button
+                  key={tr.id}
+                  onClick={() => handleSelectTraining(tr.id)}
+                  className={cn(
+                    "w-full text-left px-4 py-3 flex items-start justify-between gap-3 transition-colors",
+                    isSelected ? "bg-blue-900/30" : "hover:bg-white/5 active:bg-white/10"
+                  )}
+                >
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold text-sm leading-snug truncate">{tr.name}</p>
+                    {(tr.start_date || tr.end_date) && (
+                      <p className="text-white/40 text-xs mt-0.5">
+                        {tr.start_date} — {tr.end_date}
+                      </p>
+                    )}
+                    {tr.status && (
+                      <span className={cn(
+                        "inline-block text-xs mt-1 px-2 py-0.5 rounded-full",
+                        tr.status === "active" ? "bg-green-600/30 text-green-300" : "bg-gray-600/40 text-gray-400"
+                      )}>
+                        {tr.status}
+                      </span>
+                    )}
+                  </div>
+                  {isSelected && <Check size={16} className="text-blue-400 shrink-0 mt-0.5" />}
+                </button>
+              );
+            })
+          )}
+        </ScannerBottomSheet>
+
+        {/* ── Session bottom sheet ──────────────────────────────────────── */}
+        <ScannerBottomSheet
+          open={sessionSheetOpen}
+          onClose={() => setSessionSheetOpen(false)}
+          title={t("scanner.select_session")}
+        >
+          {allSessions.length === 0 ? (
+            <p className="text-white/50 text-sm text-center py-8">{t("scanner.no_session_today")}</p>
+          ) : (
+            allSessions.map((s: any) => {
+              const isSelected = effectiveSession?.id === s.id;
+              const isToday    = s.session_date === todayStr;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => handleSelectSession(s.id)}
+                  className={cn(
+                    "w-full text-left px-4 py-3 flex items-start justify-between gap-3 transition-colors",
+                    isSelected ? "bg-blue-900/30" : isToday ? "bg-blue-950/30 hover:bg-blue-900/20" : "hover:bg-white/5 active:bg-white/10"
+                  )}
+                >
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold text-sm leading-snug">
+                      {t("trainings.session_number", { n: String(s.session_number) })} · {s.session_date}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-white/50 text-xs">{formatTime(s.session_time)}</span>
+                      {isToday && (
+                        <span className="text-xs bg-green-600/40 text-green-300 px-1.5 py-0.5 rounded-full">
+                          {t("scanner.today")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {isSelected && <Check size={16} className="text-blue-400 shrink-0 mt-0.5" />}
+                </button>
+              );
+            })
+          )}
+        </ScannerBottomSheet>
       </div>
 
       {/* ── Hint bar ─────────────────────────────────────────────────────── */}
