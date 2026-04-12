@@ -108,6 +108,7 @@ model Session {
 
   @@unique([trainingId, sessionNumber])
   @@index([sessionDate])
+  @@index([trainingId, sessionDate])
   @@map("sessions")
 }
 
@@ -143,7 +144,7 @@ model Attendance {
   session          Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   participant      Participant      @relation(fields: [participantId], references: [id], onDelete: Cascade)
   status           String
-  method           String           @default("qr") // "system" | "qr" | "manual"
+  method           String           @default("system") // "system" | "qr" | "manual"
   scannedAt        DateTime?        @map("scanned_at")
   scannedById      String?          @map("scanned_by")
   scannedBy        StaffUser?       @relation("ScannedBy", fields: [scannedById], references: [id])

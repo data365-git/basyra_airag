@@ -131,19 +131,9 @@ export async function POST(request: Request) {
 
     if (existing) {
       const { status: existingStatus } = existing;
+      const existingMethod = existing.method || "system";
 
-      // ── Person is already confirmed present or late — true duplicate ──────
-      // Block regardless of method: status is the ground truth.
-      if (existingStatus === "present" || existingStatus === "late") {
-        return NextResponse.json({
-          type: "already_recorded",
-          message: "Already scanned",
-          participant,
-          scannedAt: existing.scannedAt,
-        });
-      }
-
-      // ── Excused — admin decision, QR cannot override ──────────────────────
+      // ── Excused — hard block, admin decision QR cannot override ──────────
       if (existingStatus === "excused") {
         return NextResponse.json({
           type: "excused",
@@ -152,48 +142,62 @@ export async function POST(request: Request) {
         });
       }
 
-      // ── method = "manual" absent: pause for confirmation unless forced ────
-      // Admin deliberately set this person absent. QR must not silently override
-      // a human decision — show a confirmation sheet on the operator's device.
-      if (existingStatus === "absent" && existing.method === "manual" && !forceOverride) {
-        let setByAdmin: string | null = null;
-        if (existing.overrideById) {
-          const admin = await prisma.staffUser.findUnique({
-            where: { id: existing.overrideById },
-            select: { name: true },
+      // ── System-generated absent → silent QR override, no confirmation ────
+      // The bulk-generator writes method:"system" before any scan.
+      // No human set this deliberately — override without asking.
+      if (existingMethod === "system" && existingStatus === "absent") {
+        const isOfflineSync = !!scannedAt;
+        await prisma.$transaction(async (tx) => {
+          await tx.attendance.update({
+            where: { id: existing.id },
+            data: {
+              status:            newStatus,
+              method:            "qr",
+              scannedAt:         scanTime,
+              scannedById:       user.id,
+              syncedFromOffline: isOfflineSync,
+              overrideById:      null,
+              overrideAt:        null,
+              note:              null,
+            },
           });
-          setByAdmin = admin?.name ?? null;
+          await tx.attendanceAudit.create({
+            data: {
+              attendanceId: existing.id,
+              changedById:  user.id,
+              oldStatus:    existing.status,
+              newStatus,
+              reason:       "QR scan (system absent override)",
+            },
+          });
+        });
+        if (newStatus === "late") {
+          return NextResponse.json({ type: "late", message: "Marked late", participant, minutesLate });
         }
+        return NextResponse.json({ type: "success", message: "Marked present", participant });
+      }
+
+      // ── Any other existing status → pause for operator confirmation ───────
+      //
+      // Covers: present (qr/manual), late (qr/manual), absent (manual).
+      // A prior scan or human decision set this record deliberately.
+      // Return full context so the confirmation sheet can show current → new.
+      if (!forceOverride) {
         return NextResponse.json(
           {
-            type: "needs_confirmation",
-            message: "Admin manually marked this person absent",
+            type:              "needs_confirmation",
             participant,
-            needs_confirmation: {
-              existingStatus: "absent",
-              setByAdmin,
-              setAt: existing.overrideAt?.toISOString() ?? null,
-            },
+            existingStatus,
+            existingMethod,
+            existingScannedAt: existing.scannedAt?.toISOString() ?? null,
+            newStatus,          // what this rescan would set it to
           },
           { status: 409 }
         );
       }
 
-      // ── Guard: forceOverride is only valid for manual absent ─────────────
-      // Reject if someone sends forceOverride=true for a non-absent record.
-      if (forceOverride && existingStatus !== "absent") {
-        return NextResponse.json({
-          type: "already_recorded",
-          message: "Already scanned",
-          participant,
-          scannedAt: existing.scannedAt,
-        });
-      }
-
-      // ── All other absent (system/qr/legacy, or forceOverride=true) — QR wins ─
-      // Update the existing record in-place; write audit trail.
+      // ── forceOverride === true → operator confirmed, write update ─────────
       const isOfflineSync = !!scannedAt;
-
       await prisma.$transaction(async (tx) => {
         await tx.attendance.update({
           where: { id: existing.id },
@@ -208,14 +212,13 @@ export async function POST(request: Request) {
             note:              null,
           },
         });
-
         await tx.attendanceAudit.create({
           data: {
             attendanceId: existing.id,
             changedById:  user.id,
             oldStatus:    existing.status,
             newStatus,
-            reason:       `QR scan override (was ${existing.method ?? "unknown"})`,
+            reason:       `QR force override (was ${existingMethod} ${existingStatus})`,
           },
         });
       });

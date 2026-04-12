@@ -14,7 +14,7 @@ import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
 import { formatTime, cn } from "@/lib/utils";
 import { getSessionState, getTodayInTashkent } from "@/lib/sessionWindow";
-import type { ScanResult, SessionState, Participant } from "@/types";
+import type { ScanResult, SessionState } from "@/types";
 
 // ─── UI State machine ─────────────────────────────────────────────────────────
 // Drives which overlays appear and whether the camera is active.
@@ -110,14 +110,15 @@ export default function ScannerPage() {
   const [scanCount,    setScanCount]    = useState(0);
   const [scanResult,   setScanResult]   = useState<ScanResult | null>(null);
 
-  // Pending override: when API returns needs_confirmation, store context here
-  // to re-send with forceOverride=true if operator confirms.
+  // Pending override: when API returns needs_confirmation, store the context
+  // needed by ConfirmOverrideSheet and the follow-up forceOverride call.
   const [pendingOverride, setPendingOverride] = useState<{
-    token:       string;
-    sessionId:   string;
-    participant: Participant;
-    setByAdmin?: string | null;
-    setAt?:      string | null;
+    qrToken:          string;
+    name:             string;
+    existingStatus:   string;
+    existingMethod:   string;
+    existingScannedAt: string | null;
+    newStatus:        string;
   } | null>(null);
 
   const lastScannedRef     = useRef<string>("");
@@ -295,18 +296,66 @@ export default function ScannerPage() {
     }
   }
 
+  // ── Core API call — shared by initial scan and force-override ────────────
+  const callScanAPI = useCallback(async (qrToken: string, forceOverride: boolean) => {
+    if (!effectiveSession) return;
+    try {
+      const res  = await fetch("/api/scan", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ token: qrToken, sessionId: effectiveSession.id, forceOverride }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      // Server error with no type field (auth, 500, etc.)
+      if (!res.ok && !data.type) {
+        setScanResult({ type: "unknown", message: data.message || data.error || t("scanner.network_error") });
+        navigator.vibrate?.([100, 50, 100]);
+        return;
+      }
+
+      // Confirmation needed → show the confirmation sheet
+      if (data.type === "needs_confirmation") {
+        setPendingOverride({
+          qrToken,
+          name:              data.participant?.full_name ?? "",
+          existingStatus:    data.existingStatus   ?? "absent",
+          existingMethod:    data.existingMethod   ?? "system",
+          existingScannedAt: data.existingScannedAt ?? null,
+          newStatus:         data.newStatus        ?? "present",
+        });
+        return; // no overlay, no vibration — wait for operator decision
+      }
+
+      const result = data as ScanResult;
+      setScanResult(result);
+
+      if (result.type === "success" || result.type === "late") {
+        navigator.vibrate?.(200);
+        setScanCount((c) => c + 1);
+      } else {
+        navigator.vibrate?.([100, 50, 100]);
+      }
+    } catch {
+      await queueScan({ sessionId: effectiveSession.id, qrToken, scannedAt: new Date().toISOString() });
+      await refreshCount();
+      setScanResult({ type: "queued_offline" });
+      navigator.vibrate?.([100, 50, 100]);
+    }
+  }, [effectiveSession, refreshCount, t]);
+
   // ── Scan handler ──────────────────────────────────────────────────────────
   const handleScan = useCallback(async (rawQrData: string) => {
-    const token = extractToken(rawQrData);
-    if (!token) {
+    const qrToken = extractToken(rawQrData);
+    if (!qrToken) {
       setScanResult({ type: "unknown", message: t("scanner.invalid_qr") });
       navigator.vibrate?.([100, 50, 100]);
       return;
     }
 
     const now = Date.now();
-    if (token === lastScannedRef.current && now - lastScannedTimeRef.current < 3000) return;
-    lastScannedRef.current     = token;
+    if (qrToken === lastScannedRef.current && now - lastScannedTimeRef.current < 3000) return;
+    lastScannedRef.current     = qrToken;
     lastScannedTimeRef.current = now;
 
     setScanResult(null);
@@ -318,84 +367,24 @@ export default function ScannerPage() {
     }
 
     const reachable = await checkNow();
-
     if (!reachable) {
-      await queueScan({ sessionId: effectiveSession.id, qrToken: token, scannedAt: new Date().toISOString() });
+      await queueScan({ sessionId: effectiveSession.id, qrToken, scannedAt: new Date().toISOString() });
       await refreshCount();
       setScanResult({ type: "queued_offline" });
       navigator.vibrate?.([100, 50, 100]);
       return;
     }
 
-    try {
-      const res  = await fetch("/api/scan", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ token, sessionId: effectiveSession.id }),
-      });
-      const data = await res.json();
-
-      // Server error (500, auth, etc.) — treat as unknown with server message
-      if (!res.ok && !data.type) {
-        setScanResult({ type: "unknown", message: data.message || data.error || t("scanner.network_error") });
-        navigator.vibrate?.([100, 50, 100]);
-        return;
-      }
-
-      const result = data as ScanResult;
-
-      // Admin manually set this person absent — ask before overriding
-      if (result.type === "needs_confirmation" && result.participant && result.needs_confirmation) {
-        setPendingOverride({
-          token,
-          sessionId:   effectiveSession.id,
-          participant: result.participant,
-          setByAdmin:  result.needs_confirmation.setByAdmin,
-          setAt:       result.needs_confirmation.setAt,
-        });
-        return; // no result overlay, no vibration — not an error
-      }
-
-      setScanResult(result);
-
-      if (result.type === "success" || result.type === "late") {
-        navigator.vibrate?.(200);
-        setScanCount((c) => c + 1);
-      } else {
-        navigator.vibrate?.([100, 50, 100]);
-      }
-    } catch {
-      await queueScan({ sessionId: effectiveSession.id, qrToken: token, scannedAt: new Date().toISOString() });
-      await refreshCount();
-      setScanResult({ type: "queued_offline" });
-      navigator.vibrate?.([100, 50, 100]);
-    }
-  }, [effectiveSession, checkNow, refreshCount, t]);
+    await callScanAPI(qrToken, false);
+  }, [effectiveSession, checkNow, refreshCount, callScanAPI, t]);
 
   // ── Override confirmation handlers ────────────────────────────────────────
   const handleConfirmOverride = useCallback(async () => {
     if (!pendingOverride) return;
-    const { token, sessionId } = pendingOverride;
+    const { qrToken } = pendingOverride;
     setPendingOverride(null);
-    try {
-      const res = await fetch("/api/scan", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ token, sessionId, forceOverride: true }),
-      });
-      const data = (await res.json()) as ScanResult;
-      setScanResult(data);
-      if (data.type === "success" || data.type === "late") {
-        navigator.vibrate?.(200);
-        setScanCount((c) => c + 1);
-      } else {
-        navigator.vibrate?.([100, 50, 100]);
-      }
-    } catch {
-      setScanResult({ type: "unknown" });
-      navigator.vibrate?.([100, 50, 100]);
-    }
-  }, [pendingOverride]);
+    await callScanAPI(qrToken, true);
+  }, [pendingOverride, callScanAPI]);
 
   const handleCancelOverride = useCallback(() => {
     setPendingOverride(null);
@@ -566,12 +555,14 @@ export default function ScannerPage() {
 
         <ScanResultOverlay result={scanResult} isOffline={!isServerOnline} />
 
-        {/* Confirmation sheet — admin-set absent, operator must decide */}
+        {/* Confirmation sheet — operator must decide before overriding */}
         {pendingOverride && (
           <ConfirmOverrideSheet
-            participant={pendingOverride.participant}
-            setByAdmin={pendingOverride.setByAdmin}
-            setAt={pendingOverride.setAt}
+            name={pendingOverride.name}
+            existingStatus={pendingOverride.existingStatus}
+            existingMethod={pendingOverride.existingMethod}
+            existingScannedAt={pendingOverride.existingScannedAt}
+            newStatus={pendingOverride.newStatus}
             onConfirm={handleConfirmOverride}
             onCancel={handleCancelOverride}
           />
