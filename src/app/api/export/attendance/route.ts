@@ -53,7 +53,7 @@ export async function GET(request: Request) {
   // Detail sheet
   const headers = [
     "Name",
-    ...sessions.map((s) => `S${s.sessionNumber} (${formatDate(s.sessionDate.toISOString().slice(0, 10), "MM/dd")})`),
+    ...sessions.map((s) => `S${s.sessionNumber} (${formatDate(s.sessionDate, "MM/dd")})`),
     "Rate",
   ];
   const detailData = participants.map((p) => {
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
     sessions.forEach((s) => {
       const rec = records.find((r) => r.sessionId === s.id && r.participantId === p.id);
       const status = rec?.status || "—";
-      row[`S${s.sessionNumber} (${formatDate(s.sessionDate.toISOString().slice(0, 10), "MM/dd")})`] = status;
+      row[`S${s.sessionNumber} (${formatDate(s.sessionDate, "MM/dd")})`] = status;
       if (status === "present" || status === "late") attended++;
     });
     row["Rate"] = `${sessions.length > 0 ? Math.round((attended / sessions.length) * 100) : 0}%`;

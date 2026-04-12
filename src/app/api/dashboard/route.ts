@@ -2,17 +2,17 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
 export async function GET() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Derive today's date in Asia/Tashkent (UTC+5, no DST)
+  const todayStr = new Date(Date.now() + 5 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
 
   const [participantsCount, trainings, todaysSessions, recentAttendance] = await Promise.all([
     prisma.participant.count(),
     prisma.training.findMany({ orderBy: { createdAt: "desc" } }),
     prisma.session.findMany({
       where: {
-        sessionDate: { gte: today, lt: tomorrow },
+        sessionDate: todayStr,
       },
       include: {
         training: { select: { id: true, name: true, color: true } },
@@ -94,7 +94,7 @@ export async function GET() {
     todaysSessions: todaysSessions.map((s) => ({
       id: s.id,
       session_number: s.sessionNumber,
-      session_date: s.sessionDate.toISOString().slice(0, 10),
+      session_date: s.sessionDate,
       session_time: s.sessionTime,
       status: s.status,
       training: s.training,

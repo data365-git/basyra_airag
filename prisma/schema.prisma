@@ -94,7 +94,7 @@ model Session {
   trainingId       String       @map("training_id")
   training         Training     @relation(fields: [trainingId], references: [id], onDelete: Cascade)
   sessionNumber    Int          @map("session_number")
-  sessionDate      DateTime     @map("session_date") @db.Date
+  sessionDate      String       @map("session_date")          // "YYYY-MM-DD" plain string — no timezone
   sessionTime      String       @map("session_time")
   status           String       @default("upcoming") // kept for schema compatibility; state is derived at runtime
   isCancelled      Boolean      @default(false) @map("is_cancelled")

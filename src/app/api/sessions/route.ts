@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         id: s.id,
         training_id: s.trainingId,
         session_number: s.sessionNumber,
-        session_date: s.sessionDate.toISOString().slice(0, 10),
+        session_date: s.sessionDate,
         session_time: s.sessionTime,
         status: s.status,
         created_at: s.createdAt,
@@ -72,14 +72,14 @@ export async function POST(request: Request) {
     });
     const nextNumber = (last?.sessionNumber ?? 0) + 1;
 
-    const date = new Date(session_date);
-    const status = date < new Date() ? "closed" : "upcoming";
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const status = session_date < todayStr ? "closed" : "upcoming";
 
     const session = await prisma.session.create({
       data: {
         trainingId: training_id,
         sessionNumber: nextNumber,
-        sessionDate: date,
+        sessionDate: session_date,
         sessionTime: session_time,
         status,
       },
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       id: session.id,
       training_id: session.trainingId,
       session_number: session.sessionNumber,
-      session_date: session.sessionDate.toISOString().slice(0, 10),
+      session_date: session.sessionDate,
       session_time: session.sessionTime,
       status: session.status,
       created_at: session.createdAt,

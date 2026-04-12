@@ -45,7 +45,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         return {
           id: s.id,
           session_number: s.sessionNumber,
-          session_date: s.sessionDate.toISOString().slice(0, 10),
+          session_date: s.sessionDate,
           status: s.status,
           record: rec
             ? {

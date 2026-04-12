@@ -66,7 +66,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       sessions: training.sessions.map((s) => ({
         id: s.id,
         session_number: s.sessionNumber,
-        session_date: s.sessionDate.toISOString().slice(0, 10),
+        session_date: s.sessionDate,
         session_time: s.sessionTime,
         status: s.status,
         is_cancelled: s.isCancelled,
@@ -143,27 +143,27 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         where: { trainingId: id, status: "closed" },
       });
 
-      // Generate new sessions from schedule
+      // Generate new sessions from schedule (returns YYYY-MM-DD strings)
       const newDates = generateSessionDates(finalStartDate, finalEndDate, finalDays);
-      const now = new Date();
+      const todayStr = new Date().toISOString().slice(0, 10);
 
       // Filter out dates already covered by closed sessions (by date match)
       const closedSessions = await prisma.session.findMany({
         where: { trainingId: id, status: "closed" },
         select: { sessionDate: true },
       });
-      const closedDateStrs = new Set(closedSessions.map((s) => s.sessionDate.toISOString().slice(0, 10)));
+      const closedDateStrs = new Set(closedSessions.map((s) => s.sessionDate));
 
-      const newSessionDates = newDates.filter((d) => !closedDateStrs.has(d.toISOString().slice(0, 10)));
+      const newSessionDates = newDates.filter((d) => !closedDateStrs.has(d));
 
       if (newSessionDates.length > 0) {
         await prisma.session.createMany({
-          data: newSessionDates.map((date, i) => ({
+          data: newSessionDates.map((dateStr, i) => ({
             trainingId: id,
             sessionNumber: closedCount + i + 1,
-            sessionDate: date,
+            sessionDate: dateStr,
             sessionTime: finalTime,
-            status: date < now ? "closed" : "upcoming",
+            status: dateStr < todayStr ? "closed" : "upcoming",
           })),
         });
       }

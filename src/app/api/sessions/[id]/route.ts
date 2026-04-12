@@ -71,7 +71,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       id: session.id,
       training_id: session.trainingId,
       session_number: session.sessionNumber,
-      session_date: session.sessionDate.toISOString().slice(0, 10),
+      session_date: session.sessionDate,
       session_time: session.sessionTime,
       status: session.status,
       training: {

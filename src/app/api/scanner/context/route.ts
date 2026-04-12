@@ -14,19 +14,17 @@ export async function GET() {
   try {
     const now = new Date();
 
-    // Asia/Tashkent is UTC+5 — derive "today" in local time
-    const tashkentOffsetMs = 5 * 60 * 60 * 1000;
-    const localNow = new Date(now.getTime() + tashkentOffsetMs);
-    const todayStr = localNow.toISOString().slice(0, 10); // YYYY-MM-DD in TZ
+    // Asia/Tashkent is always UTC+5 — derive today's date in local time
+    const todayStr = new Date(now.getTime() + 5 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10); // "YYYY-MM-DD" in Tashkent
 
-    // Find all sessions today whose training spans today
+    // Find all sessions today whose training spans today.
+    // sessionDate is stored as a plain "YYYY-MM-DD" string — exact equality match.
     const sessions = await prisma.session.findMany({
       where: {
-        sessionDate: {
-          gte: new Date(`${todayStr}T00:00:00+05:00`),
-          lte: new Date(`${todayStr}T23:59:59+05:00`),
-        },
-        isCancelled: false,
+        sessionDate:  todayStr,
+        isCancelled:  false,
         forceClosed:  false,
         training: {
           startDate: { lte: new Date(`${todayStr}T23:59:59+05:00`) },
@@ -116,7 +114,7 @@ export async function GET() {
       session: {
         id:              activeSession.id,
         session_number:  activeSession.sessionNumber,
-        session_date:    activeSession.sessionDate.toISOString().slice(0, 10),
+        session_date:    activeSession.sessionDate,
         session_time:    activeSession.sessionTime,
         scan_window_before: activeSession.training.scanWindowBefore ?? settings.before,
         scan_window_after:  activeSession.training.scanWindowAfter  ?? settings.after,

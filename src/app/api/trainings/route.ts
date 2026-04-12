@@ -133,13 +133,14 @@ export async function POST(request: Request) {
 
     const sessionDates = generateSessionDates(start_date, end_date, schedule_days);
     if (sessionDates.length > 0) {
+      const todayStr = new Date().toISOString().slice(0, 10);
       await prisma.session.createMany({
-        data: sessionDates.map((date, i) => ({
+        data: sessionDates.map((dateStr, i) => ({
           trainingId: training.id,
           sessionNumber: i + 1,
-          sessionDate: date,
+          sessionDate: dateStr,
           sessionTime: schedule_time,
-          status: new Date() > date ? "closed" : "upcoming",
+          status: dateStr < todayStr ? "closed" : "upcoming",
         })),
       });
     }

@@ -114,7 +114,7 @@ export async function POST(request: Request) {
     // | absent   | qr (legacy)     | UPDATE — treat as overridable            |
     // | <none>   | —               | CREATE — first scan                     |
 
-    const sessionDateStr = session.sessionDate.toISOString().slice(0, 10);
+    const sessionDateStr = session.sessionDate;
     const threshold = await resolveLateThreshold(session.training.lateThresholdMinutes);
     const { status: newStatus, minutesLate } = computeAttendanceStatus(
       scanTime,

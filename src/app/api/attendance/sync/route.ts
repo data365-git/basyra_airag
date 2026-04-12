@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       if (!existing) {
         const scannedAt = new Date(scan.scannedAt);
         const threshold = await resolveLateThreshold(session.training.lateThresholdMinutes);
-        const sessionDateStr = session.sessionDate.toISOString().slice(0, 10);
+        const sessionDateStr = session.sessionDate;
         const { status } = computeAttendanceStatus(
           scannedAt,
           sessionDateStr,

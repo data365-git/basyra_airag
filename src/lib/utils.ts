@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { format, parseISO, startOfDay } from "date-fns";
+import { format, parseISO } from "date-fns";
 
 export const DAYS_OF_WEEK = [
   "Sunday",
@@ -64,25 +64,24 @@ export function generateSessionDates(
   startDate: string,
   endDate: string,
   scheduleDays: number[] // e.g. [6] = Saturday, [0, 6] = Sunday + Saturday
-): Date[] {
+): string[] {
   if (!scheduleDays || scheduleDays.length === 0) return [];
 
-  const start = startOfDay(parseISO(startDate));
-  const end = startOfDay(parseISO(endDate));
+  // Anchor at UTC midnight so getUTCDay() matches the calendar date exactly.
+  // No timezone conversion — dates are stored as plain "YYYY-MM-DD" strings.
+  const end = new Date(endDate + "T00:00:00Z");
   const daySet = new Set(scheduleDays);
-  const result: Date[] = [];
+  const result: string[] = [];
 
-  // Walk day-by-day from start to end, collect every day whose weekday is in the set
-  let current = new Date(start);
+  let current = new Date(startDate + "T00:00:00Z");
   while (current <= end) {
-    if (daySet.has(current.getDay())) {
-      result.push(new Date(current));
+    if (daySet.has(current.getUTCDay())) {
+      result.push(current.toISOString().slice(0, 10));
     }
     current = new Date(current.getTime() + 24 * 60 * 60 * 1000);
   }
 
-  // Already in chronological order; return sorted just to be explicit
-  return result.sort((a, b) => a.getTime() - b.getTime());
+  return result; // already chronological
 }
 
 export function trainingStatus(startDate: string, endDate: string): "upcoming" | "active" | "completed" {
