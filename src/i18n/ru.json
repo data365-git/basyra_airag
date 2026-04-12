@@ -207,6 +207,7 @@
   "scanner.session_required": "Сначала выберите сессию",
   "scanner.session_not_open": "Сессия не открыта",
   "scanner.network_error": "Ошибка сети",
+  "scanner.invalid_qr": "Неверный QR-код",
   "scanner.opens_in": "Окно откроется через",
   "scanner.session_short": "Сессия",
   "scanner.session_not_started": "Ожидание открытия окна сканирования",

@@ -209,6 +209,7 @@
   "scanner.session_required": "Please select a session first",
   "scanner.session_not_open": "Session is not open",
   "scanner.network_error": "Network error",
+  "scanner.invalid_qr": "Invalid QR code",
   "scanner.opens_in": "Window opens in",
   "scanner.session_short": "Session",
   "scanner.session_not_started": "Waiting for session window to open",

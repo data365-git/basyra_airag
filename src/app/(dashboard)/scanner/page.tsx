@@ -45,6 +45,43 @@ interface ResolvedTraining {
   name: string;
 }
 
+// ─── Token extraction ─────────────────────────────────────────────────────────
+// QR codes may contain a raw UUID, a full URL (?token=xxx or /scan/xxx), or JSON.
+// This normalises any format down to the bare token string.
+
+function extractToken(raw: string): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+
+  // URL: extract token from query param or last path segment
+  if (trimmed.startsWith("http")) {
+    try {
+      const url = new URL(trimmed);
+      const param = url.searchParams.get("token") || url.searchParams.get("qrToken");
+      if (param) return param.trim();
+      // Fall back to last non-empty path segment (e.g. /scan/UUID)
+      const segments = url.pathname.split("/").filter(Boolean);
+      const last = segments[segments.length - 1];
+      if (last && last.length > 10) return last.trim();
+    } catch {
+      // URL parsing failed — fall through to raw token
+    }
+  }
+
+  // JSON: extract token/qrToken/id field
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return (parsed.token || parsed.qrToken || parsed.id || "").trim();
+    } catch {
+      // not valid JSON — fall through
+    }
+  }
+
+  // Raw token (UUID or other string)
+  return trimmed;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ScannerPage() {
@@ -259,7 +296,14 @@ export default function ScannerPage() {
   }
 
   // ── Scan handler ──────────────────────────────────────────────────────────
-  const handleScan = useCallback(async (token: string) => {
+  const handleScan = useCallback(async (rawQrData: string) => {
+    const token = extractToken(rawQrData);
+    if (!token) {
+      setScanResult({ type: "unknown", message: t("scanner.invalid_qr") });
+      navigator.vibrate?.([100, 50, 100]);
+      return;
+    }
+
     const now = Date.now();
     if (token === lastScannedRef.current && now - lastScannedTimeRef.current < 3000) return;
     lastScannedRef.current     = token;

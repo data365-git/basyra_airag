@@ -207,6 +207,7 @@
   "scanner.session_required": "Avval sessiyani tanlang",
   "scanner.session_not_open": "Sessiya ochilmagan",
   "scanner.network_error": "Tarmoq xatosi",
+  "scanner.invalid_qr": "QR kod noto'g'ri",
   "scanner.opens_in": "Oyna ochilishiga qoldi",
   "scanner.session_short": "Sessiya",
   "scanner.session_not_started": "Skaner oynasi ochilishini kutmoqda",
