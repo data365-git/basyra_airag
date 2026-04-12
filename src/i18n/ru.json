@@ -377,6 +377,11 @@
   "scanner.synced_count": "{n} сканов синхронизировано",
   "scanner.sync_errors": "{n} сканов не удалось синхронизировать",
   "scanner.sync_failed": "Синхронизация не удалась — повтор при подключении",
+  "scanner.confirm.title": "Отмечен администратором",
+  "scanner.confirm.body": "Установлено {admin} в {time}",
+  "scanner.confirm.question": "Переопределить и отметить присутствующим?",
+  "scanner.confirm.yes": "Да, переопределить",
+  "scanner.confirm.no": "Отмена",
 
   "trainings.participants_count": "{n} участников",
 

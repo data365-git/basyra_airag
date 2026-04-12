@@ -11,12 +11,13 @@ export async function POST(request: Request) {
   if (!hasPermission(user, "scanner", "view"))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  let token: string, sessionId: string, scannedAt: string | undefined;
+  let token: string, sessionId: string, scannedAt: string | undefined, forceOverride: boolean;
   try {
     const body = await request.json();
-    token      = body.token;
-    sessionId  = body.sessionId;
-    scannedAt  = body.scannedAt; // ISO string — for offline sync validation
+    token         = body.token;
+    sessionId     = body.sessionId;
+    scannedAt     = body.scannedAt;      // ISO string — for offline sync validation
+    forceOverride = body.forceOverride === true;
   } catch {
     return NextResponse.json({ type: "unknown", message: "Invalid request body" }, { status: 400 });
   }
@@ -142,9 +143,45 @@ export async function POST(request: Request) {
         });
       }
 
-      // ── Absent (any source: auto-fill, manual admin, legacy) — QR wins ────
-      // This covers: absent set by admin, absent auto-filled at session close,
-      // and any legacy record whose method field is unreliable.
+      // ── method = "manual" absent: pause for confirmation unless forced ────
+      // Admin deliberately set this person absent. QR must not silently override
+      // a human decision — show a confirmation sheet on the operator's device.
+      if (existingStatus === "absent" && existing.method === "manual" && !forceOverride) {
+        let setByAdmin: string | null = null;
+        if (existing.overrideById) {
+          const admin = await prisma.staffUser.findUnique({
+            where: { id: existing.overrideById },
+            select: { name: true },
+          });
+          setByAdmin = admin?.name ?? null;
+        }
+        return NextResponse.json(
+          {
+            type: "needs_confirmation",
+            message: "Admin manually marked this person absent",
+            participant,
+            needs_confirmation: {
+              existingStatus: "absent",
+              setByAdmin,
+              setAt: existing.overrideAt?.toISOString() ?? null,
+            },
+          },
+          { status: 409 }
+        );
+      }
+
+      // ── Guard: forceOverride is only valid for manual absent ─────────────
+      // Reject if someone sends forceOverride=true for a non-absent record.
+      if (forceOverride && existingStatus !== "absent") {
+        return NextResponse.json({
+          type: "already_recorded",
+          message: "Already scanned",
+          participant,
+          scannedAt: existing.scannedAt,
+        });
+      }
+
+      // ── All other absent (system/qr/legacy, or forceOverride=true) — QR wins ─
       // Update the existing record in-place; write audit trail.
       const isOfflineSync = !!scannedAt;
 

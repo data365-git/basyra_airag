@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       sessionId: session_id,
       participantId: participant_id,
       status,
+      method: "manual",
       note: note || null,
       scannedById: user.sub,
     },

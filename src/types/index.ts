@@ -153,20 +153,27 @@ export interface ScanResult {
   type:
     | "success"
     | "late"
-    | "queued_offline"    // saved to local queue — NOT yet confirmed by server
+    | "queued_offline"       // saved to local queue — NOT yet confirmed by server
     | "already_recorded"
-    | "already_scanned"   // legacy alias kept for backward compat
+    | "already_scanned"      // legacy alias kept for backward compat
+    | "needs_confirmation"   // admin manually set absent — operator must confirm override
     | "not_enrolled"
     | "excused"
     | "not_started"
     | "window_closed"
-    | "session_closed"    // legacy alias kept for backward compat
+    | "session_closed"       // legacy alias kept for backward compat
     | "session_cancelled"
     | "force_closed"
     | "unknown";
   participant?: Participant;
   message?: string;
   minutesLate?: number;
+  /** Populated only when type === "needs_confirmation" */
+  needs_confirmation?: {
+    existingStatus: string;
+    setByAdmin?: string | null;
+    setAt?: string | null;
+  };
 }
 
 export interface SystemSetting {

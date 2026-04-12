@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { Edit2, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { QRScanner } from "@/components/scanner/QRScanner";
 import { ScanResultOverlay } from "@/components/scanner/ScanResult";
+import { ConfirmOverrideSheet } from "@/components/scanner/ConfirmOverrideSheet";
 import { OfflineBanner } from "@/components/scanner/OfflineBanner";
 import { queueScan } from "@/lib/db/offline";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
@@ -12,7 +13,7 @@ import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
 import { formatTime } from "@/lib/utils";
 import { getSessionState } from "@/lib/sessionWindow";
-import type { ScanResult, SessionState } from "@/types";
+import type { ScanResult, SessionState, Participant } from "@/types";
 
 // ─── UI State machine ─────────────────────────────────────────────────────────
 // Every render path is driven by one of these states.
@@ -67,6 +68,16 @@ export default function ScannerPage() {
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
   const [scanCount,    setScanCount]    = useState(0);
   const [scanResult,   setScanResult]   = useState<ScanResult | null>(null);
+
+  // Pending override: when API returns needs_confirmation, store context here
+  // to re-send with forceOverride=true if operator confirms.
+  const [pendingOverride, setPendingOverride] = useState<{
+    token:      string;
+    sessionId:  string;
+    participant: Participant;
+    setByAdmin?: string | null;
+    setAt?:      string | null;
+  } | null>(null);
 
   const lastScannedRef     = useRef<string>("");
   const lastScannedTimeRef = useRef<number>(0);
@@ -243,6 +254,19 @@ export default function ScannerPage() {
         body:    JSON.stringify({ token, sessionId: effectiveSession.id }),
       });
       const data = (await res.json()) as ScanResult;
+
+      // Admin manually set this person absent — ask before overriding
+      if (data.type === "needs_confirmation" && data.participant && data.needs_confirmation) {
+        setPendingOverride({
+          token,
+          sessionId:  effectiveSession.id,
+          participant: data.participant,
+          setByAdmin: data.needs_confirmation.setByAdmin,
+          setAt:      data.needs_confirmation.setAt,
+        });
+        return; // no result overlay, no vibration — not an error
+      }
+
       setScanResult(data);
 
       if (data.type === "success" || data.type === "late") {
@@ -258,6 +282,35 @@ export default function ScannerPage() {
       navigator.vibrate?.([100, 50, 100]);
     }
   }, [effectiveSession, checkNow, refreshCount, t]);
+
+  // ── Override confirmation handlers ────────────────────────────────────────
+  const handleConfirmOverride = useCallback(async () => {
+    if (!pendingOverride) return;
+    const { token, sessionId } = pendingOverride;
+    setPendingOverride(null);
+    try {
+      const res = await fetch("/api/scan", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ token, sessionId, forceOverride: true }),
+      });
+      const data = (await res.json()) as ScanResult;
+      setScanResult(data);
+      if (data.type === "success" || data.type === "late") {
+        navigator.vibrate?.(200);
+        setScanCount((c) => c + 1);
+      } else {
+        navigator.vibrate?.([100, 50, 100]);
+      }
+    } catch {
+      setScanResult({ type: "unknown" });
+      navigator.vibrate?.([100, 50, 100]);
+    }
+  }, [pendingOverride]);
+
+  const handleCancelOverride = useCallback(() => {
+    setPendingOverride(null);
+  }, []);
 
   // ── Access guard ──────────────────────────────────────────────────────────
   if (!canScan) {
@@ -452,6 +505,17 @@ export default function ScannerPage() {
         )}
 
         <ScanResultOverlay result={scanResult} isOffline={!isServerOnline} />
+
+        {/* Confirmation sheet — admin-set absent, operator must decide */}
+        {pendingOverride && (
+          <ConfirmOverrideSheet
+            participant={pendingOverride.participant}
+            setByAdmin={pendingOverride.setByAdmin}
+            setAt={pendingOverride.setAt}
+            onConfirm={handleConfirmOverride}
+            onCancel={handleCancelOverride}
+          />
+        )}
       </div>
 
       {/* ── Hint bar ─────────────────────────────────────────────────────── */}

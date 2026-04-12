@@ -377,6 +377,11 @@
   "scanner.synced_count": "{n} ta skan sinxronlandi",
   "scanner.sync_errors": "{n} ta skan sinxronlanmadi",
   "scanner.sync_failed": "Sinxronlash xatosi — onlayn bo'lganda qayta uriniladi",
+  "scanner.confirm.title": "Admin tomonidan belgilangan",
+  "scanner.confirm.body": "{admin} tomonidan soat {time} da belgilangan",
+  "scanner.confirm.question": "Qayta yozib o'chirasizmi?",
+  "scanner.confirm.yes": "Ha, qayta yoz",
+  "scanner.confirm.no": "Bekor",
 
   "trainings.participants_count": "{n} ta ishtirokchi",
 

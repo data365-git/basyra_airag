@@ -376,6 +376,11 @@
   "scanner.synced_count": "{n} scans synced",
   "scanner.sync_errors": "{n} scans failed to sync",
   "scanner.sync_failed": "Sync failed — will retry when online",
+  "scanner.confirm.title": "Admin Marked Absent",
+  "scanner.confirm.body": "Set by {admin} at {time}",
+  "scanner.confirm.question": "Override and mark as present?",
+  "scanner.confirm.yes": "Yes, Override",
+  "scanner.confirm.no": "Cancel",
 
   "trainings.participants_count": "{n} participants",
 
