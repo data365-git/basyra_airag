@@ -4,14 +4,17 @@ import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
 
-const BulkRowSchema = z.object({
-  full_name: z.string().min(1),
-  phone: z.string().max(30).optional().nullable(),
-  email: z.string().email().max(200).optional().nullable().or(z.literal("")),
-});
-
-const BulkImportSchema = z.object({
-  participants: z.array(BulkRowSchema).min(1).max(1000),
+const BulkParticipantSchema = z.object({
+  participants: z
+    .array(
+      z.object({
+        full_name: z.string().min(1).max(200),
+        phone:     z.string().max(30).optional().nullable(),
+        email:     z.string().email().max(200).optional().nullable(),
+      })
+    )
+    .min(1)
+    .max(500),
 });
 
 export async function POST(request: Request) {
@@ -21,8 +24,8 @@ export async function POST(request: Request) {
     if (!hasPermission(user, "participants", "create"))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    const body = await request.json();
-    const parsed = BulkImportSchema.safeParse(body);
+    const body   = await request.json();
+    const parsed = BulkParticipantSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Validation failed", fields: parsed.error.flatten().fieldErrors },
@@ -32,50 +35,63 @@ export async function POST(request: Request) {
 
     const { participants } = parsed.data;
 
-    // Collect all non-empty phones to check duplicates in one query
+    // ── Pre-load existing phones and names for O(n) dedup ─────────────────────
     const incomingPhones = participants
       .map((p) => p.phone)
       .filter((ph): ph is string => !!ph);
 
-    const existingByPhone = incomingPhones.length > 0
+    const existingByPhone = incomingPhones.length
       ? await prisma.participant.findMany({
           where: { phone: { in: incomingPhones } },
           select: { phone: true },
         })
       : [];
+    const takenPhones = new Set(existingByPhone.map((p) => p.phone!));
 
-    const duplicatePhones = new Set(existingByPhone.map((p) => p.phone));
+    const incomingNames = participants.map((p) => p.full_name);
+    const existingByName = await prisma.participant.findMany({
+      where: { fullName: { in: incomingNames, mode: "insensitive" } },
+      select: { fullName: true },
+    });
+    const takenNames = new Set(existingByName.map((p) => p.fullName.toLowerCase()));
 
+    // ── Partition into create / skip ──────────────────────────────────────────
     const toCreate: typeof participants = [];
-    const skipped: Array<{ full_name: string; phone?: string | null; reason: string }> = [];
+    const skipped_rows: Array<{ full_name: string; phone?: string | null; reason: string }> = [];
 
     for (const p of participants) {
-      if (p.phone && duplicatePhones.has(p.phone)) {
-        skipped.push({ full_name: p.full_name, phone: p.phone, reason: "Duplicate phone number" });
-      } else {
-        toCreate.push(p);
+      if (p.phone && takenPhones.has(p.phone)) {
+        skipped_rows.push({ full_name: p.full_name, phone: p.phone, reason: "Duplicate phone" });
+        continue;
       }
+      if (!p.phone && takenNames.has(p.full_name.toLowerCase())) {
+        skipped_rows.push({ full_name: p.full_name, phone: null, reason: "Duplicate name" });
+        continue;
+      }
+      toCreate.push(p);
     }
 
-    // All-or-nothing transaction for the valid rows
-    await prisma.$transaction(async (tx) => {
-      await tx.participant.createMany({
+    // ── Bulk insert ───────────────────────────────────────────────────────────
+    let created = 0;
+    if (toCreate.length > 0) {
+      const result = await prisma.participant.createMany({
         data: toCreate.map((p) => ({
           fullName: p.full_name,
-          phone: p.phone || null,
-          email: (p.email && p.email !== "") ? p.email : null,
+          phone:    p.phone || null,
+          email:    p.email || null,
         })),
         skipDuplicates: true,
       });
-    });
+      created = result.count;
+    }
 
     return NextResponse.json({
-      created: toCreate.length,
-      skipped: skipped.length,
-      skipped_rows: skipped,
-    }, { status: 201 });
+      created,
+      skipped: skipped_rows.length,
+      skipped_rows,
+    });
   } catch (e) {
-    console.error("bulk import error:", e);
-    return NextResponse.json({ error: "Internal error — no participants were imported" }, { status: 500 });
+    console.error("participants bulk POST error:", e);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
