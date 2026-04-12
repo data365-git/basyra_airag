@@ -112,14 +112,19 @@ export default function ScannerPage() {
 
   // Pending override: when API returns needs_confirmation, store the context
   // needed by ConfirmOverrideSheet and the follow-up forceOverride call.
+  // sessionId is stored HERE (at scan time) so the confirm handler never
+  // depends on effectiveSession closure — fixing the stale-closure silent bug.
   const [pendingOverride, setPendingOverride] = useState<{
     qrToken:          string;
+    sessionId:        string;   // captured at scan time, not at confirm time
     name:             string;
     existingStatus:   string;
     existingMethod:   string;
     existingScannedAt: string | null;
     newStatus:        string;
   } | null>(null);
+
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const lastScannedRef     = useRef<string>("");
   const lastScannedTimeRef = useRef<number>(0);
@@ -318,6 +323,7 @@ export default function ScannerPage() {
       if (data.type === "needs_confirmation") {
         setPendingOverride({
           qrToken,
+          sessionId:         effectiveSession.id,   // store now, not at confirm time
           name:              data.participant?.full_name ?? "",
           existingStatus:    data.existingStatus   ?? "absent",
           existingMethod:    data.existingMethod   ?? "system",
@@ -379,16 +385,42 @@ export default function ScannerPage() {
   }, [effectiveSession, checkNow, refreshCount, callScanAPI, t]);
 
   // ── Override confirmation handlers ────────────────────────────────────────
+  // NOTE: this does NOT go through callScanAPI — we use the sessionId stored
+  // in pendingOverride (captured at scan time) so we are never affected by a
+  // stale effectiveSession closure. This was the silent-failure root cause.
   const handleConfirmOverride = useCallback(async () => {
-    if (!pendingOverride) return;
-    const { qrToken } = pendingOverride;
+    if (!pendingOverride || isConfirming) return;
+    const { qrToken, sessionId } = pendingOverride;
     setPendingOverride(null);
-    await callScanAPI(qrToken, true);
-  }, [pendingOverride, callScanAPI]);
+    setIsConfirming(true);
+
+    try {
+      const res  = await fetch("/api/scan", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ token: qrToken, sessionId, forceOverride: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const result = data as ScanResult;
+      setScanResult(result);
+      if (result.type === "success" || result.type === "late") {
+        navigator.vibrate?.(200);
+        setScanCount((c) => c + 1);
+      } else {
+        navigator.vibrate?.([100, 50, 100]);
+      }
+    } catch {
+      setScanResult({ type: "unknown", message: t("scanner.network_error") });
+      navigator.vibrate?.([100, 50, 100]);
+    } finally {
+      setIsConfirming(false);
+    }
+  }, [pendingOverride, isConfirming, t]);
 
   const handleCancelOverride = useCallback(() => {
+    if (isConfirming) return;
     setPendingOverride(null);
-  }, []);
+  }, [isConfirming]);
 
   // ── Access guard ──────────────────────────────────────────────────────────
   if (!canScan) {
@@ -556,13 +588,14 @@ export default function ScannerPage() {
         <ScanResultOverlay result={scanResult} isOffline={!isServerOnline} />
 
         {/* Confirmation sheet — operator must decide before overriding */}
-        {pendingOverride && (
+        {(pendingOverride || isConfirming) && (
           <ConfirmOverrideSheet
-            name={pendingOverride.name}
-            existingStatus={pendingOverride.existingStatus}
-            existingMethod={pendingOverride.existingMethod}
-            existingScannedAt={pendingOverride.existingScannedAt}
-            newStatus={pendingOverride.newStatus}
+            name={pendingOverride?.name ?? ""}
+            existingStatus={pendingOverride?.existingStatus ?? "absent"}
+            existingMethod={pendingOverride?.existingMethod ?? "system"}
+            existingScannedAt={pendingOverride?.existingScannedAt ?? null}
+            newStatus={pendingOverride?.newStatus ?? "present"}
+            isLoading={isConfirming}
             onConfirm={handleConfirmOverride}
             onCancel={handleCancelOverride}
           />
