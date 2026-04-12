@@ -58,7 +58,7 @@ interface ScanResultOverlayProps {
   isOffline?: boolean;
 }
 
-export function ScanResultOverlay({ result }: ScanResultOverlayProps) {
+export function ScanResultOverlay({ result, isOffline: _isOffline }: ScanResultOverlayProps) {
   const { t } = useTranslation();
 
   if (!result) return null;

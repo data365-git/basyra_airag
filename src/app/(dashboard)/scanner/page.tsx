@@ -180,8 +180,14 @@ export default function ScannerPage() {
     setUiState("loading");
 
     const [contextRes, trainingsRes] = await Promise.allSettled([
-      fetch("/api/scanner/context").then((r) => r.json()),
-      fetch("/api/trainings").then((r) => r.json()),
+      fetch("/api/scanner/context").then((r) => {
+        if (r.status === 401) { window.location.replace("/login"); throw new Error("401"); }
+        return r.json();
+      }),
+      fetch("/api/trainings").then((r) => {
+        if (r.status === 401) { window.location.replace("/login"); throw new Error("401"); }
+        return r.json();
+      }),
     ]);
 
     const context   = contextRes.status   === "fulfilled" ? contextRes.value  : null;
@@ -431,12 +437,20 @@ export default function ScannerPage() {
         navigator.vibrate?.([100, 50, 100]);
       }
     } catch {
-      setScanResult({ type: "unknown", message: t("scanner.network_error") });
+      // Network died between first scan and confirm tap — queue so sync replays it.
+      // useOfflineSync handles 409 by retrying with forceOverride:true automatically.
+      if (qrToken && sessionId) {
+        await queueScan({ sessionId, qrToken, scannedAt: new Date().toISOString() });
+        await refreshCount();
+        setScanResult({ type: "queued_offline" });
+      } else {
+        setScanResult({ type: "unknown", message: t("scanner.network_error") });
+      }
       navigator.vibrate?.([100, 50, 100]);
     } finally {
       setIsConfirming(false);
     }
-  }, [pendingOverride, isConfirming, t]);
+  }, [pendingOverride, isConfirming, refreshCount, t]);
 
   const handleCancelOverride = useCallback(() => {
     if (isConfirming) return;
