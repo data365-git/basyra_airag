@@ -7,7 +7,8 @@ import type { ScanResult, Participant } from "@/types";
 
 // ─── Initials avatar ──────────────────────────────────────────────────────────
 
-function getInitials(name: string): string {
+function getInitials(name: string | undefined | null): string {
+  if (!name) return "?";
   return name
     .split(" ")
     .filter(Boolean)

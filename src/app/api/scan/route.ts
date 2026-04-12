@@ -28,13 +28,22 @@ export async function POST(request: Request) {
 
   try {
     // ── 1. Resolve participant ───────────────────────────────────────────────
-    const participant = await prisma.participant.findUnique({
+    const participantRaw = await prisma.participant.findUnique({
       where: { qrToken: token },
     });
 
-    if (!participant) {
-      return NextResponse.json({ type: "unknown", message: "QR not recognized" });
+    if (!participantRaw) {
+      return NextResponse.json({ type: "unknown", message: "QR not recognized", participant: null });
     }
+
+    // Normalize to snake_case so frontend Participant type (full_name, photo_url) matches.
+    // Prisma returns camelCase (fullName, photoUrl) which would crash ScanResultOverlay.
+    const participant = {
+      id:        participantRaw.id,
+      full_name: participantRaw.fullName,
+      photo_url: participantRaw.photoUrl ?? null,
+      qr_token:  participantRaw.qrToken,
+    };
 
     // ── 2. Resolve session ───────────────────────────────────────────────────
     const session = await prisma.session.findUnique({
@@ -50,7 +59,7 @@ export async function POST(request: Request) {
     });
 
     if (!session) {
-      return NextResponse.json({ type: "unknown", message: "Session not found" });
+      return NextResponse.json({ type: "unknown", message: "Session not found", participant });
     }
 
     // ── 3. Determine effective scan time ─────────────────────────────────────
