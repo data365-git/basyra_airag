@@ -5,11 +5,7 @@ const withPWA = require("next-pwa")({
   register: true,
   skipWaiting: true,    // new SW activates immediately on install
   clientsClaim: true,   // new SW takes over all open tabs — no broken-cache window
-  disable: process.env.NODE_ENV === "development",
-  // Show a friendly offline page instead of the black crash screen
-  fallbacks: {
-    document: "/offline",
-  },
+  disable: true, // SW disabled — causes iOS PWA cache conflicts that crash the scanner
   // Never cache the scanner page — it needs live camera permissions + real-time headers
   exclude: [/\/scanner/],
   runtimeCaching: [

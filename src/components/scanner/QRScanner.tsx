@@ -52,6 +52,19 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
     };
   }, []);
 
+  // iOS kills the camera stream when the app goes to background (low battery,
+  // switching apps, locking screen). Restart when the page becomes visible again.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && active && !streamRef.current) {
+        startCamera();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
   function stopCamera() {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
