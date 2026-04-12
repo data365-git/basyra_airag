@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, AlertTriangle, XCircle, Lock, Clock } from "lucide-react";
+import { CheckCircle, AlertTriangle, XCircle, Lock, Clock, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/providers/LanguageProvider";
 import type { ScanResult } from "@/types";
@@ -20,6 +20,12 @@ export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps)
       bg: "bg-green-500",
       icon: <CheckCircle size={48} className="text-white" />,
       title: t("scanner.result.success"),
+      textColor: "text-white",
+    },
+    queued_offline: {
+      bg: "bg-amber-500",
+      icon: <WifiOff size={48} className="text-white" />,
+      title: t("scanner.result.queued_offline"),
       textColor: "text-white",
     },
     late: {
@@ -109,8 +115,8 @@ export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps)
       {result.message && result.type === "not_enrolled" && (
         <p className="text-white/80 text-sm mt-1">{result.message}</p>
       )}
-      {isOffline && (result.type === "success" || result.type === "late") && (
-        <p className="text-white/70 text-xs mt-3">{t("scanner.result.saved_offline")}</p>
+      {result.type === "queued_offline" && (
+        <p className="text-white/80 text-xs mt-3">{t("scanner.result.saved_offline")}</p>
       )}
     </div>
   );

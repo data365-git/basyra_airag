@@ -7,6 +7,7 @@ import { ScanResultOverlay } from "@/components/scanner/ScanResult";
 import { OfflineBanner } from "@/components/scanner/OfflineBanner";
 import { queueScan } from "@/lib/db/offline";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { useServerStatus } from "@/hooks/useServerStatus";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
 import { formatTime } from "@/lib/utils";
@@ -61,7 +62,8 @@ function CountdownBlock({
 
 export default function ScannerPage() {
   const canScan = usePermission("scanner", "view");
-  const { isOnline, refreshCount } = useOfflineSync();
+  const { pendingCount, refreshCount, syncPending } = useOfflineSync();
+  const { isServerOnline, checkNow } = useServerStatus();
   const { t } = useTranslation();
 
   // Manual dropdown state
@@ -105,6 +107,8 @@ export default function ScannerPage() {
   useEffect(() => {
     loadContext();
     loadTrainings();
+    // If there are queued scans from a previous offline session, try syncing now
+    syncPending();
   }, []);
 
   // ── When manual override or training changes ───────────────────────────────
@@ -210,15 +214,21 @@ export default function ScannerPage() {
       return;
     }
 
-    if (!isOnline) {
+    // ── Real connectivity check — never trust navigator.onLine alone ──────────
+    // checkNow() pings /api/health with a 3 s timeout (result cached 5 s).
+    // Only if that fails do we treat this scan as offline.
+    const reachable = await checkNow();
+
+    if (!reachable) {
+      // Server is genuinely unreachable — queue locally, show amber screen
       await queueScan({ sessionId: effectiveSession, qrToken: token, scannedAt: new Date().toISOString() });
       await refreshCount();
-      setScanResult({ type: "success" });
-      navigator.vibrate?.(200);
-      setScanCount((c) => c + 1);
+      setScanResult({ type: "queued_offline" }); // amber, NOT green
+      navigator.vibrate?.([100, 50, 100]);
       return;
     }
 
+    // ── Server is reachable — call the API and wait for the real response ─────
     try {
       const res = await fetch("/api/scan", {
         method:  "POST",
@@ -235,18 +245,14 @@ export default function ScannerPage() {
         navigator.vibrate?.([100, 50, 100]);
       }
     } catch {
-      if (!navigator.onLine) {
-        await queueScan({ sessionId: effectiveSession, qrToken: token, scannedAt: new Date().toISOString() });
-        await refreshCount();
-        setScanResult({ type: "success" });
-        navigator.vibrate?.(200);
-        setScanCount((c) => c + 1);
-      } else {
-        setScanResult({ type: "unknown", message: t("scanner.network_error") });
-        navigator.vibrate?.([100, 50, 100]);
-      }
+      // fetch() threw (network dropped between health check and API call)
+      // Queue it and show amber — still NOT green
+      await queueScan({ sessionId: effectiveSession, qrToken: token, scannedAt: new Date().toISOString() });
+      await refreshCount();
+      setScanResult({ type: "queued_offline" });
+      navigator.vibrate?.([100, 50, 100]);
     }
-  }, [effectiveSession, isOnline, refreshCount, t]);
+  }, [effectiveSession, checkNow, refreshCount, t]);
 
   // ── Access guard ───────────────────────────────────────────────────────────
 
@@ -389,7 +395,7 @@ export default function ScannerPage() {
           </div>
         )}
 
-        <ScanResultOverlay result={scanResult} isOffline={!isOnline} />
+        <ScanResultOverlay result={scanResult} isOffline={!isServerOnline} />
       </div>
 
       {/* ── Bottom hint bar ───────────────────────────────────────────────── */}

@@ -359,7 +359,8 @@
   "settings.categories.delete_title": "Kategoriyani o'chirish",
   "settings.categories.delete_message": "\"{name}\" ni o'chirilsinmi? Bu amalni bekor qilib bo'lmaydi.",
 
-  "scanner.result.success": "Keldi deb belgilandi",
+  "scanner.result.success": "Keldi deb belgilandi ✓",
+  "scanner.result.queued_offline": "Vaqtincha saqlandi — internet kelganda yuboriladi",
   "scanner.result.already_scanned": "Allaqachon skanerlangan",
   "scanner.result.not_enrolled": "Ro'yxatda yo'q",
   "scanner.result.unknown": "Noma'lum QR kod",

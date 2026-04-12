@@ -358,7 +358,8 @@
   "settings.categories.delete_title": "Delete Category",
   "settings.categories.delete_message": "Delete \"{name}\"? This cannot be undone.",
 
-  "scanner.result.success": "Marked Present",
+  "scanner.result.success": "Marked Present ✓",
+  "scanner.result.queued_offline": "Saved — will sync when online",
   "scanner.result.already_scanned": "Already Scanned",
   "scanner.result.not_enrolled": "Not Enrolled",
   "scanner.result.unknown": "Unknown QR Code",

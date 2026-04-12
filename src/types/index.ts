@@ -153,6 +153,7 @@ export interface ScanResult {
   type:
     | "success"
     | "late"
+    | "queued_offline"    // saved to local queue — NOT yet confirmed by server
     | "already_recorded"
     | "already_scanned"   // legacy alias kept for backward compat
     | "not_enrolled"
