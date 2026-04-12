@@ -38,3 +38,9 @@ export async function getPendingCount(): Promise<number> {
   if (!db) return 0;
   return db.pendingScans.where("synced").equals(0).count();
 }
+
+/** Permanently remove a single queued scan (used after successful server sync). */
+export async function deleteScan(id: number) {
+  if (!db) return;
+  await db.pendingScans.delete(id);
+}

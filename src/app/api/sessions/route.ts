@@ -4,6 +4,9 @@ import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
 
+// Always hit the DB fresh — never serve a cached sessions list with stale UUIDs
+export const dynamic = "force-dynamic";
+
 const CreateSessionSchema = z.object({
   training_id: z.string().min(1, "training_id is required"),
   session_date: z.string().min(1, "session_date is required"),

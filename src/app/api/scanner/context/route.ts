@@ -4,6 +4,9 @@ import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
 import { getTodayInTashkent, getSessionState } from "@/lib/sessionWindow";
 
+// Always hit the DB fresh — never serve a cached auto-selected session with stale UUIDs
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     });
 
     if (!session) {
-      return NextResponse.json({ type: "unknown", message: "Session not found", participant });
+      return NextResponse.json({ type: "unknown", message: `Session not found (id: ${sessionId})`, participant });
     }
 
     // ── 3. Determine effective scan time ─────────────────────────────────────

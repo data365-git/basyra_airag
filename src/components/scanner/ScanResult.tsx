@@ -185,6 +185,9 @@ export function ScanResultOverlay({ result }: ScanResultOverlayProps) {
     >
       {c.icon}
       <p className="text-white text-xl font-bold">{c.title}</p>
+      {result.message && (
+        <p className="text-white/50 text-xs font-mono break-all">{result.message}</p>
+      )}
       {result.participant && (
         <p className="text-white/80 text-base">{result.participant.full_name}</p>
       )}

@@ -86,7 +86,7 @@ function extractToken(raw: string): string {
 
 export default function ScannerPage() {
   const canScan = usePermission("scanner", "view");
-  const { refreshCount, syncPending } = useOfflineSync();
+  const { pendingCount, refreshCount, syncPending } = useOfflineSync();
   const { isServerOnline, checkNow } = useServerStatus();
   const { t } = useTranslation();
 
@@ -160,7 +160,21 @@ export default function ScannerPage() {
   useEffect(() => {
     syncPending();
     loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Visibility: re-attempt sync when user returns to the tab/app ──────────
+  // Covers the common case: scan → phone goes to sleep → user wakes phone →
+  // app is visible again → pending queue should drain immediately.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && pendingCount > 0) {
+        syncPending();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [syncPending, pendingCount]);
 
   async function loadAll() {
     setUiState("loading");
@@ -304,6 +318,14 @@ export default function ScannerPage() {
   // ── Core API call — shared by initial scan and force-override ────────────
   const callScanAPI = useCallback(async (qrToken: string, forceOverride: boolean) => {
     if (!effectiveSession) return;
+    // Guard against an effectiveSession with a missing/undefined id — JSON.stringify
+    // silently drops undefined values, which would make the backend think sessionId
+    // is missing and return a confusing "Missing token or session" error.
+    if (!effectiveSession.id) {
+      setScanResult({ type: "unknown", message: t("scanner.session_required") });
+      navigator.vibrate?.([100, 50, 100]);
+      return;
+    }
     try {
       const res  = await fetch("/api/scan", {
         method:  "POST",
