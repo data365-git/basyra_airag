@@ -5,6 +5,23 @@ import { hasPermission } from "@/lib/permissions";
 import { resolveLateThreshold, computeAttendanceStatus } from "@/lib/lateDetection";
 import { getTodayInTashkent } from "@/lib/sessionWindow";
 
+// ── Audit helper ──────────────────────────────────────────────────────────────
+// Audit writes are best-effort — a failed audit must NEVER roll back the
+// attendance record. We log errors but do not throw.
+async function writeAudit(data: {
+  attendanceId: string;
+  changedById:  string;
+  oldStatus:    string | null;
+  newStatus:    string;
+  reason:       string;
+}) {
+  try {
+    await prisma.attendanceAudit.create({ data });
+  } catch (err) {
+    console.error("[SCAN] audit write failed (non-fatal):", err);
+  }
+}
+
 export async function POST(request: Request) {
   const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -13,10 +30,10 @@ export async function POST(request: Request) {
 
   let token: string, sessionId: string, scannedAt: string | undefined, forceOverride: boolean;
   try {
-    const body = await request.json();
+    const body  = await request.json();
     token         = body.token;
     sessionId     = body.sessionId;
-    scannedAt     = body.scannedAt;      // ISO string — for offline sync validation
+    scannedAt     = body.scannedAt;     // ISO string — for offline sync
     forceOverride = body.forceOverride === true;
   } catch {
     return NextResponse.json({ type: "unknown", message: "Invalid request body" }, { status: 400 });
@@ -26,6 +43,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ type: "unknown", message: "Missing token or session" }, { status: 400 });
   }
 
+  console.log(`[SCAN] token=${token.slice(0, 8)}… sessionId=${sessionId} forceOverride=${forceOverride}`);
+
   try {
     // ── 1. Resolve participant ───────────────────────────────────────────────
     const participantRaw = await prisma.participant.findUnique({
@@ -33,11 +52,10 @@ export async function POST(request: Request) {
     });
 
     if (!participantRaw) {
+      console.log("[SCAN] participant not found");
       return NextResponse.json({ type: "unknown", message: "QR not recognized", participant: null });
     }
 
-    // Normalize to snake_case so frontend Participant type (full_name, photo_url) matches.
-    // Prisma returns camelCase (fullName, photoUrl) which would crash ScanResultOverlay.
     const participant = {
       id:        participantRaw.id,
       full_name: participantRaw.fullName,
@@ -50,25 +68,24 @@ export async function POST(request: Request) {
       where: { id: sessionId },
       include: {
         training: {
-          select: {
-            lateThresholdMinutes: true,
-            scheduleTime: true,
-          },
+          select: { lateThresholdMinutes: true, scheduleTime: true },
         },
       },
     });
 
     if (!session) {
-      return NextResponse.json({ type: "unknown", message: `Session not found (id: ${sessionId})`, participant });
+      console.log(`[SCAN] session not found id=${sessionId}`);
+      return NextResponse.json({
+        type:    "unknown",
+        message: `Session not found (id: ${sessionId})`,
+        participant,
+      });
     }
 
     // ── 3. Determine effective scan time ─────────────────────────────────────
     const scanTime = scannedAt ? new Date(scannedAt) : new Date();
 
     // ── 4. Check session state ───────────────────────────────────────────────
-    // A session is scannable any time on its calendar day (Asia/Tashkent).
-    // No time-based window — late vs. present is computed below from scan time.
-
     if (session.isCancelled) {
       return NextResponse.json({ type: "session_cancelled", message: "Session has been cancelled", participant });
     }
@@ -78,18 +95,18 @@ export async function POST(request: Request) {
 
     const todayTashkent = getTodayInTashkent(scanTime);
     if (session.sessionDate !== todayTashkent) {
+      console.log(`[SCAN] date mismatch session=${session.sessionDate} today=${todayTashkent}`);
       if (session.sessionDate > todayTashkent) {
         return NextResponse.json({ type: "not_started", message: "Session not scheduled yet", participant });
       }
       return NextResponse.json({ type: "window_closed", message: "Session was on a different day", participant });
     }
-    // Same calendar day — proceed
 
     // ── 5. Check enrollment ──────────────────────────────────────────────────
     const enrollment = await prisma.trainingParticipant.findUnique({
       where: {
         trainingId_participantId: {
-          trainingId: session.trainingId,
+          trainingId:    session.trainingId,
           participantId: participant.id,
         },
       },
@@ -99,21 +116,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ type: "not_enrolled", message: "Not enrolled in this training", participant });
     }
 
-    // ── 6. Attendance state machine ──────────────────────────────────────────
-    //
-    // An existing record does NOT automatically mean "block."
-    // We check method + status to decide whether to block, update, or create.
-    //
-    // | status   | method          | what to do                              |
-    // |----------|-----------------|------------------------------------------|
-    // | present  | qr              | Block — true duplicate scan             |
-    // | late     | qr              | Block — true duplicate scan             |
-    // | present  | manual          | Block — admin already confirmed present  |
-    // | excused  | any             | Block — admin decision, QR cannot win    |
-    // | absent   | system/manual   | UPDATE — QR scan overrides absent        |
-    // | absent   | qr (legacy)     | UPDATE — treat as overridable            |
-    // | <none>   | —               | CREATE — first scan                     |
-
+    // ── 6. Compute new status ────────────────────────────────────────────────
     const sessionDateStr = session.sessionDate;
     const threshold = await resolveLateThreshold(session.training.lateThresholdMinutes);
     const { status: newStatus, minutesLate } = computeAttendanceStatus(
@@ -123,143 +126,158 @@ export async function POST(request: Request) {
       threshold
     );
 
+    // ── 7. Attendance state machine ──────────────────────────────────────────
+    //
+    // | existing status | method        | action                               |
+    // |-----------------|---------------|--------------------------------------|
+    // | —               | —             | CREATE (first scan)                  |
+    // | absent          | system        | UPDATE silently (no confirmation)    |
+    // | excused         | any           | BLOCK (admin decision, QR loses)     |
+    // | present/late    | qr/manual     | CONFIRM unless forceOverride         |
+    // | absent          | manual/qr     | CONFIRM unless forceOverride         |
+
     const existing = await prisma.attendance.findUnique({
       where: {
         sessionId_participantId: { sessionId, participantId: participant.id },
       },
     });
 
-    if (existing) {
-      const { status: existingStatus } = existing;
-      const existingMethod = existing.method || "system";
-
-      // ── Excused — hard block, admin decision QR cannot override ──────────
-      if (existingStatus === "excused") {
-        return NextResponse.json({
-          type: "excused",
-          message: "Participant is excused for this session",
-          participant,
-        });
-      }
-
-      // ── System-generated absent → silent QR override, no confirmation ────
-      // The bulk-generator writes method:"system" before any scan.
-      // No human set this deliberately — override without asking.
-      if (existingMethod === "system" && existingStatus === "absent") {
-        const isOfflineSync = !!scannedAt;
-        await prisma.$transaction(async (tx) => {
-          await tx.attendance.update({
-            where: { id: existing.id },
-            data: {
-              status:            newStatus,
-              method:            "qr",
-              scannedAt:         scanTime,
-              scannedById:       user.id,
-              syncedFromOffline: isOfflineSync,
-              overrideById:      null,
-              overrideAt:        null,
-              note:              null,
-            },
-          });
-          await tx.attendanceAudit.create({
-            data: {
-              attendanceId: existing.id,
-              changedById:  user.id,
-              oldStatus:    existing.status,
-              newStatus,
-              reason:       "QR scan (system absent override)",
-            },
-          });
-        });
-        if (newStatus === "late") {
-          return NextResponse.json({ type: "late", message: "Marked late", participant, minutesLate });
-        }
-        return NextResponse.json({ type: "success", message: "Marked present", participant });
-      }
-
-      // ── Any other existing status → pause for operator confirmation ───────
-      //
-      // Covers: present (qr/manual), late (qr/manual), absent (manual).
-      // A prior scan or human decision set this record deliberately.
-      // Return full context so the confirmation sheet can show current → new.
-      if (!forceOverride) {
-        return NextResponse.json(
-          {
-            type:              "needs_confirmation",
-            participant,
-            existingStatus,
-            existingMethod,
-            existingScannedAt: existing.scannedAt?.toISOString() ?? null,
-            newStatus,          // what this rescan would set it to
-          },
-          { status: 409 }
-        );
-      }
-
-      // ── forceOverride === true → operator confirmed, write update ─────────
+    // ── No existing record — first scan ──────────────────────────────────────
+    if (!existing) {
       const isOfflineSync = !!scannedAt;
-      await prisma.$transaction(async (tx) => {
-        await tx.attendance.update({
-          where: { id: existing.id },
-          data: {
-            status:            newStatus,
-            method:            "qr",
-            scannedAt:         scanTime,
-            scannedById:       user.id,
-            syncedFromOffline: isOfflineSync,
-            overrideById:      null,
-            overrideAt:        null,
-            note:              null,
-          },
-        });
-        await tx.attendanceAudit.create({
-          data: {
-            attendanceId: existing.id,
-            changedById:  user.id,
-            oldStatus:    existing.status,
-            newStatus,
-            reason:       `QR force override (was ${existingMethod} ${existingStatus})`,
-          },
-        });
+      const newRecord = await prisma.attendance.create({
+        data: {
+          sessionId,
+          participantId:     participant.id,
+          status:            newStatus,
+          method:            "qr",
+          scannedAt:         scanTime,
+          scannedById:       user.id,
+          syncedFromOffline: isOfflineSync,
+        },
       });
+      console.log(`[SCAN] created attendance id=${newRecord.id} status=${newStatus}`);
 
-      if (newStatus === "late") {
-        return NextResponse.json({ type: "late", message: "Marked late (override)", participant, minutesLate });
-      }
-      return NextResponse.json({ type: "success", message: "Marked present (override)", participant });
-    }
-
-    // ── 7. No existing record — create fresh ─────────────────────────────────
-    const isOfflineSync = !!scannedAt;
-    const newRecord = await prisma.attendance.create({
-      data: {
-        sessionId,
-        participantId: participant.id,
-        status:            newStatus,
-        method:            "qr",
-        scannedAt:         scanTime,
-        scannedById:       user.id,
-        syncedFromOffline: isOfflineSync,
-      },
-    });
-
-    await prisma.attendanceAudit.create({
-      data: {
+      // Audit is best-effort — failure does NOT affect the response
+      await writeAudit({
         attendanceId: newRecord.id,
         changedById:  user.id,
         oldStatus:    null,
         newStatus,
         reason:       "QR scan",
+      });
+
+      return NextResponse.json({
+        type:       newStatus === "late" ? "late" : "success",
+        message:    newStatus === "late" ? "Marked late" : "Marked present",
+        participant,
+        minutesLate,
+        scannedAt:  scanTime.toISOString(),
+      });
+    }
+
+    const { status: existingStatus } = existing;
+    const existingMethod = existing.method || "system";
+
+    // ── Excused — hard block ──────────────────────────────────────────────────
+    if (existingStatus === "excused") {
+      return NextResponse.json({
+        type:    "excused",
+        message: "Participant is excused for this session",
+        participant,
+      });
+    }
+
+    // ── System-absent → silent QR override (no confirmation needed) ──────────
+    // Bulk-generate writes method:"system" before any scan.
+    // No human set this deliberately — override without asking.
+    if (existingMethod === "system" && existingStatus === "absent") {
+      const isOfflineSync = !!scannedAt;
+      await prisma.attendance.update({
+        where: { id: existing.id },
+        data: {
+          status:            newStatus,
+          method:            "qr",
+          scannedAt:         scanTime,
+          scannedById:       user.id,
+          syncedFromOffline: isOfflineSync,
+          overrideById:      null,
+          overrideAt:        null,
+          note:              null,
+        },
+      });
+      console.log(`[SCAN] updated system-absent → ${newStatus} id=${existing.id}`);
+
+      await writeAudit({
+        attendanceId: existing.id,
+        changedById:  user.id,
+        oldStatus:    existing.status,
+        newStatus,
+        reason:       "QR scan (system absent override)",
+      });
+
+      return NextResponse.json({
+        type:       newStatus === "late" ? "late" : "success",
+        message:    newStatus === "late" ? "Marked late" : "Marked present",
+        participant,
+        minutesLate,
+        scannedAt:  scanTime.toISOString(),
+      });
+    }
+
+    // ── Any other existing status → operator confirmation required ────────────
+    if (!forceOverride) {
+      return NextResponse.json(
+        {
+          type:              "needs_confirmation",
+          participant,
+          existingStatus,
+          existingMethod,
+          existingScannedAt: existing.scannedAt?.toISOString() ?? null,
+          newStatus,
+        },
+        { status: 409 }
+      );
+    }
+
+    // ── forceOverride — operator confirmed ────────────────────────────────────
+    const isOfflineSync = !!scannedAt;
+    await prisma.attendance.update({
+      where: { id: existing.id },
+      data: {
+        status:            newStatus,
+        method:            "qr",
+        scannedAt:         scanTime,
+        scannedById:       user.id,
+        syncedFromOffline: isOfflineSync,
+        overrideById:      null,
+        overrideAt:        null,
+        note:              null,
       },
     });
+    console.log(`[SCAN] force-override → ${newStatus} id=${existing.id} (was ${existingMethod} ${existingStatus})`);
 
-    if (newStatus === "late") {
-      return NextResponse.json({ type: "late", message: "Marked late", participant, minutesLate });
-    }
-    return NextResponse.json({ type: "success", message: "Marked present", participant });
+    await writeAudit({
+      attendanceId: existing.id,
+      changedById:  user.id,
+      oldStatus:    existing.status,
+      newStatus,
+      reason:       `QR force override (was ${existingMethod} ${existingStatus})`,
+    });
+
+    return NextResponse.json({
+      type:       newStatus === "late" ? "late" : "success",
+      message:    newStatus === "late" ? "Marked late (override)" : "Marked present (override)",
+      participant,
+      minutesLate,
+      scannedAt:  scanTime.toISOString(),
+    });
 
   } catch (err) {
-    console.error("Scan error:", err);
-    return NextResponse.json({ type: "unknown", message: "Server error, please try again" }, { status: 500 });
+    console.error("[SCAN] unhandled error:", err);
+    return NextResponse.json(
+      { type: "unknown", message: "Server error, please try again" },
+      { status: 500 }
+    );
   }
 }

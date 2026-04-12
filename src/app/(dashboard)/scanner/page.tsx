@@ -318,21 +318,20 @@ export default function ScannerPage() {
   // ── Core API call — shared by initial scan and force-override ────────────
   const callScanAPI = useCallback(async (qrToken: string, forceOverride: boolean) => {
     if (!effectiveSession) return;
-    // Guard against an effectiveSession with a missing/undefined id — JSON.stringify
-    // silently drops undefined values, which would make the backend think sessionId
-    // is missing and return a confusing "Missing token or session" error.
     if (!effectiveSession.id) {
       setScanResult({ type: "unknown", message: t("scanner.session_required") });
       navigator.vibrate?.([100, 50, 100]);
       return;
     }
     try {
+      console.log(`📤 Scan sent: token=${qrToken.slice(0, 8)}… sessionId=${effectiveSession.id} forceOverride=${forceOverride}`);
       const res  = await fetch("/api/scan", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ token: qrToken, sessionId: effectiveSession.id, forceOverride }),
       });
       const data = await res.json().catch(() => ({}));
+      console.log(`📥 Scan response: status=${res.status}`, data);
 
       // Server error with no type field (auth, 500, etc.)
       if (!res.ok && !data.type) {
