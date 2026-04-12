@@ -361,6 +361,7 @@
 
   "scanner.result.success": "Присутствие отмечено ✓",
   "scanner.result.queued_offline": "Сохранено — синхронизируется при подключении",
+  "scanner.result.excused": "Отмечен как отсутствие по уважительной причине",
   "scanner.result.already_scanned": "Уже отсканирован",
   "scanner.result.not_enrolled": "Не записан",
   "scanner.result.unknown": "Неизвестный QR-код",

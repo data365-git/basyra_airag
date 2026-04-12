@@ -53,6 +53,12 @@ export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps)
       title: t("scanner.result.not_enrolled"),
       textColor: "text-white",
     },
+    excused: {
+      bg: "bg-purple-600",
+      icon: <CheckCircle size={48} className="text-white" />,
+      title: t("scanner.result.excused"),
+      textColor: "text-white",
+    },
     not_started: {
       bg: "bg-gray-700",
       icon: <Clock size={48} className="text-white" />,

@@ -31,22 +31,44 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const { status, note } = parsed.data;
 
-    const record = await prisma.attendance.update({
-      where: { id },
-      data: {
-        ...(status !== undefined ? { status } : {}),
-        ...(note !== undefined ? { note: note || null } : {}),
-        overrideById: user.id,
-        overrideAt: new Date(),
-      },
+    // Read current record first for audit trail
+    const current = await prisma.attendance.findUnique({ where: { id } });
+    if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const record = await prisma.$transaction(async (tx) => {
+      const updated = await tx.attendance.update({
+        where: { id },
+        data: {
+          ...(status !== undefined ? { status, method: "manual" } : {}),
+          ...(note !== undefined ? { note: note || null } : {}),
+          overrideById: user.id,
+          overrideAt:   new Date(),
+        },
+      });
+
+      // Write audit log whenever the status actually changes
+      if (status !== undefined && status !== current.status) {
+        await tx.attendanceAudit.create({
+          data: {
+            attendanceId: id,
+            changedById:  user.id,
+            oldStatus:    current.status,
+            newStatus:    status,
+            reason:       "Manual admin override",
+          },
+        });
+      }
+
+      return updated;
     });
 
     return NextResponse.json({
-      id: record.id,
-      session_id: record.sessionId,
+      id:             record.id,
+      session_id:     record.sessionId,
       participant_id: record.participantId,
-      status: record.status,
-      note: record.note,
+      status:         record.status,
+      method:         record.method,
+      note:           record.note,
     });
   } catch (e) {
     console.error("attendance PATCH error:", e);

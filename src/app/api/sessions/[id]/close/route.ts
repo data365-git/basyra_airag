@@ -40,6 +40,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
             sessionId: id,
             participantId,
             status: "absent",
+            method: "system", // auto-generated at session close — QR scan can override
           })),
           skipDuplicates: true,
         });

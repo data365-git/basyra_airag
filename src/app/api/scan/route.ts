@@ -56,8 +56,6 @@ export async function POST(request: Request) {
     }
 
     // ── 3. Determine effective scan time ─────────────────────────────────────
-    // For offline scans, the client sends `scannedAt` (original device time).
-    // We validate the scan window against the ORIGINAL scan time, not now.
     const scanTime = scannedAt ? new Date(scannedAt) : new Date();
 
     // ── 4. Check session state ───────────────────────────────────────────────
@@ -101,45 +99,131 @@ export async function POST(request: Request) {
       return NextResponse.json({ type: "not_enrolled", message: "Not enrolled in this training", participant });
     }
 
-    // ── 6. Duplicate check ───────────────────────────────────────────────────
-    const existing = await prisma.attendance.findUnique({
-      where: {
-        sessionId_participantId: {
-          sessionId,
-          participantId: participant.id,
-        },
-      },
-    });
+    // ── 6. Attendance state machine ──────────────────────────────────────────
+    //
+    // An existing record does NOT automatically mean "block."
+    // We check method + status to decide whether to block, update, or create.
+    //
+    // | status   | method          | what to do                              |
+    // |----------|-----------------|------------------------------------------|
+    // | present  | qr              | Block — true duplicate scan             |
+    // | late     | qr              | Block — true duplicate scan             |
+    // | present  | manual          | Block — admin already confirmed present  |
+    // | excused  | any             | Block — admin decision, QR cannot win    |
+    // | absent   | system/manual   | UPDATE — QR scan overrides absent        |
+    // | absent   | qr (legacy)     | UPDATE — treat as overridable            |
+    // | <none>   | —               | CREATE — first scan                     |
 
-    if (existing) {
-      return NextResponse.json({ type: "already_recorded", message: "Already marked present", participant });
-    }
-
-    // ── 7. Compute late status ────────────────────────────────────────────────
     const sessionDateStr = session.sessionDate.toISOString().slice(0, 10);
     const threshold = await resolveLateThreshold(session.training.lateThresholdMinutes);
-    const { status, minutesLate } = computeAttendanceStatus(
+    const { status: newStatus, minutesLate } = computeAttendanceStatus(
       scanTime,
       sessionDateStr,
       session.training.scheduleTime,
       threshold
     );
 
-    // ── 8. Record attendance ─────────────────────────────────────────────────
+    const existing = await prisma.attendance.findUnique({
+      where: {
+        sessionId_participantId: { sessionId, participantId: participant.id },
+      },
+    });
+
+    if (existing) {
+      const { status: existingStatus, method: existingMethod } = existing;
+
+      // ── True QR duplicate — person already physically scanned ────────────
+      if (
+        (existingStatus === "present" || existingStatus === "late") &&
+        existingMethod === "qr"
+      ) {
+        return NextResponse.json({
+          type: "already_recorded",
+          message: "Already scanned",
+          participant,
+          scannedAt: existing.scannedAt,
+        });
+      }
+
+      // ── Admin already marked present manually — don't overwrite ──────────
+      if (existingStatus === "present" && existingMethod === "manual") {
+        return NextResponse.json({
+          type: "already_recorded",
+          message: "Already marked present by administrator",
+          participant,
+        });
+      }
+
+      // ── Excused — admin decision, QR cannot override ──────────────────────
+      if (existingStatus === "excused") {
+        return NextResponse.json({
+          type: "excused",
+          message: "Participant is excused for this session",
+          participant,
+        });
+      }
+
+      // ── Absent (system auto-fill, manual admin, or legacy) — QR wins ──────
+      // Update the existing record in-place; write audit trail.
+      const isOfflineSync = !!scannedAt;
+
+      await prisma.$transaction(async (tx) => {
+        await tx.attendance.update({
+          where: { id: existing.id },
+          data: {
+            status:            newStatus,
+            method:            "qr",
+            scannedAt:         scanTime,
+            scannedById:       user.id,
+            syncedFromOffline: isOfflineSync,
+            overrideById:      null,
+            overrideAt:        null,
+            note:              null,
+          },
+        });
+
+        await tx.attendanceAudit.create({
+          data: {
+            attendanceId: existing.id,
+            changedById:  user.id,
+            oldStatus:    existing.status,
+            newStatus,
+            reason:       `QR scan override (was ${existing.method ?? "unknown"})`,
+          },
+        });
+      });
+
+      if (newStatus === "late") {
+        return NextResponse.json({ type: "late", message: "Marked late (override)", participant, minutesLate });
+      }
+      return NextResponse.json({ type: "success", message: "Marked present (override)", participant });
+    }
+
+    // ── 7. No existing record — create fresh ─────────────────────────────────
     const isOfflineSync = !!scannedAt;
-    await prisma.attendance.create({
+    const newRecord = await prisma.attendance.create({
       data: {
         sessionId,
         participantId: participant.id,
-        status,
-        method:           "qr",
-        scannedAt:        scanTime,
-        scannedById:      user.id,
+        status:            newStatus,
+        method:            "qr",
+        scannedAt:         scanTime,
+        scannedById:       user.id,
         syncedFromOffline: isOfflineSync,
       },
     });
 
-    if (status === "late") {
+    await prisma.attendanceAudit.create({
+      data: {
+        attendanceId: newRecord.id,
+        changedById:  user.id,
+        oldStatus:    null,
+        newStatus,
+        reason:       "QR scan",
+      },
+    });
+
+    if (newStatus === "late") {
       return NextResponse.json({ type: "late", message: "Marked late", participant, minutesLate });
     }
     return NextResponse.json({ type: "success", message: "Marked present", participant });

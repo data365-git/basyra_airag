@@ -361,6 +361,7 @@
   "scanner.result.success": "Marked Present ✓",
   "scanner.result.queued_offline": "Saved — will sync when online",
   "scanner.result.already_scanned": "Already Scanned",
+  "scanner.result.excused": "Marked as Excused",
   "scanner.result.not_enrolled": "Not Enrolled",
   "scanner.result.unknown": "Unknown QR Code",
   "scanner.result.session_closed": "Session Closed",

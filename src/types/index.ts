@@ -157,6 +157,7 @@ export interface ScanResult {
     | "already_recorded"
     | "already_scanned"   // legacy alias kept for backward compat
     | "not_enrolled"
+    | "excused"
     | "not_started"
     | "window_closed"
     | "session_closed"    // legacy alias kept for backward compat
