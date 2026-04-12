@@ -82,22 +82,22 @@ export function ConfirmOverrideSheet({
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-end justify-end">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60"
-        onClick={isLoading ? undefined : onCancel}
-      />
+      {/* Backdrop — intentionally non-dismissible so operator must choose */}
+      <div className="absolute inset-0 bg-black/70" />
 
       {/* Sheet — white, slides up from bottom */}
       <div className="relative w-full bg-white rounded-t-3xl px-6 pt-4 pb-10 flex flex-col gap-5 shadow-2xl">
         {/* Drag handle */}
         <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto" />
 
-        {/* Icon */}
-        <div className="flex justify-center">
+        {/* Attention header */}
+        <div className="flex flex-col items-center gap-2">
           <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center">
             <RotateCcw size={26} className="text-amber-600" />
           </div>
+          <p className="text-amber-600 font-extrabold text-base uppercase tracking-widest text-center">
+            ⚠ {t("scanner.confirm.action_required")}
+          </p>
         </div>
 
         {/* Avatar + Name */}
@@ -147,7 +147,7 @@ export function ConfirmOverrideSheet({
           <button
             onClick={onConfirm}
             disabled={isLoading}
-            className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-base transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full py-5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-lg transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-blue-600/40"
           >
             {isLoading ? (
               <>

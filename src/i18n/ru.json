@@ -380,6 +380,7 @@
   "scanner.sync_failed": "Синхронизация не удалась — повтор при подключении",
   "scanner.confirm.title": "Подтвердить изменение",
   "scanner.confirm.body": "Установлено {admin} в {time}",
+  "scanner.confirm.action_required": "Требуется подтверждение",
   "scanner.confirm.question": "Переопределить и отметить присутствующим?",
   "scanner.confirm.yes": "Обновить",
   "scanner.confirm.no": "Отмена",

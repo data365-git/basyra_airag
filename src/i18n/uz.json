@@ -380,6 +380,7 @@
   "scanner.sync_failed": "Sinxronlash xatosi — onlayn bo'lganda qayta uriniladi",
   "scanner.confirm.title": "Qayta yozishni tasdiqlang",
   "scanner.confirm.body": "{admin} tomonidan soat {time} da belgilangan",
+  "scanner.confirm.action_required": "Tasdiqlash kerak",
   "scanner.confirm.question": "Qayta yozib o'chirasizmi?",
   "scanner.confirm.yes": "Yangilash",
   "scanner.confirm.no": "Bekor qilish",

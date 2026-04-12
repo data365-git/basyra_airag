@@ -379,6 +379,7 @@
   "scanner.sync_failed": "Sync failed — will retry when online",
   "scanner.confirm.title": "Confirm Override",
   "scanner.confirm.body": "Set by {admin} at {time}",
+  "scanner.confirm.action_required": "Action required",
   "scanner.confirm.question": "Override and mark as present?",
   "scanner.confirm.yes": "Update",
   "scanner.confirm.no": "Cancel",
