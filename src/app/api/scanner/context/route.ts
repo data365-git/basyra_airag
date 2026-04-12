@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
+import {
+  getSessionState,
+  loadSystemWindowSettings,
+} from "@/lib/sessionWindow";
 
 export async function GET() {
   const user = await getFullUser();
@@ -11,23 +15,34 @@ export async function GET() {
 
   try {
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD UTC
 
-    // Find sessions today whose parent training is currently active (startDate ≤ today ≤ endDate)
+    // Asia/Tashkent is UTC+5 — derive "today" in local time
+    const tashkentOffsetMs = 5 * 60 * 60 * 1000;
+    const localNow = new Date(now.getTime() + tashkentOffsetMs);
+    const todayStr = localNow.toISOString().slice(0, 10); // YYYY-MM-DD in TZ
+
+    // Find all sessions today whose training spans today
     const sessions = await prisma.session.findMany({
       where: {
         sessionDate: {
-          gte: new Date(`${todayStr}T00:00:00.000Z`),
-          lte: new Date(`${todayStr}T23:59:59.999Z`),
+          gte: new Date(`${todayStr}T00:00:00+05:00`),
+          lte: new Date(`${todayStr}T23:59:59+05:00`),
         },
+        isCancelled: false,
+        forceClosed:  false,
         training: {
-          startDate: { lte: now },
-          endDate:   { gte: now },
+          startDate: { lte: new Date(`${todayStr}T23:59:59+05:00`) },
+          endDate:   { gte: new Date(`${todayStr}T00:00:00+05:00`) },
         },
       },
       include: {
         training: {
-          select: { id: true, name: true },
+          select: {
+            id:               true,
+            name:             true,
+            scanWindowBefore: true,
+            scanWindowAfter:  true,
+          },
         },
       },
       orderBy: { sessionTime: "asc" },
@@ -37,30 +52,76 @@ export async function GET() {
       return NextResponse.json({ autoSelected: false });
     }
 
-    // Prefer the session whose scan window is currently open (or closest to opening)
-    // window = sessionDateTime -15min → +90min
-    let best = sessions[0];
-    for (const s of sessions) {
-      const sessionDT  = new Date(`${todayStr}T${s.sessionTime}`);
-      const windowStart = new Date(sessionDT.getTime() - 15 * 60 * 1000);
-      const windowEnd   = new Date(sessionDT.getTime() + 90 * 60 * 1000);
-      if (now >= windowStart && now <= windowEnd) {
-        best = s;
-        break;
-      }
+    const settings = await loadSystemWindowSettings();
+
+    // Prefer the session that is currently active; fall back to the next upcoming one
+    let activeSession  = sessions.find((s) => {
+      const state = getSessionState(
+        {
+          sessionDate:      s.sessionDate,
+          sessionTime:      s.sessionTime,
+          isCancelled:      s.isCancelled,
+          forceClosed:      s.forceClosed,
+          scanWindowBefore: s.training.scanWindowBefore,
+          scanWindowAfter:  s.training.scanWindowAfter,
+        },
+        settings,
+        now
+      );
+      return state === "active";
+    });
+
+    // If none are active, pick the first upcoming one
+    if (!activeSession) {
+      activeSession = sessions.find((s) => {
+        const state = getSessionState(
+          {
+            sessionDate:      s.sessionDate,
+            sessionTime:      s.sessionTime,
+            isCancelled:      s.isCancelled,
+            forceClosed:      s.forceClosed,
+            scanWindowBefore: s.training.scanWindowBefore,
+            scanWindowAfter:  s.training.scanWindowAfter,
+          },
+          settings,
+          now
+        );
+        return state === "upcoming";
+      });
     }
 
+    if (!activeSession) {
+      // All sessions ended today — don't auto-select
+      return NextResponse.json({ autoSelected: false });
+    }
+
+    const sessionState = getSessionState(
+      {
+        sessionDate:      activeSession.sessionDate,
+        sessionTime:      activeSession.sessionTime,
+        isCancelled:      activeSession.isCancelled,
+        forceClosed:      activeSession.forceClosed,
+        scanWindowBefore: activeSession.training.scanWindowBefore,
+        scanWindowAfter:  activeSession.training.scanWindowAfter,
+      },
+      settings,
+      now
+    );
+
     return NextResponse.json({
-      autoSelected: true,
+      autoSelected:   true,
+      state:          sessionState,
       training: {
-        id:   best.training.id,
-        name: best.training.name,
+        id:   activeSession.training.id,
+        name: activeSession.training.name,
       },
       session: {
-        id:             best.id,
-        session_number: best.sessionNumber,
-        session_date:   best.sessionDate.toISOString().slice(0, 10),
-        session_time:   best.sessionTime,
+        id:              activeSession.id,
+        session_number:  activeSession.sessionNumber,
+        session_date:    activeSession.sessionDate.toISOString().slice(0, 10),
+        session_time:    activeSession.sessionTime,
+        scan_window_before: activeSession.training.scanWindowBefore ?? settings.before,
+        scan_window_after:  activeSession.training.scanWindowAfter  ?? settings.after,
       },
     });
   } catch (err) {

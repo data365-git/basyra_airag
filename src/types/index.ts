@@ -142,8 +142,26 @@ export interface AttendanceAudit {
   staff?: StaffUser;
 }
 
+export type SessionState =
+  | "upcoming"
+  | "active"
+  | "ended"
+  | "cancelled"
+  | "force_closed";
+
 export interface ScanResult {
-  type: "success" | "already_scanned" | "not_enrolled" | "unknown" | "session_closed" | "late";
+  type:
+    | "success"
+    | "late"
+    | "already_recorded"
+    | "already_scanned"   // legacy alias kept for backward compat
+    | "not_enrolled"
+    | "not_started"
+    | "window_closed"
+    | "session_closed"    // legacy alias kept for backward compat
+    | "session_cancelled"
+    | "force_closed"
+    | "unknown";
   participant?: Participant;
   message?: string;
   minutesLate?: number;

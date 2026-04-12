@@ -51,6 +51,8 @@ model Training {
   status               String                @default("upcoming")
   attendanceThreshold  Int                   @default(80) @map("attendance_threshold")
   lateThresholdMinutes Int?                  @map("late_threshold_minutes")
+  scanWindowBefore     Int?                  @map("scan_window_before") // minutes before session; null = use system default
+  scanWindowAfter      Int?                  @map("scan_window_after")  // minutes after session; null = use system default
   categoryId           String?               @map("category_id")
   category             TrainingCategory?     @relation(fields: [categoryId], references: [id])
   createdById          String?               @map("created_by")
@@ -88,17 +90,24 @@ model Translation {
 }
 
 model Session {
-  id            String       @id @default(uuid())
-  trainingId    String       @map("training_id")
-  training      Training     @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  sessionNumber Int          @map("session_number")
-  sessionDate   DateTime     @map("session_date") @db.Date
-  sessionTime   String       @map("session_time")
-  status        String       @default("upcoming")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  attendance    Attendance[]
+  id               String       @id @default(uuid())
+  trainingId       String       @map("training_id")
+  training         Training     @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  sessionNumber    Int          @map("session_number")
+  sessionDate      DateTime     @map("session_date") @db.Date
+  sessionTime      String       @map("session_time")
+  status           String       @default("upcoming") // kept for schema compatibility; state is derived at runtime
+  isCancelled      Boolean      @default(false) @map("is_cancelled")
+  forceClosed      Boolean      @default(false) @map("force_closed")
+  cancelledAt      DateTime?    @map("cancelled_at")
+  cancelledById    String?      @map("cancelled_by")
+  forceClosedAt    DateTime?    @map("force_closed_at")
+  forceClosedById  String?      @map("force_closed_by")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  attendance       Attendance[]
 
   @@unique([trainingId, sessionNumber])
+  @@index([sessionDate])
   @@map("sessions")
 }
 
@@ -134,6 +143,7 @@ model Attendance {
   session          Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   participant      Participant      @relation(fields: [participantId], references: [id], onDelete: Cascade)
   status           String
+  method           String           @default("qr") // "qr" | "manual"
   scannedAt        DateTime?        @map("scanned_at")
   scannedById      String?          @map("scanned_by")
   scannedBy        StaffUser?       @relation("ScannedBy", fields: [scannedById], references: [id])

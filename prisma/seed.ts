@@ -150,11 +150,20 @@ async function main() {
   console.log("Categories seeded.");
 
   // ── System settings ──────────────────────────────────────────────────────
-  await prisma.systemSetting.upsert({
-    where: { key: "late_threshold_minutes" },
-    update: {},
-    create: { key: "late_threshold_minutes", value: "15" },
-  });
+  const systemSettings = [
+    { key: "late_threshold_minutes",     value: "15"            },
+    { key: "scan_window_before_minutes", value: "30"            },
+    { key: "scan_window_after_minutes",  value: "120"           },
+    { key: "timezone",                   value: "Asia/Tashkent" },
+  ];
+
+  for (const s of systemSettings) {
+    await prisma.systemSetting.upsert({
+      where:  { key: s.key },
+      update: {},
+      create: s,
+    });
+  }
 
   console.log("System settings seeded.");
   console.log("Seed complete!");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Edit2 } from "lucide-react";
+import { Edit2, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { QRScanner } from "@/components/scanner/QRScanner";
 import { ScanResultOverlay } from "@/components/scanner/ScanResult";
 import { OfflineBanner } from "@/components/scanner/OfflineBanner";
@@ -10,45 +10,150 @@ import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
 import { formatTime } from "@/lib/utils";
-import type { ScanResult } from "@/types";
+import {
+  getSessionState,
+  getSessionWindow,
+  secondsUntilOpen,
+  formatCountdown,
+  DEFAULT_WINDOW_BEFORE,
+  DEFAULT_WINDOW_AFTER,
+} from "@/lib/sessionWindow";
+import type { ScanResult, SessionState } from "@/types";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface AutoContext {
+  training:  { id: string; name: string };
+  session:   {
+    id:                 string;
+    session_number:     number;
+    session_date:       string;
+    session_time:       string;
+    scan_window_before: number;
+    scan_window_after:  number;
+  };
+  state: SessionState;
+}
+
+// ─── Countdown component ──────────────────────────────────────────────────────
+
+function CountdownBlock({
+  secondsLeft,
+  label,
+}: {
+  secondsLeft: number;
+  label: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="flex items-center gap-2 text-yellow-400 mb-1">
+        <Clock size={20} />
+        <span className="text-sm font-medium">{label}</span>
+      </div>
+      <div className="font-mono text-4xl font-bold text-white tracking-widest">
+        {formatCountdown(secondsLeft)}
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ScannerPage() {
   const canScan = usePermission("scanner", "view");
   const { isOnline, refreshCount } = useOfflineSync();
   const { t } = useTranslation();
 
-  const [trainings, setTrainings]           = useState<any[]>([]);
-  const [sessions, setSessions]             = useState<any[]>([]);
-  const [selectedTraining, setSelectedTraining] = useState("");
-  const [selectedSession, setSelectedSession]   = useState("");
-  const [scanResult, setScanResult]         = useState<ScanResult | null>(null);
+  // Manual dropdown state
+  const [trainings, setTrainings]                   = useState<any[]>([]);
+  const [sessions,  setSessions]                    = useState<any[]>([]);
+  const [selectedTraining, setSelectedTraining]     = useState("");
+  const [selectedSession,  setSelectedSession]      = useState("");
 
-  // Auto-select state
-  const [autoContext, setAutoContext]   = useState<{ training: { id: string; name: string }; session: { id: string; session_number: number; session_date: string; session_time: string } } | null>(null);
-  const [manualOverride, setManualOverride] = useState(false); // user tapped "edit" chip
+  // Auto-context state
+  const [autoContext,     setAutoContext]    = useState<AutoContext | null>(null);
+  const [manualOverride,  setManualOverride] = useState(false);
+
+  // Live state for the selected session
+  const [sessionState, setSessionState] = useState<SessionState | null>(null);
+  const [countdown,    setCountdown]    = useState(0);
+  const [scanCount,    setScanCount]    = useState(0);
+
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
   const lastScannedRef     = useRef<string>("");
   const lastScannedTimeRef = useRef<number>(0);
+  const tickRef            = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Effective selections — auto context wins unless user has overridden
-  const effectiveSession  = manualOverride ? selectedSession : (autoContext?.session.id ?? selectedSession);
+  // ── Effective selections ───────────────────────────────────────────────────
+  const effectiveSession  = manualOverride ? selectedSession  : (autoContext?.session.id  ?? selectedSession);
   const effectiveTraining = manualOverride ? selectedTraining : (autoContext?.training.id ?? selectedTraining);
 
+  // The window settings for the effective session (used by client-side timer)
+  const effectiveWindowInput = autoContext && !manualOverride
+    ? {
+        sessionDate:      autoContext.session.session_date,
+        sessionTime:      autoContext.session.session_time,
+        isCancelled:      false,
+        forceClosed:      false,
+        scanWindowBefore: autoContext.session.scan_window_before,
+        scanWindowAfter:  autoContext.session.scan_window_after,
+      }
+    : null;
+
+  // ── On mount ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    // Try auto-select first; load full dropdown data in parallel for fallback
     loadContext();
     loadTrainings();
   }, []);
 
+  // ── When manual override or training changes ───────────────────────────────
   useEffect(() => {
     if (manualOverride && selectedTraining) loadSessions(selectedTraining);
   }, [selectedTraining, manualOverride]);
+
+  // ── Live session state ticker ──────────────────────────────────────────────
+  useEffect(() => {
+    if (tickRef.current) clearInterval(tickRef.current);
+    if (!effectiveWindowInput) { setSessionState(null); return; }
+
+    const tick = () => {
+      const now   = new Date();
+      const state = getSessionState(effectiveWindowInput, undefined, now);
+      setSessionState(state);
+
+      if (state === "upcoming") {
+        setCountdown(secondsUntilOpen(effectiveWindowInput, undefined, now));
+      } else {
+        setCountdown(0);
+      }
+    };
+
+    tick(); // immediate
+    tickRef.current = setInterval(tick, 1000);
+    return () => { if (tickRef.current) clearInterval(tickRef.current); };
+  }, [
+    autoContext?.session.session_date,
+    autoContext?.session.session_time,
+    autoContext?.session.scan_window_before,
+    autoContext?.session.scan_window_after,
+    manualOverride,
+  ]);
+
+  // ── When session becomes active, load scan count ──────────────────────────
+  useEffect(() => {
+    if (sessionState === "active" && effectiveSession) {
+      fetchScanCount(effectiveSession);
+    }
+  }, [sessionState, effectiveSession]);
+
+  // ── Data fetchers ──────────────────────────────────────────────────────────
 
   async function loadContext() {
     try {
       const data = await fetch("/api/scanner/context").then((r) => r.json());
       if (data.autoSelected) {
-        setAutoContext(data);
+        setAutoContext(data as AutoContext);
       }
     } catch {
       // silently fail — fall back to manual dropdowns
@@ -59,7 +164,7 @@ export default function ScannerPage() {
     try {
       const data = await fetch("/api/trainings").then((r) => r.json());
       const active = (Array.isArray(data) ? data : []).filter(
-        (t: any) => t.status === "active" || t.status === "upcoming"
+        (tr: any) => tr.status === "active" || tr.status === "upcoming"
       );
       setTrainings(active);
       if (!autoContext && active.length === 1) setSelectedTraining(active[0].id);
@@ -71,13 +176,25 @@ export default function ScannerPage() {
       const data = await fetch(`/api/sessions?training_id=${trainingId}`).then((r) => r.json());
       const list = Array.isArray(data) ? data : [];
       setSessions(list);
-      // Pre-select today's session if one exists
       const today = new Date().toISOString().slice(0, 10);
       const todaysSession = list.find((s: any) => s.session_date === today);
       if (todaysSession) setSelectedSession(todaysSession.id);
       else if (list.length === 1) setSelectedSession(list[0].id);
     } catch {}
   }
+
+  async function fetchScanCount(sessionId: string) {
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/attendance`);
+      if (res.ok) {
+        const data = await res.json();
+        const count = Array.isArray(data) ? data.length : (data?.count ?? 0);
+        setScanCount(count);
+      }
+    } catch {}
+  }
+
+  // ── Scan handler ───────────────────────────────────────────────────────────
 
   const handleScan = useCallback(async (token: string) => {
     const now = Date.now();
@@ -98,19 +215,22 @@ export default function ScannerPage() {
       await refreshCount();
       setScanResult({ type: "success" });
       navigator.vibrate?.(200);
+      setScanCount((c) => c + 1);
       return;
     }
 
     try {
       const res = await fetch("/api/scan", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, sessionId: effectiveSession }),
+        body:    JSON.stringify({ token, sessionId: effectiveSession }),
       });
       const data = (await res.json()) as ScanResult;
       setScanResult(data);
+
       if (data.type === "success" || data.type === "late") {
         navigator.vibrate?.(200);
+        setScanCount((c) => c + 1);
       } else {
         navigator.vibrate?.([100, 50, 100]);
       }
@@ -120,12 +240,15 @@ export default function ScannerPage() {
         await refreshCount();
         setScanResult({ type: "success" });
         navigator.vibrate?.(200);
+        setScanCount((c) => c + 1);
       } else {
         setScanResult({ type: "unknown", message: t("scanner.network_error") });
         navigator.vibrate?.([100, 50, 100]);
       }
     }
   }, [effectiveSession, isOnline, refreshCount, t]);
+
+  // ── Access guard ───────────────────────────────────────────────────────────
 
   if (!canScan) {
     return (
@@ -139,14 +262,20 @@ export default function ScannerPage() {
 
   const showAutoChip = !!autoContext && !manualOverride;
 
+  // ── Derive what to show in the camera area ─────────────────────────────────
+
+  const showUpcoming    = !!effectiveSession && sessionState === "upcoming";
+  const showCancelled   = !!effectiveSession && (sessionState === "cancelled" || sessionState === "force_closed");
+  const showEnded       = !!effectiveSession && sessionState === "ended";
+  const cameraActive    = !!effectiveSession && sessionState === "active";
+
   return (
     <div className="fixed inset-0 z-40 lg:relative lg:z-auto lg:inset-auto flex flex-col bg-gray-900 lg:h-[calc(100vh-2rem)] lg:rounded-2xl overflow-hidden">
       <OfflineBanner />
 
-      {/* Session selector */}
+      {/* ── Session selector ─────────────────────────────────────────────── */}
       <div className="bg-gray-800 px-4 py-3 flex gap-2 z-10">
         {showAutoChip ? (
-          /* Auto-selected chip */
           <div className="flex-1 flex items-center justify-between bg-blue-600/30 border border-blue-500/50 rounded-lg px-3 py-2">
             <div className="min-w-0">
               <p className="text-white text-sm font-medium truncate">{autoContext.training.name}</p>
@@ -157,7 +286,6 @@ export default function ScannerPage() {
             <button
               onClick={() => {
                 setManualOverride(true);
-                // Pre-select the auto-selected training in manual dropdowns
                 setSelectedTraining(autoContext.training.id);
                 setSelectedSession(autoContext.session.id);
                 loadSessions(autoContext.training.id);
@@ -169,7 +297,6 @@ export default function ScannerPage() {
             </button>
           </div>
         ) : (
-          /* Manual dropdowns */
           <>
             <select
               value={selectedTraining}
@@ -202,30 +329,81 @@ export default function ScannerPage() {
         )}
       </div>
 
-      {/* Camera area */}
+      {/* ── Camera area ──────────────────────────────────────────────────── */}
       <div className="flex-1 relative overflow-hidden">
-        <QRScanner onScan={handleScan} active={!!effectiveSession} />
+        <QRScanner onScan={handleScan} active={cameraActive} />
 
         {/* No session selected */}
         {!effectiveSession && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center bg-gray-900/80 px-6">
             <div className="text-4xl mb-4">📱</div>
             <p className="text-lg font-medium">{t("scanner.select_to_scan")}</p>
             <p className="text-sm text-white/60 mt-1">{t("scanner.select_to_scan_sub")}</p>
           </div>
         )}
 
+        {/* Upcoming: countdown to window open */}
+        {showUpcoming && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 px-6">
+            <CountdownBlock
+              secondsLeft={countdown}
+              label={t("scanner.opens_in")}
+            />
+            <p className="text-white/50 text-xs mt-6">
+              {autoContext
+                ? `${autoContext.training.name} · ${t("scanner.session_short")} ${autoContext.session.session_number}`
+                : t("scanner.session_not_started")}
+            </p>
+          </div>
+        )}
+
+        {/* Cancelled / force-closed */}
+        {showCancelled && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 px-6">
+            <XCircle size={48} className="text-red-400 mb-4" />
+            <p className="text-white text-lg font-medium">
+              {sessionState === "cancelled"
+                ? t("scanner.session_cancelled")
+                : t("scanner.session_force_closed")}
+            </p>
+          </div>
+        )}
+
+        {/* Ended: show today's summary */}
+        {showEnded && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 px-6 text-center">
+            <CheckCircle size={48} className="text-green-400 mb-4" />
+            <p className="text-white text-lg font-medium">{t("scanner.session_ended")}</p>
+            {scanCount > 0 && (
+              <p className="text-white/60 text-sm mt-2">
+                {t("scanner.scanned_today", { count: String(scanCount) })}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Active: live scan count badge */}
+        {cameraActive && scanCount > 0 && (
+          <div className="absolute top-3 right-3 bg-green-600/80 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-full">
+            ✓ {scanCount}
+          </div>
+        )}
+
         <ScanResultOverlay result={scanResult} isOffline={!isOnline} />
       </div>
 
-      {/* Bottom hint bar */}
+      {/* ── Bottom hint bar ───────────────────────────────────────────────── */}
       <div className="bg-gray-800 px-4 py-3 text-center">
         <p className="text-white/70 text-sm">
           {!effectiveSession
             ? t("scanner.select_above")
-            : scanResult
-              ? t("scanner.scan_next")
-              : t("scanner.point_camera")}
+            : showUpcoming
+              ? t("scanner.window_opening_soon")
+              : showCancelled || showEnded
+                ? t("scanner.session_closed_hint")
+                : scanResult
+                  ? t("scanner.scan_next")
+                  : t("scanner.point_camera")}
         </p>
       </div>
     </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Edit, Download, Plus, Trash2, UserMinus, Search, CalendarPlus } from "lucide-react";
+import { Edit, Download, Plus, Trash2, UserMinus, Search, CalendarPlus, Clock, CheckCircle, XCircle, AlertTriangle, Zap } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { TrainingStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -14,7 +14,92 @@ import { ConfirmModal, Modal } from "@/components/ui/Modal";
 import { formatDate, formatTime, getAttendanceColorClass, formatScheduleDays } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
+import { getSessionState, DEFAULT_WINDOW_BEFORE, DEFAULT_WINDOW_AFTER } from "@/lib/sessionWindow";
+import type { SessionState } from "@/types";
 import toast from "react-hot-toast";
+
+// ─── Session state indicator ────────────────────────────────────────────────
+
+function SessionStateBadge({
+  session,
+  trainingWindowBefore,
+  trainingWindowAfter,
+}: {
+  session: { session_date: string; session_time: string; is_cancelled?: boolean; force_closed?: boolean };
+  trainingWindowBefore?: number | null;
+  trainingWindowAfter?: number | null;
+}) {
+  const [state, setState] = useState<SessionState | null>(null);
+
+  useEffect(() => {
+    const compute = () => {
+      const s = getSessionState(
+        {
+          sessionDate:      session.session_date,
+          sessionTime:      session.session_time,
+          isCancelled:      session.is_cancelled ?? false,
+          forceClosed:      session.force_closed ?? false,
+          scanWindowBefore: trainingWindowBefore,
+          scanWindowAfter:  trainingWindowAfter,
+        },
+        {
+          before: DEFAULT_WINDOW_BEFORE,
+          after:  DEFAULT_WINDOW_AFTER,
+        }
+      );
+      setState(s);
+    };
+    compute();
+    // Only tick while session might be upcoming or active
+    const interval = setInterval(compute, 30_000);
+    return () => clearInterval(interval);
+  }, [session.session_date, session.session_time, session.is_cancelled, session.force_closed]);
+
+  if (!state) return null;
+
+  switch (state) {
+    case "active":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+          </span>
+          Live
+        </span>
+      );
+    case "upcoming":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
+          <Clock size={10} />
+          {formatTime(session.session_time)}
+        </span>
+      );
+    case "ended":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5">
+          <CheckCircle size={10} />
+          Done
+        </span>
+      );
+    case "cancelled":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+          <XCircle size={10} />
+          Cancelled
+        </span>
+      );
+    case "force_closed":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5">
+          <AlertTriangle size={10} />
+          Closed
+        </span>
+      );
+    default:
+      return null;
+  }
+}
 
 export default function TrainingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -291,7 +376,16 @@ export default function TrainingDetailPage() {
               const stats = getSessionStats(s.id);
               return (
                 <Tr key={s.id}>
-                  <Td className="font-medium">{t("trainings.session_number", { n: s.session_number })}</Td>
+                  <Td className="font-medium">
+                    <div className="flex items-center gap-2">
+                      {t("trainings.session_number", { n: s.session_number })}
+                      <SessionStateBadge
+                        session={s}
+                        trainingWindowBefore={training?.scan_window_before}
+                        trainingWindowAfter={training?.scan_window_after}
+                      />
+                    </div>
+                  </Td>
                   <Td>{formatDate(s.session_date)}</Td>
                   <Td className="text-green-600">{stats.present + stats.late} / {stats.total}</Td>
                   <Td className="text-red-500">{stats.absent}</Td>

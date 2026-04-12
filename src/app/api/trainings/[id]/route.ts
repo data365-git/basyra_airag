@@ -69,7 +69,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         session_date: s.sessionDate.toISOString().slice(0, 10),
         session_time: s.sessionTime,
         status: s.status,
+        is_cancelled: s.isCancelled,
+        force_closed: s.forceClosed,
       })),
+      scan_window_before: training.scanWindowBefore,
+      scan_window_after:  training.scanWindowAfter,
       participants: training.trainingParticipants.map((tp) => ({
         participant: {
           id: tp.participant.id,

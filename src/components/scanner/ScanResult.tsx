@@ -22,6 +22,19 @@ export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps)
       title: t("scanner.result.success"),
       textColor: "text-white",
     },
+    late: {
+      bg: "bg-amber-500",
+      icon: <Clock size={48} className="text-white" />,
+      title: t("scanner.result.late"),
+      textColor: "text-white",
+    },
+    already_recorded: {
+      bg: "bg-yellow-500",
+      icon: <AlertTriangle size={48} className="text-white" />,
+      title: t("scanner.result.already_scanned"),
+      textColor: "text-white",
+    },
+    // legacy alias
     already_scanned: {
       bg: "bg-yellow-500",
       icon: <AlertTriangle size={48} className="text-white" />,
@@ -34,22 +47,41 @@ export function ScanResultOverlay({ result, isOffline }: ScanResultOverlayProps)
       title: t("scanner.result.not_enrolled"),
       textColor: "text-white",
     },
-    unknown: {
-      bg: "bg-red-500",
-      icon: <XCircle size={48} className="text-white" />,
-      title: t("scanner.result.unknown"),
+    not_started: {
+      bg: "bg-gray-700",
+      icon: <Clock size={48} className="text-white" />,
+      title: t("scanner.result.session_closed"),
       textColor: "text-white",
     },
+    window_closed: {
+      bg: "bg-gray-700",
+      icon: <Lock size={48} className="text-white" />,
+      title: t("scanner.result.session_closed"),
+      textColor: "text-white",
+    },
+    // legacy alias
     session_closed: {
       bg: "bg-gray-700",
       icon: <Lock size={48} className="text-white" />,
       title: t("scanner.result.session_closed"),
       textColor: "text-white",
     },
-    late: {
-      bg: "bg-amber-500",
-      icon: <Clock size={48} className="text-white" />,
-      title: t("scanner.result.late"),
+    session_cancelled: {
+      bg: "bg-red-700",
+      icon: <XCircle size={48} className="text-white" />,
+      title: t("scanner.session_cancelled"),
+      textColor: "text-white",
+    },
+    force_closed: {
+      bg: "bg-red-700",
+      icon: <Lock size={48} className="text-white" />,
+      title: t("scanner.session_force_closed"),
+      textColor: "text-white",
+    },
+    unknown: {
+      bg: "bg-red-500",
+      icon: <XCircle size={48} className="text-white" />,
+      title: t("scanner.result.unknown"),
       textColor: "text-white",
     },
   };
