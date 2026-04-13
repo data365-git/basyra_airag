@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
 import { cookies } from "next/headers";
+import { notifyGraded } from "@/lib/bot";
 
 async function getStaffUser() {
   const jar   = await cookies();
@@ -30,6 +31,22 @@ export async function POST(
     update: { score, feedback: feedback?.trim() || null, gradedById: user.sub, gradedAt: new Date() },
     create: { submissionId, score, feedback: feedback?.trim() || null, gradedById: user.sub },
   });
+
+  // Fire Telegram notification (non-blocking)
+  prisma.homeworkSubmission.findUnique({
+    where:   { id: submissionId },
+    include: { homework: { select: { title: true, maxScore: true } }, participant: { select: { id: true } } },
+  }).then((sub) => {
+    if (sub) {
+      notifyGraded({
+        participantId: sub.participant.id,
+        homeworkTitle: sub.homework.title,
+        score,
+        maxScore:      sub.homework.maxScore,
+        feedback:      feedback?.trim() || null,
+      }).catch(() => {});
+    }
+  }).catch(() => {});
 
   return NextResponse.json(grade, { status: 201 });
 }
