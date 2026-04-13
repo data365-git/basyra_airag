@@ -35,14 +35,14 @@ export async function POST(
   // Fire Telegram notification (non-blocking)
   prisma.homeworkSubmission.findUnique({
     where:   { id: submissionId },
-    include: { homework: { select: { title: true, maxScore: true } }, participant: { select: { id: true } } },
+    include: { homework: { select: { title: true } }, participant: { select: { id: true } } },
   }).then((sub) => {
     if (sub) {
       notifyGraded({
         participantId: sub.participant.id,
         homeworkTitle: sub.homework.title,
         score,
-        maxScore:      sub.homework.maxScore,
+        maxScore:      100,
         feedback:      feedback?.trim() || null,
       }).catch(() => {});
     }

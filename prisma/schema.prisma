@@ -213,6 +213,7 @@ model Homework {
   description String?
   startDate   String?              @map("start_date") // "YYYY-MM-DD" plain string, nullable
   dueDate     String?              @map("due_date")   // "YYYY-MM-DD" plain string, nullable
+  maxScore    Int                  @default(100) @map("max_score") // always 100 — grading is by percent
   createdById String?              @map("created_by")
   createdBy   StaffUser?           @relation(fields: [createdById], references: [id])
   createdAt   DateTime             @default(now()) @map("created_at")

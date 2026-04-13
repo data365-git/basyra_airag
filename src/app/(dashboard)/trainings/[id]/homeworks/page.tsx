@@ -34,7 +34,7 @@ export default function HomeworksPage() {
 
   // Add modal
   const [addOpen,    setAddOpen]    = useState(false);
-  const [addForm,    setAddForm]    = useState({ title: "", description: "", due_date: "", max_score: 100 });
+  const [addForm,    setAddForm]    = useState({ title: "", description: "", start_date: "", due_date: "" });
   const [addSaving,  setAddSaving]  = useState(false);
 
   // Delete
@@ -64,15 +64,15 @@ export default function HomeworksPage() {
       body:    JSON.stringify({
         title:       addForm.title.trim(),
         description: addForm.description.trim() || null,
+        start_date:  addForm.start_date || null,
         due_date:    addForm.due_date || null,
-        max_score:   Number(addForm.max_score) || 100,
       }),
     });
     setAddSaving(false);
     if (res.ok) {
       toast.success("Vazifa yaratildi");
       setAddOpen(false);
-      setAddForm({ title: "", description: "", due_date: "", max_score: 100 });
+      setAddForm({ title: "", description: "", start_date: "", due_date: "" });
       await load();
     } else {
       toast.error("Xato yuz berdi");
@@ -210,22 +210,20 @@ export default function HomeworksPage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Muddat</label>
+              <label className="block text-sm font-medium text-gray-700">Boshlanish sanasi</label>
               <input
                 type="date"
-                value={addForm.due_date}
-                onChange={(e) => setAddForm((f) => ({ ...f, due_date: e.target.value }))}
+                value={addForm.start_date}
+                onChange={(e) => setAddForm((f) => ({ ...f, start_date: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Maksimal ball</label>
+              <label className="block text-sm font-medium text-gray-700">Muddat (oxiri)</label>
               <input
-                type="number"
-                min={1}
-                max={1000}
-                value={addForm.max_score}
-                onChange={(e) => setAddForm((f) => ({ ...f, max_score: Number(e.target.value) }))}
+                type="date"
+                value={addForm.due_date}
+                onChange={(e) => setAddForm((f) => ({ ...f, due_date: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
