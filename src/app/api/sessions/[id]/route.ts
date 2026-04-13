@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getFullUser } from "@/lib/getUser";
+import { hasPermission } from "@/lib/permissions";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -83,6 +85,39 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     });
   } catch (e) {
     console.error("session GET error:", e);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await getFullUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!hasPermission(user, "trainings", "edit"))
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const { id } = await params;
+
+    const session = await prisma.session.findUnique({
+      where: { id },
+      include: { _count: { select: { attendance: true } } },
+    });
+    if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+
+    const attendanceCount = session._count.attendance;
+
+    // Delete attendance records first, then the session
+    if (attendanceCount > 0) {
+      await prisma.attendanceAudit.deleteMany({
+        where: { attendance: { sessionId: id } },
+      });
+      await prisma.attendance.deleteMany({ where: { sessionId: id } });
+    }
+    await prisma.session.delete({ where: { id } });
+
+    return NextResponse.json({ deleted: true, attendanceCount });
+  } catch (e) {
+    console.error("session DELETE error:", e);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

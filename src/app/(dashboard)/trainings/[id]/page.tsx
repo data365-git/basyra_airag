@@ -102,6 +102,10 @@ export default function TrainingDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Delete session state
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ id: string; sessionNumber: number; attendanceCount: number } | null>(null);
+  const [deletingSession, setDeletingSession] = useState(false);
+
   // Add session modal state
   const [addSessionOpen, setAddSessionOpen] = useState(false);
   const [addSessionForm, setAddSessionForm] = useState({ session_date: "", session_time: training?.schedule_time || "09:00" });
@@ -276,6 +280,27 @@ export default function TrainingDetailPage() {
     router.push("/trainings");
   }
 
+  async function openDeleteSession(sessionId: string, sessionNumber: number) {
+    const recs = attendance.filter((a) => a.session_id === sessionId);
+    setDeleteSessionTarget({ id: sessionId, sessionNumber, attendanceCount: recs.length });
+  }
+
+  async function handleDeleteSession() {
+    if (!deleteSessionTarget) return;
+    setDeletingSession(true);
+    const res = await fetch(`/api/sessions/${deleteSessionTarget.id}`, { method: "DELETE" });
+    setDeletingSession(false);
+    setDeleteSessionTarget(null);
+    if (res.ok) {
+      toast.success(t("sessions.deleted"));
+      await load();
+      router.refresh();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Failed to delete session");
+    }
+  }
+
   if (loading) return <div className="space-y-4"><CardSkeleton /><CardSkeleton /></div>;
   if (!training) return <div className="text-center py-16 text-gray-400">{t("trainings.not_found")}</div>;
 
@@ -373,9 +398,20 @@ export default function TrainingDetailPage() {
                   <Td className="text-green-600">{stats.present + stats.late} / {stats.total}</Td>
                   <Td className="text-red-500">{stats.absent}</Td>
                   <Td>
-                    <Link href={`/trainings/${id}/sessions/${s.id}`}>
-                      <Button size="sm" variant="ghost">{t("common.view")}</Button>
-                    </Link>
+                    <div className="flex items-center gap-1">
+                      <Link href={`/trainings/${id}/sessions/${s.id}`}>
+                        <Button size="sm" variant="ghost">{t("common.view")}</Button>
+                      </Link>
+                      {canManage && (
+                        <button
+                          onClick={() => openDeleteSession(s.id, s.session_number)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title={t("sessions.delete_session")}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </Td>
                 </Tr>
               );
@@ -451,6 +487,22 @@ export default function TrainingDetailPage() {
           </Tbody>
         </Table>
       </Card>
+
+      {/* Delete session modal */}
+      <ConfirmModal
+        open={!!deleteSessionTarget}
+        onClose={() => setDeleteSessionTarget(null)}
+        onConfirm={handleDeleteSession}
+        loading={deletingSession}
+        danger
+        title={t("sessions.delete_session")}
+        message={
+          deleteSessionTarget && deleteSessionTarget.attendanceCount > 0
+            ? t("sessions.delete_warning", { n: String(deleteSessionTarget.attendanceCount) })
+            : t("sessions.delete_confirm")
+        }
+        confirmLabel={t("common.delete")}
+      />
 
       {/* Delete training modal */}
       <ConfirmModal
