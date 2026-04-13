@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { QrCode, Loader2 } from "lucide-react";
 
@@ -20,7 +20,8 @@ interface TelegramUser {
   hash: string;
 }
 
-export default function PortalLoginPage() {
+// Inner component that uses useSearchParams — must be inside <Suspense>
+function LoginForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const widgetRef    = useRef<HTMLDivElement>(null);
@@ -30,7 +31,6 @@ export default function PortalLoginPage() {
   const redirect = searchParams.get("redirect") ?? "/portal/me";
 
   useEffect(() => {
-    // Define the global callback BEFORE injecting the widget script
     window.onTelegramAuth = async (user: TelegramUser) => {
       setError("");
       setLoading(true);
@@ -53,7 +53,6 @@ export default function PortalLoginPage() {
       }
     };
 
-    // Inject Telegram Login Widget script
     if (!widgetRef.current) return;
     const script = document.createElement("script");
     script.src = "https://telegram.org/js/telegram-widget.js?22";
@@ -71,6 +70,44 @@ export default function PortalLoginPage() {
   }, [redirect, router]);
 
   return (
+    <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6 text-center">
+      {loading ? (
+        <div className="flex flex-col items-center gap-3 py-4">
+          <Loader2 size={32} className="animate-spin text-blue-500" />
+          <p className="text-sm text-gray-500">Kirilmoqda...</p>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <p className="text-base font-semibold text-gray-800">Telegram orqali kiring</p>
+            <p className="text-sm text-gray-500 leading-relaxed">
+              Telegram hisobingiz administrator tomonidan tizimga ulangan bo&apos;lishi kerak
+            </p>
+          </div>
+
+          {/* Telegram Login Widget renders here */}
+          <div ref={widgetRef} className="flex justify-center min-h-[48px]" />
+
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3 text-left">
+              {error === "not_linked" ? (
+                <>
+                  <p className="font-semibold">Hisob ulanmagan</p>
+                  <p className="mt-1 text-red-500">
+                    Telegram hisobingiz tizimga ulanmagan. Administratoringizga murojaat qiling.
+                  </p>
+                </>
+              ) : error}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function PortalLoginPage() {
+  return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
@@ -82,40 +119,18 @@ export default function PortalLoginPage() {
           <p className="text-gray-500 mt-1 text-sm">Shaxsiy kabinet</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6 text-center">
-          {loading ? (
-            <div className="flex flex-col items-center gap-3 py-4">
-              <Loader2 size={32} className="animate-spin text-blue-500" />
-              <p className="text-sm text-gray-500">Kirilmoqda...</p>
+        <Suspense
+          fallback={
+            <div className="bg-white rounded-2xl shadow-xl p-8 flex justify-center">
+              <Loader2 size={28} className="animate-spin text-blue-400" />
             </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <p className="text-base font-semibold text-gray-800">Telegram orqali kiring</p>
-                <p className="text-sm text-gray-500 leading-relaxed">
-                  Telegram hisobingiz administrator tomonidan tizimga ulangan bo'lishi kerak
-                </p>
-              </div>
-
-              {/* Telegram Login Widget renders here */}
-              <div ref={widgetRef} className="flex justify-center min-h-[48px]" />
-
-              {error && (
-                <div className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3 text-left">
-                  {error === "not_linked" ? (
-                    <>
-                      <p className="font-semibold">Hisob ulanmagan</p>
-                      <p className="mt-1 text-red-500">Telegram hisobingiz tizimga ulanmagan. Administratoringizga murojaat qiling.</p>
-                    </>
-                  ) : error}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+          }
+        >
+          <LoginForm />
+        </Suspense>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          Muammo bo'lsa, administrator bilan bog'laning
+          Muammo bo&apos;lsa, administrator bilan bog&apos;laning
         </p>
       </div>
     </div>
