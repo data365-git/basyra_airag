@@ -12,9 +12,9 @@ import { useTranslation } from "@/providers/LanguageProvider";
  * Why /api/scan instead of the old /api/attendance/sync batch endpoint?
  * The batch endpoint's `if (!existing) { create }` logic silently skips every
  * queued scan because system-generated absent records are always present. The
- * /api/scan route has the correct state machine: system-absent → silent update,
- * needs_confirmation → force-override (the offline scan physically happened),
- * excused / not-enrolled → discard from queue.
+ * /api/scan route has the correct state machine: create when missing, overwrite
+ * any non-excused existing record from QR, and discard unrecoverable outcomes
+ * like excused / not-enrolled from the queue.
  *
  * Sync stops on the first network error (still offline).
  * Entries that get a 5xx response are kept for the next retry.
@@ -49,33 +49,14 @@ export function useOfflineSync() {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({
-              token:         entry.qrToken,
-              sessionId:     entry.sessionId,
-              scannedAt:     entry.scannedAt,   // preserve original scan time
-              forceOverride: false,
+              token:     entry.qrToken,
+              sessionId: entry.sessionId,
+              scannedAt: entry.scannedAt,   // preserve original scan time
             }),
           });
         } catch {
           // Network failure — still offline, stop trying
           break;
-        }
-
-        // ── 409 needs_confirmation: offline scan physically happened → force ──
-        if (res.status === 409) {
-          try {
-            res = await fetch("/api/scan", {
-              method:  "POST",
-              headers: { "Content-Type": "application/json" },
-              body:    JSON.stringify({
-                token:         entry.qrToken,
-                sessionId:     entry.sessionId,
-                scannedAt:     entry.scannedAt,
-                forceOverride: true,
-              }),
-            });
-          } catch {
-            break; // network failure on retry
-          }
         }
 
         // ── 5xx: transient server error — keep in queue ───────────────────────

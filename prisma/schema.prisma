@@ -122,6 +122,7 @@ model Participant {
   createdAt            DateTime              @default(now()) @map("created_at")
   trainingParticipants TrainingParticipant[]
   attendance           Attendance[]
+  auth                 ParticipantAuth?
 
   @@map("participants")
 }
@@ -166,6 +167,18 @@ model SystemSetting {
   updatedBy String?  @map("updated_by")
 
   @@map("system_settings")
+}
+
+model ParticipantAuth {
+  id            String      @id @default(uuid())
+  participantId String      @unique @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  username      String      @unique
+  passwordHash  String      @map("password_hash")
+  lastLoginAt   DateTime?   @map("last_login_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("participant_auth")
 }
 
 model AttendanceAudit {

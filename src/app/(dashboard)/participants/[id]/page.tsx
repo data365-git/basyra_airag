@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Trash2, KeyRound, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { QRCodeDisplay } from "@/components/participants/QRCodeDisplay";
 import { AttendanceBadge, TrainingStatusBadge } from "@/components/ui/Badge";
@@ -31,17 +31,70 @@ export default function ParticipantProfilePage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Portal login state
+  interface AuthInfo { id: string; username: string; lastLoginAt: string | null; createdAt: string }
+  const [authInfo, setAuthInfo]       = useState<AuthInfo | null | "none">("none");
+  const [loginModal, setLoginModal]   = useState<"create" | "reset" | null>(null);
+  const [loginForm, setLoginForm]     = useState({ username: "", password: "" });
+  const [loginSaving, setLoginSaving] = useState(false);
+
   useEffect(() => {
     if (!id) return;
     Promise.all([
       fetch(`/api/participants/${id}`).then((r) => r.json()),
       fetch(`/api/participants/${id}/history`).then((r) => r.json()),
-    ]).then(([p, h]) => {
+      fetch(`/api/participants/${id}/auth`).then((r) => r.json()),
+    ]).then(([p, h, a]) => {
       setParticipant(p);
       setHistory(Array.isArray(h) ? h : []);
+      setAuthInfo(a ?? null);
       setLoading(false);
     });
   }, [id]);
+
+  async function handleCreateLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoginSaving(true);
+    const res = await fetch(`/api/participants/${id}/auth`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(loginForm),
+    });
+    setLoginSaving(false);
+    if (res.ok) {
+      const data = await res.json();
+      setAuthInfo(data);
+      setLoginModal(null);
+      toast.success("Login yaratildi");
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Xatolik");
+    }
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setLoginSaving(true);
+    const res = await fetch(`/api/participants/${id}/auth`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: loginForm.password }),
+    });
+    setLoginSaving(false);
+    if (res.ok) {
+      setLoginModal(null);
+      toast.success("Parol yangilandi");
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Xatolik");
+    }
+  }
+
+  async function handleDeleteLogin() {
+    await fetch(`/api/participants/${id}/auth`, { method: "DELETE" });
+    setAuthInfo(null);
+    toast.success("Login o'chirildi");
+  }
 
   function getStats(sessions: any[]) {
     const closed = sessions.filter((s) => s.status === "closed");
@@ -123,6 +176,59 @@ export default function ParticipantProfilePage() {
             </div>
           </div>
         </Card>
+
+        {/* Portal Login card */}
+        {canManage && authInfo !== "none" && (
+          <Card>
+            <CardTitle className="mb-4 flex items-center gap-2">
+              <KeyRound size={16} className="text-gray-500" /> Shaxsiy kabinet
+            </CardTitle>
+
+            {authInfo === null ? (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-500">Login yaratilmagan</p>
+                <Button
+                  size="sm"
+                  onClick={() => { setLoginForm({ username: "", password: "" }); setLoginModal("create"); }}
+                >
+                  Login yaratish
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Login</span>
+                  <span className="font-mono font-medium">{authInfo.username}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">So'ngi kirish</span>
+                  <span>{authInfo.lastLoginAt ? new Date(authInfo.lastLoginAt).toLocaleString("uz-UZ") : "Hali kirmagan"}</span>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <a
+                    href="/portal/login"
+                    target="_blank"
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                  >
+                    <ExternalLink size={12} /> Portal
+                  </a>
+                  <button
+                    onClick={() => { setLoginForm({ username: "", password: "" }); setLoginModal("reset"); }}
+                    className="text-xs text-gray-500 hover:text-gray-800 underline"
+                  >
+                    Parolni yangilash
+                  </button>
+                  <button
+                    onClick={handleDeleteLogin}
+                    className="text-xs text-red-500 hover:text-red-700 underline ml-auto"
+                  >
+                    O'chirish
+                  </button>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* Training stats */}
         <div className="lg:col-span-2 space-y-4">
@@ -223,6 +329,99 @@ export default function ParticipantProfilePage() {
         message={t("participants.delete_message", { name: participant.full_name })}
         confirmLabel={deleting ? t("common.deleting") : t("common.delete")}
       />
+
+      {/* Create login modal */}
+      {loginModal === "create" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold mb-4">Login yaratish</h3>
+            <form onSubmit={handleCreateLogin} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Login (username)</label>
+                <input
+                  type="text"
+                  required
+                  value={loginForm.username}
+                  onChange={(e) => setLoginForm((f) => ({ ...f, username: e.target.value.toLowerCase() }))}
+                  placeholder="alisher.k"
+                  autoComplete="off"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Faqat lotin harflari, raqamlar, nuqta va chiziqcha</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Vaqtinchalik parol</label>
+                <input
+                  type="text"
+                  required
+                  minLength={6}
+                  value={loginForm.password}
+                  onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))}
+                  placeholder="Kamida 6 ta belgi"
+                  autoComplete="off"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setLoginModal(null)}
+                  className="flex-1 py-2 rounded-xl border border-gray-300 text-sm font-medium"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  disabled={loginSaving}
+                  className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
+                >
+                  {loginSaving ? "..." : "Yaratish"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset password modal */}
+      {loginModal === "reset" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold mb-4">Parolni yangilash</h3>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Yangi parol</label>
+                <input
+                  type="text"
+                  required
+                  minLength={6}
+                  value={loginForm.password}
+                  onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))}
+                  placeholder="Kamida 6 ta belgi"
+                  autoComplete="off"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setLoginModal(null)}
+                  className="flex-1 py-2 rounded-xl border border-gray-300 text-sm font-medium"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  disabled={loginSaving}
+                  className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
+                >
+                  {loginSaving ? "..." : "Saqlash"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

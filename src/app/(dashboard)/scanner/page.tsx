@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { Check, CheckCircle, XCircle, Loader2, ChevronDown } from "lucide-react";
 import { QRScanner } from "@/components/scanner/QRScanner";
 import { ScanResultOverlay } from "@/components/scanner/ScanResult";
-import { ConfirmOverrideSheet } from "@/components/scanner/ConfirmOverrideSheet";
 import { ScannerBottomSheet } from "@/components/scanner/ScannerBottomSheet";
 import { OfflineBanner } from "@/components/scanner/OfflineBanner";
 import { queueScan } from "@/lib/db/offline";
@@ -43,6 +42,23 @@ interface ResolvedSession {
 interface ResolvedTraining {
   id:   string;
   name: string;
+}
+
+interface TrainingListItem {
+  id: string;
+  name: string;
+  status?: "active" | "upcoming" | "completed";
+  start_date?: string;
+  end_date?: string;
+}
+
+interface SessionListItem {
+  id: string;
+  session_number: number;
+  session_date: string;
+  session_time: string;
+  is_cancelled?: boolean;
+  force_closed?: boolean;
 }
 
 // ─── Token extraction ─────────────────────────────────────────────────────────
@@ -96,8 +112,8 @@ export default function ScannerPage() {
   const [session,  setSession]        = useState<ResolvedSession  | null>(null);
 
   // Manual selections (used when user overrides auto-select)
-  const [allTrainings,     setAllTrainings]     = useState<any[]>([]);
-  const [allSessions,      setAllSessions]      = useState<any[]>([]);
+  const [allTrainings,     setAllTrainings]     = useState<TrainingListItem[]>([]);
+  const [allSessions,      setAllSessions]      = useState<SessionListItem[]>([]);
   const [selectedTraining, setSelectedTraining] = useState("");
   const [selectedSession,  setSelectedSession]  = useState("");
 
@@ -110,22 +126,6 @@ export default function ScannerPage() {
   const [scanCount,    setScanCount]    = useState(0);
   const [scanResult,   setScanResult]   = useState<ScanResult | null>(null);
 
-  // Pending override: when API returns needs_confirmation, store the context
-  // needed by ConfirmOverrideSheet and the follow-up forceOverride call.
-  // sessionId is stored HERE (at scan time) so the confirm handler never
-  // depends on effectiveSession closure — fixing the stale-closure silent bug.
-  const [pendingOverride, setPendingOverride] = useState<{
-    qrToken:          string;
-    sessionId:        string;   // captured at scan time, not at confirm time
-    name:             string;
-    existingStatus:   string;
-    existingMethod:   string;
-    existingScannedAt: string | null;
-    newStatus:        string;
-  } | null>(null);
-
-  const [isConfirming, setIsConfirming] = useState(false);
-
   const lastScannedRef     = useRef<string>("");
   const lastScannedTimeRef = useRef<number>(0);
   const tickRef            = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -134,7 +134,7 @@ export default function ScannerPage() {
   // Manual choice (selectedTraining/Session) wins; auto-selected falls back.
   const effectiveTraining: ResolvedTraining | null = (() => {
     if (selectedTraining) {
-      const found = allTrainings.find((tr: any) => tr.id === selectedTraining);
+      const found = allTrainings.find((tr) => tr.id === selectedTraining);
       if (found) return { id: found.id, name: found.name };
     }
     return training; // from context (auto_ready)
@@ -142,7 +142,7 @@ export default function ScannerPage() {
 
   const effectiveSession: ResolvedSession | null = (() => {
     if (selectedSession) {
-      const found = allSessions.find((s: any) => s.id === selectedSession);
+      const found = allSessions.find((s) => s.id === selectedSession);
       if (found) return {
         id:             found.id,
         session_number: found.session_number,
@@ -194,7 +194,7 @@ export default function ScannerPage() {
     const trainings = trainingsRes.status === "fulfilled" ? trainingsRes.value : [];
 
     const activeTrainings = (Array.isArray(trainings) ? trainings : []).filter(
-      (tr: any) => tr.status === "active" || tr.status === "upcoming"
+      (tr: TrainingListItem) => tr.status === "active" || tr.status === "upcoming"
     );
     setAllTrainings(activeTrainings);
 
@@ -236,12 +236,12 @@ export default function ScannerPage() {
   async function loadSessionsForTraining(trainingId: string) {
     try {
       const data = await fetch(`/api/sessions?training_id=${trainingId}`).then((r) => r.json());
-      const list = Array.isArray(data) ? data : [];
+      const list: SessionListItem[] = Array.isArray(data) ? data : [];
       setAllSessions(list);
 
       // Auto-select today's session if available
       const today = getTodayInTashkent();
-      const todaySession = list.find((s: any) => s.session_date === today);
+      const todaySession = list.find((s) => s.session_date === today);
       if (todaySession) {
         setSelectedSession(todaySession.id);
       } else if (list.length === 1) {
@@ -270,13 +270,13 @@ export default function ScannerPage() {
     tick();
     tickRef.current = setInterval(tick, 60_000);
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
-  }, [effectiveSession?.id]);
+  }, [effectiveSession]);
 
   useEffect(() => {
     if (sessionState === "active" && effectiveSession) {
       fetchScanCount(effectiveSession.id);
     }
-  }, [sessionState, effectiveSession?.id]);
+  }, [sessionState, effectiveSession]);
 
   async function fetchScanCount(sessionId: string) {
     try {
@@ -321,8 +321,8 @@ export default function ScannerPage() {
     }
   }
 
-  // ── Core API call — shared by initial scan and force-override ────────────
-  const callScanAPI = useCallback(async (qrToken: string, forceOverride: boolean) => {
+  // ── Core API call for live scans ──────────────────────────────────────────
+  const callScanAPI = useCallback(async (qrToken: string) => {
     if (!effectiveSession) return;
     if (!effectiveSession.id) {
       setScanResult({ type: "unknown", message: t("scanner.session_required") });
@@ -330,11 +330,11 @@ export default function ScannerPage() {
       return;
     }
     try {
-      console.log(`📤 Scan sent: token=${qrToken.slice(0, 8)}… sessionId=${effectiveSession.id} forceOverride=${forceOverride}`);
+      console.log(`📤 Scan sent: token=${qrToken.slice(0, 8)}… sessionId=${effectiveSession.id}`);
       const res  = await fetch("/api/scan", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ token: qrToken, sessionId: effectiveSession.id, forceOverride }),
+        body:    JSON.stringify({ token: qrToken, sessionId: effectiveSession.id }),
       });
       const data = await res.json().catch(() => ({}));
       console.log(`📥 Scan response: status=${res.status}`, data);
@@ -344,20 +344,6 @@ export default function ScannerPage() {
         setScanResult({ type: "unknown", message: data.message || data.error || t("scanner.network_error") });
         navigator.vibrate?.([100, 50, 100]);
         return;
-      }
-
-      // Confirmation needed → show the confirmation sheet
-      if (data.type === "needs_confirmation") {
-        setPendingOverride({
-          qrToken,
-          sessionId:         effectiveSession.id,   // store now, not at confirm time
-          name:              data.participant?.full_name ?? "",
-          existingStatus:    data.existingStatus   ?? "absent",
-          existingMethod:    data.existingMethod   ?? "system",
-          existingScannedAt: data.existingScannedAt ?? null,
-          newStatus:         data.newStatus        ?? "present",
-        });
-        return; // no overlay, no vibration — wait for operator decision
       }
 
       const result = data as ScanResult;
@@ -408,54 +394,8 @@ export default function ScannerPage() {
       return;
     }
 
-    await callScanAPI(qrToken, false);
+    await callScanAPI(qrToken);
   }, [effectiveSession, checkNow, refreshCount, callScanAPI, t]);
-
-  // ── Override confirmation handlers ────────────────────────────────────────
-  // NOTE: this does NOT go through callScanAPI — we use the sessionId stored
-  // in pendingOverride (captured at scan time) so we are never affected by a
-  // stale effectiveSession closure. This was the silent-failure root cause.
-  const handleConfirmOverride = useCallback(async () => {
-    if (!pendingOverride || isConfirming) return;
-    const { qrToken, sessionId } = pendingOverride;
-    setPendingOverride(null);
-    setIsConfirming(true);
-
-    try {
-      const res  = await fetch("/api/scan", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ token: qrToken, sessionId, forceOverride: true }),
-      });
-      const data = await res.json().catch(() => ({}));
-      const result = data as ScanResult;
-      setScanResult(result);
-      if (result.type === "success" || result.type === "late") {
-        navigator.vibrate?.(200);
-        setScanCount((c) => c + 1);
-      } else {
-        navigator.vibrate?.([100, 50, 100]);
-      }
-    } catch {
-      // Network died between first scan and confirm tap — queue so sync replays it.
-      // useOfflineSync handles 409 by retrying with forceOverride:true automatically.
-      if (qrToken && sessionId) {
-        await queueScan({ sessionId, qrToken, scannedAt: new Date().toISOString() });
-        await refreshCount();
-        setScanResult({ type: "queued_offline" });
-      } else {
-        setScanResult({ type: "unknown", message: t("scanner.network_error") });
-      }
-      navigator.vibrate?.([100, 50, 100]);
-    } finally {
-      setIsConfirming(false);
-    }
-  }, [pendingOverride, isConfirming, refreshCount, t]);
-
-  const handleCancelOverride = useCallback(() => {
-    if (isConfirming) return;
-    setPendingOverride(null);
-  }, [isConfirming]);
 
   // ── Access guard ──────────────────────────────────────────────────────────
   if (!canScan) {
@@ -622,20 +562,6 @@ export default function ScannerPage() {
 
         <ScanResultOverlay result={scanResult} isOffline={!isServerOnline} />
 
-        {/* Confirmation sheet — operator must decide before overriding */}
-        {(pendingOverride || isConfirming) && (
-          <ConfirmOverrideSheet
-            name={pendingOverride?.name ?? ""}
-            existingStatus={pendingOverride?.existingStatus ?? "absent"}
-            existingMethod={pendingOverride?.existingMethod ?? "system"}
-            existingScannedAt={pendingOverride?.existingScannedAt ?? null}
-            newStatus={pendingOverride?.newStatus ?? "present"}
-            isLoading={isConfirming}
-            onConfirm={handleConfirmOverride}
-            onCancel={handleCancelOverride}
-          />
-        )}
-
         {/* ── Training bottom sheet ─────────────────────────────────────── */}
         <ScannerBottomSheet
           open={trainingSheetOpen}
@@ -645,7 +571,7 @@ export default function ScannerPage() {
           {allTrainings.length === 0 ? (
             <p className="text-white/50 text-sm text-center py-8">{t("scanner.no_active_training")}</p>
           ) : (
-            allTrainings.map((tr: any) => {
+            allTrainings.map((tr) => {
               const isSelected = effectiveTraining?.id === tr.id;
               return (
                 <button
@@ -688,7 +614,7 @@ export default function ScannerPage() {
           {allSessions.length === 0 ? (
             <p className="text-white/50 text-sm text-center py-8">{t("scanner.no_session_today")}</p>
           ) : (
-            allSessions.map((s: any) => {
+            allSessions.map((s) => {
               const isSelected = effectiveSession?.id === s.id;
               const isToday    = s.session_date === todayStr;
               return (

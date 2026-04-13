@@ -28,13 +28,12 @@ export async function POST(request: Request) {
   if (!hasPermission(user, "scanner", "view"))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  let token: string, sessionId: string, scannedAt: string | undefined, forceOverride: boolean;
+  let token: string, sessionId: string, scannedAt: string | undefined;
   try {
     const body  = await request.json();
-    token         = body.token;
-    sessionId     = body.sessionId;
-    scannedAt     = body.scannedAt;     // ISO string — for offline sync
-    forceOverride = body.forceOverride === true;
+    token     = body.token;
+    sessionId = body.sessionId;
+    scannedAt = body.scannedAt;     // ISO string — for offline sync
   } catch {
     return NextResponse.json({ type: "unknown", message: "Invalid request body" }, { status: 400 });
   }
@@ -43,7 +42,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ type: "unknown", message: "Missing token or session" }, { status: 400 });
   }
 
-  console.log(`[SCAN] token=${token.slice(0, 8)}… sessionId=${sessionId} forceOverride=${forceOverride}`);
+  console.log(`[SCAN] token=${token.slice(0, 8)}… sessionId=${sessionId}`);
 
   try {
     // ── 1. Resolve participant ───────────────────────────────────────────────
@@ -128,13 +127,11 @@ export async function POST(request: Request) {
 
     // ── 7. Attendance state machine ──────────────────────────────────────────
     //
-    // | existing status | method        | action                               |
-    // |-----------------|---------------|--------------------------------------|
-    // | —               | —             | CREATE (first scan)                  |
-    // | absent          | system        | UPDATE silently (no confirmation)    |
-    // | excused         | any           | BLOCK (admin decision, QR loses)     |
-    // | present/late    | qr/manual     | CONFIRM unless forceOverride         |
-    // | absent          | manual/qr     | CONFIRM unless forceOverride         |
+    // | existing status | method | action                         |
+    // |-----------------|--------|--------------------------------|
+    // | —               | —      | CREATE (first scan)            |
+    // | excused         | any    | BLOCK (admin decision, QR loses)|
+    // | any other       | any    | UPDATE immediately from QR     |
 
     const existing = await prisma.attendance.findUnique({
       where: {
@@ -176,11 +173,8 @@ export async function POST(request: Request) {
       });
     }
 
-    const { status: existingStatus } = existing;
-    const existingMethod = existing.method || "system";
-
     // ── Excused — hard block ──────────────────────────────────────────────────
-    if (existingStatus === "excused") {
+    if (existing.status === "excused") {
       return NextResponse.json({
         type:    "excused",
         message: "Participant is excused for this session",
@@ -188,59 +182,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // ── System-absent → silent QR override (no confirmation needed) ──────────
-    // Bulk-generate writes method:"system" before any scan.
-    // No human set this deliberately — override without asking.
-    if (existingMethod === "system" && existingStatus === "absent") {
-      const isOfflineSync = !!scannedAt;
-      await prisma.attendance.update({
-        where: { id: existing.id },
-        data: {
-          status:            newStatus,
-          method:            "qr",
-          scannedAt:         scanTime,
-          scannedById:       user.id,
-          syncedFromOffline: isOfflineSync,
-          overrideById:      null,
-          overrideAt:        null,
-          note:              null,
-        },
-      });
-      console.log(`[SCAN] updated system-absent → ${newStatus} id=${existing.id}`);
-
-      await writeAudit({
-        attendanceId: existing.id,
-        changedById:  user.id,
-        oldStatus:    existing.status,
-        newStatus,
-        reason:       "QR scan (system absent override)",
-      });
-
-      return NextResponse.json({
-        type:       newStatus === "late" ? "late" : "success",
-        message:    newStatus === "late" ? "Marked late" : "Marked present",
-        participant,
-        minutesLate,
-        scannedAt:  scanTime.toISOString(),
-      });
-    }
-
-    // ── Any other existing status → operator confirmation required ────────────
-    if (!forceOverride) {
-      return NextResponse.json(
-        {
-          type:              "needs_confirmation",
-          participant,
-          existingStatus,
-          existingMethod,
-          existingScannedAt: existing.scannedAt?.toISOString() ?? null,
-          newStatus,
-        },
-        { status: 409 }
-      );
-    }
-
-    // ── forceOverride — operator confirmed ────────────────────────────────────
+    // ── Any other existing status → overwrite immediately from QR ─────────────
     const isOfflineSync = !!scannedAt;
     await prisma.attendance.update({
       where: { id: existing.id },
@@ -255,19 +197,19 @@ export async function POST(request: Request) {
         note:              null,
       },
     });
-    console.log(`[SCAN] force-override → ${newStatus} id=${existing.id} (was ${existingMethod} ${existingStatus})`);
+    console.log(`[SCAN] updated attendance → ${newStatus} id=${existing.id} (was ${existing.method ?? "system"} ${existing.status})`);
 
     await writeAudit({
       attendanceId: existing.id,
       changedById:  user.id,
       oldStatus:    existing.status,
       newStatus,
-      reason:       `QR force override (was ${existingMethod} ${existingStatus})`,
+      reason:       `QR scan overwrite (was ${existing.method ?? "system"} ${existing.status})`,
     });
 
     return NextResponse.json({
       type:       newStatus === "late" ? "late" : "success",
-      message:    newStatus === "late" ? "Marked late (override)" : "Marked present (override)",
+      message:    newStatus === "late" ? "Marked late" : "Marked present",
       participant,
       minutesLate,
       scannedAt:  scanTime.toISOString(),
