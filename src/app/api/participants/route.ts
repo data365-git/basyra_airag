@@ -3,6 +3,48 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
+import { hashPassword } from "@/lib/auth";
+
+// ─── Credential generation helpers ───────────────────────────────────────────
+
+/** Convert "Dilnoza Yusupova" → "dilnoza.yusupova" (Latin, safe chars only) */
+function nameToUsername(name: string): string {
+  // Cyrillic → Latin transliteration map
+  const MAP: Record<string, string> = {
+    а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"yo",ж:"zh",з:"z",и:"i",й:"y",к:"k",
+    л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"kh",ц:"ts",
+    ч:"ch",ш:"sh",щ:"sh",ъ:"",ы:"i",ь:"",э:"e",ю:"yu",я:"ya",
+    // Uzbek specifics
+    ʻ:"",ʼ:"",ŏ:"o",ĝ:"g",
+  };
+  const transliterated = name
+    .toLowerCase()
+    .split("")
+    .map((c) => MAP[c] ?? c)
+    .join("");
+  return transliterated
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .substring(0, 32) || "user";
+}
+
+function randomPassword(len = 8): string {
+  const chars = "abcdefghijkmnpqrstuvwxyz23456789"; // no confusable chars
+  let pw = "";
+  for (let i = 0; i < len; i++) {
+    pw += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return pw;
+}
+
+async function generateUniqueUsername(base: string): Promise<string> {
+  let username = base;
+  let suffix   = 1;
+  while (await prisma.participantAuth.findUnique({ where: { username } })) {
+    username = `${base}${suffix++}`;
+  }
+  return username;
+}
 
 const CreateParticipantSchema = z.object({
   full_name: z.string().min(1, "Name is required").max(200),
@@ -89,6 +131,11 @@ export async function POST(request: Request) {
       }
     }
 
+    // Auto-generate portal login credentials
+    const rawPassword = randomPassword();
+    const username    = await generateUniqueUsername(nameToUsername(full_name));
+    const passwordHash = await hashPassword(rawPassword);
+
     const participant = await prisma.participant.create({
       data: {
         fullName: full_name,
@@ -101,10 +148,23 @@ export async function POST(request: Request) {
               },
             }
           : {}),
+        auth: {
+          create: { username, passwordHash },
+        },
       },
+      include: { auth: { select: { username: true } } },
     });
 
-    return NextResponse.json(participant, { status: 201 });
+    // Return participant + plain-text password (shown once, then discarded)
+    return NextResponse.json({
+      id:          participant.id,
+      full_name:   participant.fullName,
+      phone:       participant.phone,
+      email:       participant.email,
+      qr_token:    participant.qrToken,
+      created_at:  participant.createdAt,
+      credentials: { username, password: rawPassword },
+    }, { status: 201 });
   } catch (e) {
     console.error("participants POST error:", e);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
