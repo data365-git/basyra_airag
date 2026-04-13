@@ -26,14 +26,15 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
   // CRITICAL: these refs must always be in the DOM.
   // videoRef.current must be non-null BEFORE getUserMedia resolves —
   // setting srcObject on a null ref is what was silently crashing into "denied".
-  const videoRef    = useRef<HTMLVideoElement>(null);
-  const canvasRef   = useRef<HTMLCanvasElement>(null);
-  const streamRef   = useRef<MediaStream | null>(null);
-  const rafRef      = useRef<number>(0);
-  const onScanRef   = useRef(onScan);
-  const mountedRef  = useRef(true);
-  const jsQRRef     = useRef<typeof import("jsqr")["default"] | null>(null);
-  const lastScanTs  = useRef<number>(0);
+  const videoRef      = useRef<HTMLVideoElement>(null);
+  const canvasRef     = useRef<HTMLCanvasElement>(null);
+  const streamRef     = useRef<MediaStream | null>(null);
+  const rafRef        = useRef<number>(0);
+  const onScanRef     = useRef(onScan);
+  const mountedRef    = useRef(true);
+  const jsQRRef       = useRef<typeof import("jsqr")["default"] | null>(null);
+  const lastScanTs    = useRef<number>(0);
+  const lastDetectTs  = useRef<number>(Date.now()); // last time a QR was actually found
 
   // Pre-load jsQR once so the scan loop never has to import() on every frame
   useEffect(() => {
@@ -84,15 +85,23 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
     }
   }
 
-  // Scan at ~10fps instead of 60fps — enough to catch any QR code,
-  // uses ~85% less CPU which directly reduces battery drain and heat.
-  const SCAN_INTERVAL_MS = 100;
+  // Adaptive throttle: scan fast when active, slow down during idle.
+  // Idle = no QR detected recently. Less CPU = less heat.
+  //   0–10s since last detect  →  10fps (100ms)
+  //   10–30s since last detect →   3fps (333ms)
+  //   30s+  since last detect  →   1fps (1000ms) — camera stays on, nearly zero CPU
+  function getScanInterval(): number {
+    const idle = Date.now() - lastDetectTs.current;
+    if (idle < 10_000)  return 100;
+    if (idle < 30_000)  return 333;
+    return 1000;
+  }
 
   const scanLoop = useCallback(() => {
     if (!mountedRef.current) return;
 
     const now = Date.now();
-    if (now - lastScanTs.current < SCAN_INTERVAL_MS) {
+    if (now - lastScanTs.current < getScanInterval()) {
       rafRef.current = requestAnimationFrame(scanLoop);
       return;
     }
@@ -128,7 +137,10 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: "dontInvert",
       });
-      if (code?.data) onScanRef.current(code.data.trim());
+      if (code?.data) {
+        lastDetectTs.current = Date.now(); // reset idle timer — snap back to 10fps
+        onScanRef.current(code.data.trim());
+      }
     } catch {
       // frame failed (low memory / video not ready on iOS) — skip silently
     }
@@ -176,6 +188,7 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
 
       if (!mountedRef.current) { stopCamera(); return; }
 
+      lastDetectTs.current = Date.now(); // start fresh — full speed on camera open
       setPermState("active");
       rafRef.current = requestAnimationFrame(scanLoop);
 
