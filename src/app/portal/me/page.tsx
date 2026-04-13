@@ -40,6 +40,9 @@ interface ScorecardData {
     total: number; submitted: number; graded: number;
     avgScore: number | null; submitRate: number;
   };
+  activity: {
+    count: number; avgScore: number | null;
+  };
   overallScore: number;
   homeworks:    HomeworkItem[];
 }
@@ -252,7 +255,13 @@ function TrainingScorecard({
           <div className="flex-1">
             <p className="text-sm font-semibold text-gray-500 mb-1">Umumiy ball</p>
             <p className="text-2xl font-bold text-gray-900">{sc.overallScore}%</p>
-            <p className="text-xs text-gray-400 mt-0.5">70% davomat · 30% vazifalar</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {[
+                "Davomat",
+                sc.homework.avgScore !== null ? "Vazifalar" : null,
+                sc.activity.avgScore !== null ? "Faollik" : null,
+              ].filter(Boolean).join(" · ")}
+            </p>
           </div>
         </div>
       </div>
@@ -312,6 +321,28 @@ function TrainingScorecard({
               O'rtacha baho: <span className="font-semibold text-gray-800">{sc.homework.avgScore}%</span>
             </p>
           )}
+        </div>
+      )}
+
+      {/* Activity */}
+      {sc.activity.avgScore !== null && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-700">⚡ Faollik</p>
+            <span
+              className="text-sm font-bold px-2.5 py-0.5 rounded-full"
+              style={{ background: `${scoreColor(sc.activity.avgScore)}22`, color: scoreColor(sc.activity.avgScore) }}
+            >
+              {sc.activity.avgScore}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-2">
+            <div
+              className="h-2 rounded-full transition-all"
+              style={{ width: `${sc.activity.avgScore}%`, background: scoreColor(sc.activity.avgScore) }}
+            />
+          </div>
+          <p className="text-xs text-gray-400">{sc.activity.count} ta sessiyada baholangan</p>
         </div>
       )}
 

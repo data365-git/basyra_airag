@@ -6,8 +6,17 @@ import { PageHeader } from "@/components/layout/Header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { usePermission } from "@/hooks/usePermission";
-import { CheckCircle2, Clock, Star, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image, File } from "lucide-react";
 import toast from "react-hot-toast";
+
+interface SubmissionFile {
+  id:               string;
+  file_name:        string;
+  file_type:        string;
+  file_size_bytes:  number | null;
+  storage_url:      string | null;
+  telegram_file_id: string | null;
+}
 
 interface Submission {
   id:           string;
@@ -15,6 +24,48 @@ interface Submission {
   text:         string | null;
   submitted_at: string;
   grade:        { score: number; feedback: string | null; graded_at: string } | null;
+  files:        SubmissionFile[];
+}
+
+function FileIcon({ type }: { type: string }) {
+  if (type === "photo")    return <Image    size={13} className="text-blue-400 shrink-0" />;
+  if (type === "video")    return <Video    size={13} className="text-purple-400 shrink-0" />;
+  if (type === "audio" || type === "voice") return <Mic size={13} className="text-green-400 shrink-0" />;
+  if (type === "document") return <FileText size={13} className="text-orange-400 shrink-0" />;
+  return <File size={13} className="text-gray-400 shrink-0" />;
+}
+
+function FileList({ files }: { files: SubmissionFile[] }) {
+  if (files.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-1">
+      {files.map((f) => (
+        f.storage_url ? (
+          <a
+            key={f.id}
+            href={f.storage_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded-lg transition-colors"
+          >
+            <FileIcon type={f.file_type} />
+            <span className="max-w-[120px] truncate">{f.file_name}</span>
+            {f.file_size_bytes && <span className="text-blue-400">{Math.round(f.file_size_bytes / 1024)}KB</span>}
+          </a>
+        ) : (
+          <span
+            key={f.id}
+            className="inline-flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-500 text-xs rounded-lg"
+            title="Telegram orqali yuborilgan (yuklab olish hali mavjud emas)"
+          >
+            <FileIcon type={f.file_type} />
+            <span className="max-w-[120px] truncate">{f.file_name}</span>
+            {f.file_size_bytes && <span className="text-gray-400">{Math.round(f.file_size_bytes / 1024)}KB</span>}
+          </span>
+        )
+      ))}
+    </div>
+  );
 }
 
 interface HomeworkMeta {
@@ -188,10 +239,12 @@ export default function HomeworkDetailPage() {
               <Tr key={sub.id}>
                 <Td className="font-medium text-gray-900">{sub.participant.full_name}</Td>
                 <Td className="max-w-xs">
-                  {sub.text ? (
+                  {sub.text && (
                     <p className="text-sm text-gray-700 line-clamp-2">{sub.text}</p>
-                  ) : (
-                    <span className="text-gray-400 text-xs italic">Matn yo'q</span>
+                  )}
+                  <FileList files={sub.files} />
+                  {!sub.text && sub.files.length === 0 && (
+                    <span className="text-gray-400 text-xs italic">Bo'sh</span>
                   )}
                 </Td>
                 <Td className="text-xs text-gray-400 whitespace-nowrap">

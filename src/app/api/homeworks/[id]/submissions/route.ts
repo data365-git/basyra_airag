@@ -28,6 +28,7 @@ export async function GET(
     include: {
       participant: { select: { id: true, fullName: true } },
       grade:       true,
+      files:       true,
     },
   });
 
@@ -38,6 +39,14 @@ export async function GET(
       text:          s.text,
       submitted_at:  s.submittedAt,
       grade: s.grade ? { score: s.grade.score, feedback: s.grade.feedback, graded_at: s.grade.gradedAt } : null,
+      files: s.files.map((f) => ({
+        id:             f.id,
+        file_name:      f.fileName,
+        file_type:      f.fileType,
+        file_size_bytes: f.fileSizeBytes,
+        storage_url:    f.storageUrl,
+        telegram_file_id: f.telegramFileId,
+      })),
     }))
   );
 }

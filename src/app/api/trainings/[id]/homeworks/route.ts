@@ -42,7 +42,6 @@ export async function GET(
         id:          hw.id,
         title:       hw.title,
         description: hw.description,
-        start_date:  hw.startDate,
         due_date:    hw.dueDate,
         max_score:   hw.maxScore,
         created_at:  hw.createdAt,
@@ -64,7 +63,7 @@ export async function POST(
 
   const { id: trainingId } = await params;
   const body = await req.json().catch(() => ({}));
-  const { title, description, start_date, due_date } = body;
+  const { title, description, due_date } = body;
 
   if (!title?.trim()) return NextResponse.json({ error: "Title required" }, { status: 400 });
 
@@ -73,7 +72,6 @@ export async function POST(
       trainingId,
       title:       title.trim(),
       description: description?.trim() || null,
-      startDate:   start_date || null,
       dueDate:     due_date || null,
       createdById: user.sub,
     },
