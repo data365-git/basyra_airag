@@ -9,9 +9,14 @@ import { getParticipantScorecard } from "@/lib/scorecard";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://basyralmss-production.up.railway.app";
 
-/** Inline keyboard with the portal Web App button */
-function portalKeyboard() {
-  return new InlineKeyboard().webApp("🌐 Shaxsiy kabinetim", `${APP_URL}/portal/login`);
+/** Keyboard shown AFTER successful linking — opens portal dashboard directly */
+function linkedKeyboard() {
+  return new InlineKeyboard().webApp("📊 Shaxsiy kabinetni ochish", `${APP_URL}/portal/me`);
+}
+
+/** Keyboard shown to unlinked users — opens portal login page */
+function loginKeyboard() {
+  return new InlineKeyboard().webApp("🌐 Shaxsiy kabinet", `${APP_URL}/portal/login`);
 }
 
 let bot: Bot | null = null;
@@ -84,7 +89,7 @@ function registerHandlers(b: Bot) {
         "Bu Basyra o'quv markazi botidir.\n\n" +
         "Hisobingizni ulash uchun administratoringizdan <b>havola</b> oling.\n\n" +
         "Buyruqlar:\n/mystatus — statistikam\n/homework — vazifalar",
-        { reply_markup: portalKeyboard() }
+        { reply_markup: loginKeyboard() }
       );
       return;
     }
@@ -122,7 +127,7 @@ function registerHandlers(b: Bot) {
       `📊 /mystatus — davomat va baholar\n` +
       `📝 /homework — vazifalar\n\n` +
       `👇 Shaxsiy kabinetingizga kirish uchun tugmani bosing:`,
-      { reply_markup: portalKeyboard() }
+      { reply_markup: linkedKeyboard() }
     );
   });
 
@@ -172,7 +177,7 @@ function registerHandlers(b: Bot) {
       text += `⭐ <b>Umumiy: ${sc.overallScore}%</b>\n\n`;
     }
 
-    await reply(ctx, text.trim());
+    await reply(ctx, text.trim(), { reply_markup: linkedKeyboard() });
   });
 
   // ── /homework ───────────────────────────────────────────────────────────────
@@ -293,7 +298,7 @@ function registerHandlers(b: Bot) {
     // Unrecognised
     await reply(ctx,
       "Buyruqlar:\n/mystatus — statistikam\n/homework — vazifalar",
-      { reply_markup: portalKeyboard() }
+      { reply_markup: loginKeyboard() }
     );
   });
 

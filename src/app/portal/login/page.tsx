@@ -7,6 +7,14 @@ import { QrCode, Loader2 } from "lucide-react";
 declare global {
   interface Window {
     onTelegramAuth: (user: TelegramUser) => void;
+    Telegram?: {
+      WebApp?: {
+        initData:   string;
+        ready:      () => void;
+        expand:     () => void;
+        close:      () => void;
+      };
+    };
   }
 }
 
@@ -20,17 +28,56 @@ interface TelegramUser {
   hash: string;
 }
 
-// Inner component that uses useSearchParams — must be inside <Suspense>
+// ─── Inner component (needs useSearchParams → must be in Suspense) ────────────
 function LoginForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const widgetRef    = useRef<HTMLDivElement>(null);
-  const [error,    setError]    = useState("");
-  const [loading,  setLoading]  = useState(false);
+  const [error,   setError]   = useState("");
+  const [loading, setLoading] = useState(false);
+  const [hint,    setHint]    = useState("");
 
   const redirect = searchParams.get("redirect") ?? "/portal/me";
 
+  // ── On mount: try Mini App auto-login first ──────────────────────────────
   useEffect(() => {
+    const twa = window.Telegram?.WebApp;
+    if (twa?.initData) {
+      // Opened inside Telegram — auto-authenticate with no user interaction
+      twa.ready();
+      twa.expand();
+      setLoading(true);
+      setHint("Telegram orqali kirilmoqda...");
+
+      fetch("/api/portal/telegram-miniapp-login", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ initData: twa.initData }),
+      })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            router.replace(redirect);
+          } else if (data.error === "not_linked") {
+            setLoading(false);
+            setHint("");
+            setError("not_linked");
+          } else {
+            setLoading(false);
+            setHint("");
+            setError(data.error ?? "Kirish amalga oshmadi");
+          }
+        })
+        .catch(() => {
+          setLoading(false);
+          setHint("");
+          setError("Tarmoq xatosi. Qayta urinib ko'ring.");
+        });
+
+      return; // Don't inject Login Widget when inside Telegram
+    }
+
+    // ── Normal browser: inject Telegram Login Widget ─────────────────────
     window.onTelegramAuth = async (user: TelegramUser) => {
       setError("");
       setLoading(true);
@@ -74,7 +121,7 @@ function LoginForm() {
       {loading ? (
         <div className="flex flex-col items-center gap-3 py-4">
           <Loader2 size={32} className="animate-spin text-blue-500" />
-          <p className="text-sm text-gray-500">Kirilmoqda...</p>
+          <p className="text-sm text-gray-500">{hint || "Kirilmoqda..."}</p>
         </div>
       ) : (
         <>
@@ -85,7 +132,7 @@ function LoginForm() {
             </p>
           </div>
 
-          {/* Telegram Login Widget renders here */}
+          {/* Telegram Login Widget renders here (browser only) */}
           <div ref={widgetRef} className="flex justify-center min-h-[48px]" />
 
           {error && (

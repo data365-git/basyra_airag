@@ -313,18 +313,22 @@ export default function ParticipantProfilePage() {
                         </a>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(deepLink);
+                            const msg =
+                              `Basyra o'quv markaziga xush kelibsiz!\n` +
+                              `Shaxsiy kabinetingizni ochish uchun quyidagi havolani bosing:\n` +
+                              deepLink;
+                            navigator.clipboard.writeText(msg);
                             setTgCopied(true);
                             setTimeout(() => setTgCopied(false), 2000);
                           }}
                           className="shrink-0 p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                          title="Nusxa olish"
+                          title="WhatsApp/Telegram uchun tayyor xabarni nusxa olish"
                         >
                           {tgCopied ? <Check size={14} /> : <Copy size={14} />}
                         </button>
                       </div>
                       <p className="text-xs text-blue-500">
-                        Ishtirokchi havolani bosadi → Telegram ochiladi → Bot avtomatik aktivlanadi
+                        Xabarni nusxa oling → WhatsApp yoki Telegram ga joylashtiring → Ishtirokchi havolani bosib kabinetga kiradi
                       </p>
                       {tgInfo.codeExpiresAt && (
                         <p className="text-xs text-gray-400">

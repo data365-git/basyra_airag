@@ -381,17 +381,49 @@ export default function PortalMePage() {
   const [selectedTraining, setSelectedTraining] = useState<string>("");
 
   useEffect(() => {
-    fetch("/api/portal/me")
-      .then((r) => {
-        if (r.status === 401) { router.replace("/portal/login"); return null; }
-        return r.json();
-      })
-      .then((data) => {
-        if (!data) return;
-        setMe(data);
-        if (data.trainings?.length > 0) setSelectedTraining(data.trainings[0].id);
-      })
-      .finally(() => setLoading(false));
+    async function init() {
+      const r = await fetch("/api/portal/me");
+
+      if (r.status !== 401) {
+        const data = await r.json().catch(() => null);
+        if (data) {
+          setMe(data);
+          if (data.trainings?.length > 0) setSelectedTraining(data.trainings[0].id);
+        }
+        setLoading(false);
+        return;
+      }
+
+      // 401 — try Telegram Mini App auto-login before redirecting
+      const initData = (window as any).Telegram?.WebApp?.initData;
+      if (initData) {
+        try {
+          (window as any).Telegram.WebApp.ready?.();
+          (window as any).Telegram.WebApp.expand?.();
+          const authRes = await fetch("/api/portal/telegram-miniapp-login", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ initData }),
+          });
+          if (authRes.ok) {
+            // Cookie set — retry the /me request
+            const r2 = await fetch("/api/portal/me");
+            const data = await r2.json().catch(() => null);
+            if (data) {
+              setMe(data);
+              if (data.trainings?.length > 0) setSelectedTraining(data.trainings[0].id);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch { /* fall through to redirect */ }
+      }
+
+      router.replace("/portal/login");
+      setLoading(false);
+    }
+
+    init();
   }, [router]);
 
   async function logout() {
