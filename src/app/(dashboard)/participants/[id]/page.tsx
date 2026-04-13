@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Edit, Trash2, KeyRound, ExternalLink, Send, RefreshCw, Unlink } from "lucide-react";
+import { Edit, Trash2, KeyRound, ExternalLink, Send, RefreshCw, Unlink, Copy, Check } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { QRCodeDisplay } from "@/components/participants/QRCodeDisplay";
 import { AttendanceBadge, TrainingStatusBadge } from "@/components/ui/Badge";
@@ -50,6 +50,7 @@ export default function ParticipantProfilePage() {
   }
   const [tgInfo,        setTgInfo]        = useState<TelegramInfo | null>(null);
   const [tgCodeLoading, setTgCodeLoading] = useState(false);
+  const [tgCopied,      setTgCopied]      = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -296,22 +297,43 @@ export default function ParticipantProfilePage() {
               <div className="space-y-3 text-sm">
                 <p className="text-gray-500">Telegram ulanmagan</p>
 
-                {tgInfo.pendingCode ? (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
-                    <p className="text-xs text-blue-600 font-semibold">Ishtirokchiga yuboring:</p>
-                    <p className="text-xs text-blue-800">
-                      Botga <strong>@basyra_yordamchi_bot</strong> ga quyidagini yuboring:
-                    </p>
-                    <code className="block bg-white border border-blue-200 rounded-lg px-3 py-2 font-mono text-sm font-bold text-blue-900 text-center tracking-wider select-all">
-                      /start {tgInfo.pendingCode}
-                    </code>
-                    {tgInfo.codeExpiresAt && (
-                      <p className="text-xs text-gray-400">
-                        Amal qilish muddati: {new Date(tgInfo.codeExpiresAt).toLocaleString("uz-UZ")}
+                {tgInfo.pendingCode ? (() => {
+                  const deepLink = `https://t.me/basyra_yordamchi_bot?start=${tgInfo.pendingCode}`;
+                  return (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                      <p className="text-xs text-blue-600 font-semibold">Ishtirokchiga yuboriladigan havola:</p>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={deepLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 block bg-white border border-blue-200 rounded-lg px-3 py-2 font-mono text-xs text-blue-700 break-all hover:bg-blue-50 transition-colors"
+                        >
+                          {deepLink}
+                        </a>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(deepLink);
+                            setTgCopied(true);
+                            setTimeout(() => setTgCopied(false), 2000);
+                          }}
+                          className="shrink-0 p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                          title="Nusxa olish"
+                        >
+                          {tgCopied ? <Check size={14} /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                      <p className="text-xs text-blue-500">
+                        Ishtirokchi havolani bosadi → Telegram ochiladi → Bot avtomatik aktivlanadi
                       </p>
-                    )}
-                  </div>
-                ) : null}
+                      {tgInfo.codeExpiresAt && (
+                        <p className="text-xs text-gray-400">
+                          Muddati: {new Date(tgInfo.codeExpiresAt).toLocaleString("uz-UZ")}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })() : null}
 
                 <button
                   onClick={handleGenerateTgCode}

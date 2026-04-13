@@ -36,6 +36,7 @@ model StaffUser {
   translations       Translation[]
   homeworks          Homework[]
   homeworkGrades     HomeworkGrade[]
+  activityScores     ActivityScore[]
 
   @@map("staff_users")
 }
@@ -106,8 +107,9 @@ model Session {
   cancelledById    String?      @map("cancelled_by")
   forceClosedAt    DateTime?    @map("force_closed_at")
   forceClosedById  String?      @map("force_closed_by")
-  createdAt        DateTime     @default(now()) @map("created_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
   attendance       Attendance[]
+  activityScores   ActivityScore[]
 
   @@unique([trainingId, sessionNumber])
   @@index([sessionDate])
@@ -129,6 +131,8 @@ model Participant {
   homeworkSubmissions  HomeworkSubmission[]
   telegramLink         TelegramLink?
   telegramLinkCode     TelegramLinkCode?
+  activityScores       ActivityScore[]
+  telegramMessages     TelegramMessage[]
 
   @@map("participants")
 }
@@ -218,17 +222,32 @@ model Homework {
 }
 
 model HomeworkSubmission {
-  id            String        @id @default(uuid())
-  homeworkId    String        @map("homework_id")
-  homework      Homework      @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
-  participantId String        @map("participant_id")
-  participant   Participant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  id            String         @id @default(uuid())
+  homeworkId    String         @map("homework_id")
+  homework      Homework       @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  participantId String         @map("participant_id")
+  participant   Participant    @relation(fields: [participantId], references: [id], onDelete: Cascade)
   text          String?
-  submittedAt   DateTime      @default(now()) @map("submitted_at")
+  submittedAt   DateTime       @default(now()) @map("submitted_at")
   grade         HomeworkGrade?
+  files         HomeworkFile[]
 
   @@unique([homeworkId, participantId])
   @@map("homework_submissions")
+}
+
+model HomeworkFile {
+  id              String             @id @default(uuid())
+  submissionId    String             @map("submission_id")
+  submission      HomeworkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  fileName        String             @map("file_name")
+  fileType        String             @map("file_type")   // "document" | "audio" | "video" | "voice" | "photo"
+  fileSizeBytes   Int?               @map("file_size_bytes")
+  storageUrl      String?            @map("storage_url") // R2 public URL (null until uploaded)
+  telegramFileId  String?            @map("telegram_file_id") // Telegram file_id for re-download
+  uploadedAt      DateTime           @default(now()) @map("uploaded_at")
+
+  @@map("homework_files")
 }
 
 model HomeworkGrade {
@@ -242,6 +261,41 @@ model HomeworkGrade {
   gradedAt     DateTime           @default(now()) @map("graded_at")
 
   @@map("homework_grades")
+}
+
+model ActivityScore {
+  id            String      @id @default(uuid())
+  sessionId     String      @map("session_id")
+  session       Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participantId String      @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  score         Int         // e.g. 0-100
+  note          String?
+  enteredById   String?     @map("entered_by")
+  enteredBy     StaffUser?  @relation(fields: [enteredById], references: [id])
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@unique([sessionId, participantId])
+  @@map("activity_scores")
+}
+
+model TelegramMessage {
+  id             String      @id @default(uuid())
+  chatId         BigInt      @map("chat_id")
+  participantId  String?     @map("participant_id")
+  participant    Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  direction      String      // "in" | "out"
+  text           String?
+  messageType    String      @default("text") @map("message_type") // "text"|"document"|"audio"|"video"|"voice"|"photo"
+  telegramFileId String?     @map("telegram_file_id")
+  fileName       String?     @map("file_name")
+  fileSizeBytes  Int?        @map("file_size_bytes")
+  telegramMsgId  Int?        @map("telegram_msg_id")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  @@index([chatId])
+  @@index([participantId])
+  @@map("telegram_messages")
 }
 
 model TelegramLink {
