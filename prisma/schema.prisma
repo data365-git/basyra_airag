@@ -34,6 +34,8 @@ model StaffUser {
   createdTrainings   Training[]
   auditLogs          AttendanceAudit[]
   translations       Translation[]
+  homeworks          Homework[]
+  homeworkGrades     HomeworkGrade[]
 
   @@map("staff_users")
 }
@@ -60,6 +62,7 @@ model Training {
   createdAt            DateTime              @default(now()) @map("created_at")
   sessions             Session[]
   trainingParticipants TrainingParticipant[]
+  homeworks            Homework[]
 
   @@map("trainings")
 }
@@ -123,6 +126,7 @@ model Participant {
   trainingParticipants TrainingParticipant[]
   attendance           Attendance[]
   auth                 ParticipantAuth?
+  homeworkSubmissions  HomeworkSubmission[]
 
   @@map("participants")
 }
@@ -193,4 +197,47 @@ model AttendanceAudit {
   changedAt    DateTime    @default(now()) @map("changed_at")
 
   @@map("attendance_audit")
+}
+
+model Homework {
+  id          String               @id @default(uuid())
+  trainingId  String               @map("training_id")
+  training    Training             @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  dueDate     String?              @map("due_date")   // "YYYY-MM-DD" plain string, nullable
+  maxScore    Int                  @default(100) @map("max_score")
+  createdById String?              @map("created_by")
+  createdBy   StaffUser?           @relation(fields: [createdById], references: [id])
+  createdAt   DateTime             @default(now()) @map("created_at")
+  submissions HomeworkSubmission[]
+
+  @@map("homeworks")
+}
+
+model HomeworkSubmission {
+  id            String        @id @default(uuid())
+  homeworkId    String        @map("homework_id")
+  homework      Homework      @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  participantId String        @map("participant_id")
+  participant   Participant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  text          String?
+  submittedAt   DateTime      @default(now()) @map("submitted_at")
+  grade         HomeworkGrade?
+
+  @@unique([homeworkId, participantId])
+  @@map("homework_submissions")
+}
+
+model HomeworkGrade {
+  id           String             @id @default(uuid())
+  submissionId String             @unique @map("submission_id")
+  submission   HomeworkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  score        Int
+  feedback     String?
+  gradedById   String?            @map("graded_by")
+  gradedBy     StaffUser?         @relation(fields: [gradedById], references: [id])
+  gradedAt     DateTime           @default(now()) @map("graded_at")
+
+  @@map("homework_grades")
 }

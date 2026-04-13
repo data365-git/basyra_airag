@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Edit, Download, Plus, Trash2, UserMinus, Search, CalendarPlus, Clock, CheckCircle, XCircle, AlertTriangle, Zap } from "lucide-react";
+import { Edit, Download, Plus, Trash2, UserMinus, Search, CalendarPlus, Clock, CheckCircle, XCircle, AlertTriangle, Zap, BookOpen } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { TrainingStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -313,6 +313,11 @@ export default function TrainingDetailPage() {
         backHref="/trainings"
         actions={
           <>
+            <Link href={`/trainings/${id}/homeworks`}>
+              <Button variant="outline" size="sm">
+                <BookOpen size={14} /> Vazifalar
+              </Button>
+            </Link>
             {canManage && (
               <>
                 <Button
