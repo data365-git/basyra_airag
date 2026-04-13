@@ -300,7 +300,7 @@ export default function ParticipantProfilePage() {
                   <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
                     <p className="text-xs text-blue-600 font-semibold">Ishtirokchiga yuboring:</p>
                     <p className="text-xs text-blue-800">
-                      Botga <strong>@BasyraBot</strong> ga quyidagini yuboring:
+                      Botga <strong>@basyra_yordamchi_bot</strong> ga quyidagini yuboring:
                     </p>
                     <code className="block bg-white border border-blue-200 rounded-lg px-3 py-2 font-mono text-sm font-bold text-blue-900 text-center tracking-wider select-all">
                       /start {tgInfo.pendingCode}
