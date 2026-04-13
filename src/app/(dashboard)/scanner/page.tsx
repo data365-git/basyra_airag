@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { Check, CheckCircle, XCircle, Loader2, ChevronDown } from "lucide-react";
 import { QRScanner } from "@/components/scanner/QRScanner";
 import { ScanResultOverlay } from "@/components/scanner/ScanResult";
+import { ConfirmOverrideSheet } from "@/components/scanner/ConfirmOverrideSheet";
 import { ScannerBottomSheet } from "@/components/scanner/ScannerBottomSheet";
 import { OfflineBanner } from "@/components/scanner/OfflineBanner";
 import { queueScan } from "@/lib/db/offline";
@@ -125,6 +126,18 @@ export default function ScannerPage() {
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
   const [scanCount,    setScanCount]    = useState(0);
   const [scanResult,   setScanResult]   = useState<ScanResult | null>(null);
+
+  // Pending override — when API returns needs_confirmation
+  const [pendingOverride, setPendingOverride] = useState<{
+    qrToken:           string;
+    sessionId:         string;
+    name:              string;
+    existingStatus:    string;
+    existingMethod:    string;
+    existingScannedAt: string | null;
+    newStatus:         string;
+  } | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const lastScannedRef     = useRef<string>("");
   const lastScannedTimeRef = useRef<number>(0);
@@ -346,6 +359,20 @@ export default function ScannerPage() {
         return;
       }
 
+      // Confirmation needed — show sheet, do not show result overlay
+      if (data.type === "needs_confirmation") {
+        setPendingOverride({
+          qrToken,
+          sessionId:         effectiveSession.id,
+          name:              data.participant?.full_name ?? "",
+          existingStatus:    data.existingStatus   ?? "absent",
+          existingMethod:    data.existingMethod   ?? "system",
+          existingScannedAt: data.existingScannedAt ?? null,
+          newStatus:         data.newStatus        ?? "present",
+        });
+        return;
+      }
+
       const result = data as ScanResult;
       setScanResult(result);
 
@@ -362,6 +389,46 @@ export default function ScannerPage() {
       navigator.vibrate?.([100, 50, 100]);
     }
   }, [effectiveSession, refreshCount, t]);
+
+  // ── Override confirmation handlers ────────────────────────────────────────
+  const handleConfirmOverride = useCallback(async () => {
+    if (!pendingOverride || isConfirming) return;
+    const { qrToken, sessionId } = pendingOverride;
+    setPendingOverride(null);
+    setIsConfirming(true);
+    try {
+      const res  = await fetch("/api/scan", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ token: qrToken, sessionId, forceOverride: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const result = data as ScanResult;
+      setScanResult(result);
+      if (result.type === "success" || result.type === "late") {
+        navigator.vibrate?.(200);
+        setScanCount((c) => c + 1);
+      } else {
+        navigator.vibrate?.([100, 50, 100]);
+      }
+    } catch {
+      if (qrToken && sessionId) {
+        await queueScan({ sessionId, qrToken, scannedAt: new Date().toISOString() });
+        await refreshCount();
+        setScanResult({ type: "queued_offline" });
+      } else {
+        setScanResult({ type: "unknown", message: t("scanner.network_error") });
+      }
+      navigator.vibrate?.([100, 50, 100]);
+    } finally {
+      setIsConfirming(false);
+    }
+  }, [pendingOverride, isConfirming, refreshCount, t]);
+
+  const handleCancelOverride = useCallback(() => {
+    if (isConfirming) return;
+    setPendingOverride(null);
+  }, [isConfirming]);
 
   // ── Scan handler ──────────────────────────────────────────────────────────
   const handleScan = useCallback(async (rawQrData: string) => {
@@ -561,6 +628,20 @@ export default function ScannerPage() {
         )}
 
         <ScanResultOverlay result={scanResult} isOffline={!isServerOnline} />
+
+        {/* ── Override confirmation sheet ───────────────────────────────── */}
+        {(pendingOverride || isConfirming) && (
+          <ConfirmOverrideSheet
+            name={pendingOverride?.name ?? ""}
+            existingStatus={pendingOverride?.existingStatus ?? "absent"}
+            existingMethod={pendingOverride?.existingMethod ?? "system"}
+            existingScannedAt={pendingOverride?.existingScannedAt ?? null}
+            newStatus={pendingOverride?.newStatus ?? "present"}
+            isLoading={isConfirming}
+            onConfirm={handleConfirmOverride}
+            onCancel={handleCancelOverride}
+          />
+        )}
 
         {/* ── Training bottom sheet ─────────────────────────────────────── */}
         <ScannerBottomSheet
