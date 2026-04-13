@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Edit, Trash2, KeyRound, ExternalLink } from "lucide-react";
+import { Edit, Trash2, KeyRound, ExternalLink, Send, RefreshCw, Unlink } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { QRCodeDisplay } from "@/components/participants/QRCodeDisplay";
 import { AttendanceBadge, TrainingStatusBadge } from "@/components/ui/Badge";
@@ -38,19 +38,53 @@ export default function ParticipantProfilePage() {
   const [loginForm, setLoginForm]     = useState({ username: "", password: "" });
   const [loginSaving, setLoginSaving] = useState(false);
 
+  // Telegram state
+  interface TelegramInfo {
+    linked: boolean;
+    chatId: string | null;
+    username: string | null;
+    firstName: string | null;
+    linkedAt: string | null;
+    pendingCode: string | null;
+    codeExpiresAt: string | null;
+  }
+  const [tgInfo,        setTgInfo]        = useState<TelegramInfo | null>(null);
+  const [tgCodeLoading, setTgCodeLoading] = useState(false);
+
   useEffect(() => {
     if (!id) return;
     Promise.all([
       fetch(`/api/participants/${id}`).then((r) => r.json()),
       fetch(`/api/participants/${id}/history`).then((r) => r.json()),
       fetch(`/api/participants/${id}/auth`).then((r) => r.json()),
-    ]).then(([p, h, a]) => {
+      fetch(`/api/participants/${id}/telegram`).then((r) => r.ok ? r.json() : null),
+    ]).then(([p, h, a, tg]) => {
       setParticipant(p);
       setHistory(Array.isArray(h) ? h : []);
       setAuthInfo(a ?? null);
+      setTgInfo(tg ?? null);
       setLoading(false);
     });
   }, [id]);
+
+  async function handleGenerateTgCode() {
+    setTgCodeLoading(true);
+    const res = await fetch(`/api/participants/${id}/telegram`, { method: "POST" });
+    if (res.ok) {
+      const data = await res.json();
+      setTgInfo((prev) => prev ? { ...prev, pendingCode: data.code, codeExpiresAt: data.expiresAt } : prev);
+      toast.success("Kod yaratildi");
+    } else {
+      toast.error("Xato");
+    }
+    setTgCodeLoading(false);
+  }
+
+  async function handleUnlinkTelegram() {
+    await fetch(`/api/participants/${id}/telegram`, { method: "DELETE" });
+    setTgInfo((prev) => prev ? { ...prev, linked: false, chatId: null, username: null, firstName: null, linkedAt: null } : prev);
+    toast.success("Telegram uzildi");
+  }
 
   async function handleCreateLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -225,6 +259,70 @@ export default function ParticipantProfilePage() {
                     O'chirish
                   </button>
                 </div>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* Telegram card */}
+        {canManage && tgInfo !== null && (
+          <Card>
+            <CardTitle className="mb-4 flex items-center gap-2">
+              <Send size={16} className="text-blue-500" /> Telegram
+            </CardTitle>
+
+            {tgInfo.linked ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-xl px-3 py-2">
+                  <span className="text-lg">✅</span>
+                  <div>
+                    <p className="font-semibold leading-tight">
+                      {tgInfo.firstName ?? "Ulangan"}
+                      {tgInfo.username && <span className="text-gray-400 font-normal ml-1">@{tgInfo.username}</span>}
+                    </p>
+                    {tgInfo.linkedAt && (
+                      <p className="text-xs text-gray-500">{new Date(tgInfo.linkedAt).toLocaleDateString("uz-UZ")}</p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={handleUnlinkTelegram}
+                  className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 underline"
+                >
+                  <Unlink size={11} /> Telegram'ni uzish
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3 text-sm">
+                <p className="text-gray-500">Telegram ulanmagan</p>
+
+                {tgInfo.pendingCode ? (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                    <p className="text-xs text-blue-600 font-semibold">Ishtirokchiga yuboring:</p>
+                    <p className="text-xs text-blue-800">
+                      Botga <strong>@BasyraBot</strong> ga quyidagini yuboring:
+                    </p>
+                    <code className="block bg-white border border-blue-200 rounded-lg px-3 py-2 font-mono text-sm font-bold text-blue-900 text-center tracking-wider select-all">
+                      /start {tgInfo.pendingCode}
+                    </code>
+                    {tgInfo.codeExpiresAt && (
+                      <p className="text-xs text-gray-400">
+                        Amal qilish muddati: {new Date(tgInfo.codeExpiresAt).toLocaleString("uz-UZ")}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+
+                <button
+                  onClick={handleGenerateTgCode}
+                  disabled={tgCodeLoading}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+                >
+                  {tgCodeLoading
+                    ? <RefreshCw size={12} className="animate-spin" />
+                    : <Send size={12} />}
+                  {tgInfo.pendingCode ? "Yangi kod yaratish" : "Telegram kodi yaratish"}
+                </button>
               </div>
             )}
           </Card>

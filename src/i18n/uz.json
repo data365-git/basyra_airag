@@ -5,7 +5,6 @@
   "nav.participants": "Ishtirokchilar",
   "nav.reports": "Hisobotlar",
   "nav.settings": "Sozlamalar",
-
   "common.save": "Saqlash",
   "common.cancel": "Bekor qilish",
   "common.delete": "O'chirish",
@@ -38,7 +37,6 @@
   "common.deleting": "O'chirilmoqda...",
   "common.saving": "Saqlanmoqda...",
   "common.note": "Izoh",
-
   "common.status.active": "Faol",
   "common.status.upcoming": "Kutilmoqda",
   "common.status.completed": "Tugallangan",
@@ -49,7 +47,6 @@
   "common.status.pending": "Kutilmoqda",
   "common.status.open": "Ochiq",
   "common.status.closed": "Yopilgan",
-
   "auth.sign_in": "Tizimga kirish",
   "auth.email": "Email manzil",
   "auth.password": "Parol",
@@ -59,7 +56,6 @@
   "auth.sign_out": "Chiqish",
   "auth.welcome_back": "Xush kelibsiz!",
   "auth.staff_login": "Xodim kirishi",
-
   "dashboard.greeting_morning": "Xayrli tong, {name} 👋",
   "dashboard.greeting_afternoon": "Xayrli kun, {name} 👋",
   "dashboard.participants": "Ishtirokchilar",
@@ -74,7 +70,6 @@
   "dashboard.all_above_threshold": "Barcha ishtirokchilar chegaradan yuqori",
   "dashboard.session_opened": "Sessiya ochildi",
   "dashboard.session_closed": "Sessiya yopildi — davomatlar belgilandi",
-
   "trainings.title": "Treninglar",
   "trainings.new": "Yangi trening",
   "trainings.edit": "Treningni tahrirlash",
@@ -131,7 +126,6 @@
   "trainings.day_required": "Haftaning kamida bir kunini tanlang",
   "trainings.threshold_hint": "Davomat bu foizdan past tushsa ogohlantirish yuboriladi",
   "trainings.no_sessions_warning": "Bu vaqt oralig'ida sessiyalar yo'q — sana yoki kunni tekshiring.",
-
   "participants.title": "Ishtirokchilar",
   "participants.add": "Ishtirokchi qo'shish",
   "participants.import_csv": "CSV import",
@@ -170,10 +164,9 @@
   "participants.import_n": "{n} ta ishtirokchini import qilish",
   "participants.view_imported": "Ishtirokchilarni ko'rish ({n} ta import qilindi)",
   "participants.rows_found": "{n} ta qator topildi",
-
   "scanner.select_training": "Treningni tanlang...",
   "scanner.select_session": "Sessiyani tanlang...",
-  "scanner.point_camera": "QR kodni kameraga yo'naltiring",
+  "scanner.point_camera": "QR kodga kamerani yo'naltiring",
   "scanner.processing": "Qayta ishlanmoqda...",
   "scanner.access_denied": "Kameraga kirish rad etildi",
   "scanner.no_session_open": "Sessiya hali ochilmagan",
@@ -184,7 +177,7 @@
   "scanner.select_to_scan": "Trening va sessiya tanlang",
   "scanner.select_to_scan_sub": "skaner boshlash uchun",
   "scanner.open_to_scan": "Skaner uchun sessiyani oching",
-  "scanner.scan_next": "Keyingi ishtirokchini skaner qiling",
+  "scanner.scan_next": "Keyingi ishtirokchini skanerlang",
   "scanner.requesting": "Kamera ruxsati so'ralmoqda...",
   "scanner.allow_camera": "Brauzer kamera ruxsatini so'raganida ruxsat bering",
   "scanner.camera_denied_title": "Kamera ruxsati yo'q",
@@ -217,9 +210,6 @@
   "scanner.session_ended": "Sessiya tugadi",
   "scanner.scanned_today": "Bugun {count} ishtirokchi skanerlandi",
   "scanner.session_closed_hint": "Bu sessiya endi qabul qilmaydi",
-  "scanner.scan_next": "Keyingi ishtirokchini skanerlang",
-  "scanner.point_camera": "QR kodga kamerani yo'naltiring",
-
   "reports.title": "Hisobotlar",
   "reports.subtitle": "Davomat tahlili va eksport",
   "reports.select_training": "Hisobot ko'rish uchun trening tanlang...",
@@ -236,14 +226,12 @@
   "reports.session_col": "Sessiya",
   "reports.date_col": "Sana",
   "reports.present_col": "Keldi",
-
   "settings.tab_profile": "Profil",
   "settings.tab_users": "Foydalanuvchilar",
   "settings.tab_roles": "Rollar",
   "settings.tab_categories": "Kategoriyalar",
   "settings.tab_translations": "Tarjimalar",
   "settings.tab_system": "Tizim",
-
   "settings.profile.title": "Mening profilim",
   "settings.profile.avatar_label": "Profil rasmi",
   "settings.profile.avatar_hint": "Rasm URL manzilini kiriting (bo'sh qoldiring — harf ko'rsatiladi)",
@@ -258,7 +246,6 @@
   "settings.profile.wrong_password": "Joriy parol noto'g'ri",
   "settings.profile.passwords_mismatch": "Parollar mos kelmaydi",
   "settings.profile.password_too_short": "Parol kamida 6 belgi bo'lishi kerak",
-
   "settings.users.title": "Foydalanuvchilar",
   "settings.users.add": "Foydalanuvchi qo'shish",
   "settings.users.role_label": "Rol",
@@ -268,7 +255,6 @@
   "settings.users.name_label": "Ism",
   "settings.users.password_label": "Parol (kamida 6 belgi)",
   "settings.users.manage_roles": "Rollarni boshqarish",
-
   "settings.roles.title": "Rollar",
   "settings.roles.new": "Yangi rol",
   "settings.roles.delete_confirm": "Bu rolni o'chirishni tasdiqlaysizmi?",
@@ -296,7 +282,6 @@
   "settings.roles.name_required": "Rol nomi majburiy",
   "settings.roles.updated": "Rol yangilandi",
   "settings.roles.created": "Rol yaratildi",
-
   "settings.categories.title": "Kategoriyalar",
   "settings.categories.add": "Kategoriya qo'shish",
   "settings.categories.name_uz": "Nomi (O'zbekcha)",
@@ -304,7 +289,6 @@
   "settings.categories.delete_confirm": "Bu kategoriyani o'chirishni tasdiqlaysizmi?",
   "settings.categories.delete_blocked": "Bu kategoriyaga biriktirilgan treninglar bor",
   "settings.categories.no_categories": "Kategoriyalar yo'q",
-
   "settings.translations.title": "Tarjimalar",
   "settings.translations.filter_all": "Barchasi",
   "settings.translations.filter_missing_uz": "UZ yo'q",
@@ -318,10 +302,8 @@
   "settings.translations.en_col": "Inglizcha",
   "settings.translations.press_enter": "Saqlash uchun Enter bosing",
   "settings.translations.press_esc": "Bekor qilish uchun Esc",
-
   "common.download": "Yuklab olish",
   "common.print": "Chop etish",
-
   "settings.users.subtitle": "Xodimlar hisoblarini boshqarish",
   "settings.users.no_users": "Foydalanuvchilar yo'q",
   "settings.users.updated": "Foydalanuvchi yangilandi",
@@ -335,7 +317,6 @@
   "settings.users.create_user": "Yaratish",
   "settings.users.full_name": "To'liq ism",
   "settings.users.password_hint": "Kamida 6 belgi",
-
   "settings.roles.subtitle": "{n} ta rol aniqlangan",
   "settings.roles.no_roles": "Hali rollar yo'q",
   "settings.roles.delete_title": "Rolni o'chirish",
@@ -347,7 +328,6 @@
   "settings.roles.superadmin_full_access": "Superadmin — barcha sahifa va amallarga to'liq kirish.",
   "settings.roles.no_permissions": "Ruxsatlar aniqlanmagan.",
   "settings.roles.delete_message": "\"{name}\" ni o'chirilsinmi? Bu amalni bekor qilib bo'lmaydi.",
-
   "settings.categories.subtitle": "Trening kategoriyalarini boshqarish",
   "settings.categories.new_category": "Yangi kategoriya",
   "settings.categories.name_en": "Nomi (Inglizcha)",
@@ -366,7 +346,6 @@
   "settings.categories.add_first": "Birinchisini qo'shing",
   "settings.categories.delete_title": "Kategoriyani o'chirish",
   "settings.categories.delete_message": "\"{name}\" ni o'chirilsinmi? Bu amalni bekor qilib bo'lmaydi.",
-
   "scanner.result.success": "Keldi deb belgilandi ✓",
   "scanner.result.queued_offline": "Vaqtincha saqlandi — internet kelganda yuboriladi",
   "scanner.result.excused": "Uzrli deb belgilangan",
@@ -396,35 +375,29 @@
   "scanner.status.present": "Keldi",
   "scanner.status.late": "Kech keldi",
   "scanner.status.absent": "Kelmadi",
-
   "trainings.participants_count": "{n} ta ishtirokchi",
-
   "settings.profile.language_section": "Til",
   "settings.profile.account_section": "Hisob",
-
   "settings.system.title": "Tizim sozlamalari",
   "settings.system.subtitle": "Barcha treninglar uchun global standartlar (alohida o'rnatilmagan bo'lsa)",
   "settings.system.saved": "Sozlamalar saqlandi",
   "settings.system.late_threshold_label": "Kechikish chegarasi (daqiqa)",
   "settings.system.late_threshold_hint": "Sessiya boshlanganidan keyin shu daqiqa o'tgach skanerlangan ishtirokchilar 'Kech qoldi' deb belgilanadi. 0 = o'chirilgan.",
   "settings.system.late_threshold_disabled": "Kechikish aniqlash o'chirilgan (0 daqiqa — barcha skanlar 'Keldi' deb belgilanadi)",
-
   "scanner.result.late": "Kech qoldi",
   "scanner.result.late_minutes": "Sessiya boshlanganidan {n} daqiqa keyin",
-
   "trainings.late_threshold_label": "Kechikish chegarasi",
   "trainings.late_threshold_global": "Global standartdan foydalanish",
   "trainings.late_threshold_custom": "Bu trening uchun alohida",
   "trainings.late_threshold_hint": "Sessiya boshlanganidan keyin necha daqiqadan so'ng 'Kech qoldi' belgilanadi (0 = o'chirilgan)",
   "trainings.late_threshold_global_hint": "Tizim sozlamalaridagi global chegara qo'llaniladi",
-
   "trainings.enroll_failed": "Ishtirokchini qo'shib bo'lmadi",
   "trainings.unenroll_failed": "Ishtirokchini olib bo'lmadi",
   "trainings.enroll_created_not_enrolled": "Ishtirokchi yaratildi, lekin ro'yxatga qo'shib bo'lmadi — qo'lda qo'shing",
   "trainings.unenroll_title": "Ishtirokchini olib tashlash",
   "trainings.unenroll_message": "\"{name}\" ni treningdan olib tashlansinmi? Davomat yozuvlari saqlanib qoladi.",
   "trainings.unenroll_confirm_label": "Olib tashlash",
-
   "participants.registered_count": "{n} ta ro'yxatda",
-  "participants.delete_message": "\"{name}\" o'chirilsinmi? Barcha davomat yozuvlari ham o'chiriladi. Bu amalni bekor qilib bo'lmaydi."
+  "participants.delete_message": "\"{name}\" o'chirilsinmi? Barcha davomat yozuvlari ham o'chiriladi. Bu amalni bekor qilib bo'lmaydi.",
+  "nav.telegram": "Telegram"
 }

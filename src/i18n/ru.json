@@ -5,7 +5,6 @@
   "nav.participants": "Участники",
   "nav.reports": "Отчёты",
   "nav.settings": "Настройки",
-
   "common.save": "Сохранить",
   "common.cancel": "Отмена",
   "common.delete": "Удалить",
@@ -38,7 +37,6 @@
   "common.deleting": "Удаление...",
   "common.saving": "Сохранение...",
   "common.note": "Заметка",
-
   "common.status.active": "Активный",
   "common.status.upcoming": "Предстоящий",
   "common.status.completed": "Завершён",
@@ -49,7 +47,6 @@
   "common.status.pending": "Ожидание",
   "common.status.open": "Открыта",
   "common.status.closed": "Закрыта",
-
   "auth.sign_in": "Войти в систему",
   "auth.email": "Email адрес",
   "auth.password": "Пароль",
@@ -59,7 +56,6 @@
   "auth.sign_out": "Выйти",
   "auth.welcome_back": "Добро пожаловать!",
   "auth.staff_login": "Вход для сотрудников",
-
   "dashboard.greeting_morning": "Доброе утро, {name} 👋",
   "dashboard.greeting_afternoon": "Добрый день, {name} 👋",
   "dashboard.participants": "Участники",
@@ -74,7 +70,6 @@
   "dashboard.all_above_threshold": "Все участники выше порога",
   "dashboard.session_opened": "Сессия открыта",
   "dashboard.session_closed": "Сессия закрыта — отсутствующие отмечены",
-
   "trainings.title": "Тренинги",
   "trainings.new": "Новый тренинг",
   "trainings.edit": "Редактировать тренинг",
@@ -131,7 +126,6 @@
   "trainings.day_required": "Выберите хотя бы один день недели",
   "trainings.threshold_hint": "Уведомление при посещаемости ниже этого уровня",
   "trainings.no_sessions_warning": "В этом диапазоне нет сессий — проверьте даты или день недели.",
-
   "participants.title": "Участники",
   "participants.add": "Добавить участника",
   "participants.import_csv": "Импорт CSV",
@@ -170,10 +164,9 @@
   "participants.import_n": "Импортировать {n} участников",
   "participants.view_imported": "Смотреть участников ({n} импортировано)",
   "participants.rows_found": "{n} строк найдено",
-
   "scanner.select_training": "Выберите тренинг...",
   "scanner.select_session": "Выберите сессию...",
-  "scanner.point_camera": "Наведите камеру на QR-код участника",
+  "scanner.point_camera": "Направьте камеру на QR-код",
   "scanner.processing": "Обработка...",
   "scanner.access_denied": "Доступ к камере запрещён",
   "scanner.no_session_open": "Сессия ещё не открыта",
@@ -184,7 +177,7 @@
   "scanner.select_to_scan": "Выберите тренинг и сессию",
   "scanner.select_to_scan_sub": "чтобы начать сканирование",
   "scanner.open_to_scan": "Откройте сессию для сканирования",
-  "scanner.scan_next": "Наведите камеру на следующего участника",
+  "scanner.scan_next": "Сканировать следующего участника",
   "scanner.requesting": "Запрос доступа к камере...",
   "scanner.allow_camera": "Разрешите доступ к камере в браузере",
   "scanner.camera_denied_title": "Доступ к камере запрещён",
@@ -217,9 +210,6 @@
   "scanner.session_ended": "Сессия завершена",
   "scanner.scanned_today": "Сегодня отсканировано {count} участников",
   "scanner.session_closed_hint": "Эта сессия больше не принимает сканы",
-  "scanner.scan_next": "Сканировать следующего участника",
-  "scanner.point_camera": "Направьте камеру на QR-код",
-
   "reports.title": "Отчёты",
   "reports.subtitle": "Аналитика посещаемости и экспорт",
   "reports.select_training": "Выберите тренинг для отчёта...",
@@ -236,14 +226,12 @@
   "reports.session_col": "Сессия",
   "reports.date_col": "Дата",
   "reports.present_col": "Присутствовали",
-
   "settings.tab_profile": "Профиль",
   "settings.tab_users": "Пользователи",
   "settings.tab_roles": "Роли",
   "settings.tab_categories": "Категории",
   "settings.tab_translations": "Переводы",
   "settings.tab_system": "Система",
-
   "settings.profile.title": "Мой профиль",
   "settings.profile.avatar_label": "Фото профиля",
   "settings.profile.avatar_hint": "Вставьте URL публичного изображения (оставьте пустым для инициалов)",
@@ -258,7 +246,6 @@
   "settings.profile.wrong_password": "Текущий пароль неверный",
   "settings.profile.passwords_mismatch": "Пароли не совпадают",
   "settings.profile.password_too_short": "Пароль должен содержать минимум 6 символов",
-
   "settings.users.title": "Пользователи",
   "settings.users.add": "Добавить пользователя",
   "settings.users.role_label": "Роль",
@@ -268,7 +255,6 @@
   "settings.users.name_label": "Имя",
   "settings.users.password_label": "Пароль (минимум 6 символов)",
   "settings.users.manage_roles": "Управление ролями",
-
   "settings.roles.title": "Роли",
   "settings.roles.new": "Новая роль",
   "settings.roles.delete_confirm": "Вы уверены, что хотите удалить эту роль?",
@@ -296,7 +282,6 @@
   "settings.roles.name_required": "Название роли обязательно",
   "settings.roles.updated": "Роль обновлена",
   "settings.roles.created": "Роль создана",
-
   "settings.categories.title": "Категории",
   "settings.categories.add": "Добавить категорию",
   "settings.categories.name_uz": "Название (узбекский)",
@@ -304,7 +289,6 @@
   "settings.categories.delete_confirm": "Вы уверены, что хотите удалить эту категорию?",
   "settings.categories.delete_blocked": "К этой категории привязаны тренинги",
   "settings.categories.no_categories": "Категорий нет",
-
   "settings.translations.title": "Переводы",
   "settings.translations.filter_all": "Все",
   "settings.translations.filter_missing_uz": "Нет UZ",
@@ -318,10 +302,8 @@
   "settings.translations.en_col": "Английский",
   "settings.translations.press_enter": "Enter — сохранить",
   "settings.translations.press_esc": "Esc — отмена",
-
   "common.download": "Скачать",
   "common.print": "Печать",
-
   "settings.users.subtitle": "Управление учётными записями сотрудников",
   "settings.users.no_users": "Нет пользователей",
   "settings.users.updated": "Пользователь обновлён",
@@ -335,7 +317,6 @@
   "settings.users.create_user": "Создать",
   "settings.users.full_name": "Полное имя",
   "settings.users.password_hint": "Минимум 6 символов",
-
   "settings.roles.subtitle": "Ролей: {n}",
   "settings.roles.no_roles": "Ролей пока нет",
   "settings.roles.delete_title": "Удалить роль",
@@ -347,7 +328,6 @@
   "settings.roles.superadmin_full_access": "Суперадмин — полный доступ ко всем страницам и действиям.",
   "settings.roles.no_permissions": "Права не определены.",
   "settings.roles.delete_message": "Удалить \"{name}\"? Это действие нельзя отменить.",
-
   "settings.categories.subtitle": "Управление категориями тренингов",
   "settings.categories.new_category": "Новая категория",
   "settings.categories.name_en": "Название (английский)",
@@ -366,7 +346,6 @@
   "settings.categories.add_first": "Добавить первую",
   "settings.categories.delete_title": "Удалить категорию",
   "settings.categories.delete_message": "Удалить \"{name}\"? Это действие нельзя отменить.",
-
   "scanner.result.success": "Присутствие отмечено ✓",
   "scanner.result.queued_offline": "Сохранено — синхронизируется при подключении",
   "scanner.result.excused": "Отмечен как отсутствие по уважительной причине",
@@ -396,35 +375,29 @@
   "scanner.status.present": "Присутствовал",
   "scanner.status.late": "Опоздал",
   "scanner.status.absent": "Отсутствовал",
-
   "trainings.participants_count": "{n} участников",
-
   "settings.profile.language_section": "Язык",
   "settings.profile.account_section": "Аккаунт",
-
   "settings.system.title": "Системные настройки",
   "settings.system.subtitle": "Глобальные параметры по умолчанию для всех тренингов",
   "settings.system.saved": "Настройки сохранены",
   "settings.system.late_threshold_label": "Порог опоздания (минуты)",
   "settings.system.late_threshold_hint": "Сканирование после указанного количества минут с начала сессии считается опозданием. 0 = отключено.",
   "settings.system.late_threshold_disabled": "Определение опозданий отключено (0 минут — все сканирования помечаются как Присутствие)",
-
   "scanner.result.late": "Опоздание",
   "scanner.result.late_minutes": "{n} мин после начала сессии",
-
   "trainings.late_threshold_label": "Порог опоздания",
   "trainings.late_threshold_global": "Использовать глобальный",
   "trainings.late_threshold_custom": "Настроить для этого тренинга",
   "trainings.late_threshold_hint": "Минут после начала сессии до отметки Опоздание (0 = отключено)",
   "trainings.late_threshold_global_hint": "Будет применён системный порог по умолчанию (из Системных настроек)",
-
   "trainings.enroll_failed": "Не удалось добавить участника",
   "trainings.unenroll_failed": "Не удалось удалить участника",
   "trainings.enroll_created_not_enrolled": "Участник создан, но не удалось записать — запишите вручную",
   "trainings.unenroll_title": "Удалить участника",
   "trainings.unenroll_message": "Удалить \"{name}\" из этого тренинга? Записи о посещаемости сохранятся.",
   "trainings.unenroll_confirm_label": "Удалить",
-
   "participants.registered_count": "{n} зарегистрировано",
-  "participants.delete_message": "Удалить \"{name}\"? Все записи о посещаемости также будут удалены. Это действие нельзя отменить."
+  "participants.delete_message": "Удалить \"{name}\"? Все записи о посещаемости также будут удалены. Это действие нельзя отменить.",
+  "nav.telegram": "Telegram"
 }

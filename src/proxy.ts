@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/api/health", "/portal", "/api/portal"];
+const PUBLIC_PATHS = ["/login", "/api/auth", "/api/health", "/portal", "/api/portal", "/api/telegram/webhook"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

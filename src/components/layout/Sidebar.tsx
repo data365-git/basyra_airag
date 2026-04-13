@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, BookOpen, Users, QrCode, BarChart3,
-  Settings, ChevronRight, ChevronLeft,
+  Settings, ChevronRight, ChevronLeft, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,6 +27,7 @@ const mainNavItems: NavItem[] = [
   { label: "nav.participants", href: "/participants", icon: Users,           page: "participants", action: "view" },
   { label: "nav.scanner",      href: "/scanner",      icon: QrCode,          page: "scanner",      action: "view" },
   { label: "nav.reports",      href: "/reports",      icon: BarChart3,       page: "reports",      action: "view" },
+  { label: "nav.telegram",     href: "/telegram",     icon: Send,            page: "participants", action: "edit" },
 ];
 
 function SidebarSkeleton() {

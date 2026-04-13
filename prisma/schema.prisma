@@ -127,6 +127,8 @@ model Participant {
   attendance           Attendance[]
   auth                 ParticipantAuth?
   homeworkSubmissions  HomeworkSubmission[]
+  telegramLink         TelegramLink?
+  telegramLinkCode     TelegramLinkCode?
 
   @@map("participants")
 }
@@ -240,4 +242,27 @@ model HomeworkGrade {
   gradedAt     DateTime           @default(now()) @map("graded_at")
 
   @@map("homework_grades")
+}
+
+model TelegramLink {
+  id            String      @id @default(uuid())
+  participantId String      @unique @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  chatId        BigInt      @map("chat_id")
+  username      String?
+  firstName     String?     @map("first_name")
+  linkedAt      DateTime    @default(now()) @map("linked_at")
+
+  @@map("telegram_links")
+}
+
+model TelegramLinkCode {
+  id            String      @id @default(uuid())
+  participantId String      @unique @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  code          String      @unique
+  expiresAt     DateTime    @map("expires_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("telegram_link_codes")
 }
