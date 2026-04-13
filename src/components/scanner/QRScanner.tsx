@@ -26,12 +26,19 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
   // CRITICAL: these refs must always be in the DOM.
   // videoRef.current must be non-null BEFORE getUserMedia resolves —
   // setting srcObject on a null ref is what was silently crashing into "denied".
-  const videoRef   = useRef<HTMLVideoElement>(null);
-  const canvasRef  = useRef<HTMLCanvasElement>(null);
-  const streamRef  = useRef<MediaStream | null>(null);
-  const rafRef     = useRef<number>(0);
-  const onScanRef  = useRef(onScan);
-  const mountedRef = useRef(true);
+  const videoRef    = useRef<HTMLVideoElement>(null);
+  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const streamRef   = useRef<MediaStream | null>(null);
+  const rafRef      = useRef<number>(0);
+  const onScanRef   = useRef(onScan);
+  const mountedRef  = useRef(true);
+  const jsQRRef     = useRef<typeof import("jsqr")["default"] | null>(null);
+  const lastScanTs  = useRef<number>(0);
+
+  // Pre-load jsQR once so the scan loop never has to import() on every frame
+  useEffect(() => {
+    import("jsqr").then(({ default: jsQR }) => { jsQRRef.current = jsQR; }).catch(() => {});
+  }, []);
 
   useEffect(() => { onScanRef.current = onScan; }, [onScan]);
 
@@ -77,10 +84,24 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
     }
   }
 
+  // Scan at ~10fps instead of 60fps — enough to catch any QR code,
+  // uses ~85% less CPU which directly reduces battery drain and heat.
+  const SCAN_INTERVAL_MS = 100;
+
   const scanLoop = useCallback(() => {
+    if (!mountedRef.current) return;
+
+    const now = Date.now();
+    if (now - lastScanTs.current < SCAN_INTERVAL_MS) {
+      rafRef.current = requestAnimationFrame(scanLoop);
+      return;
+    }
+
     const video  = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || video.readyState < video.HAVE_ENOUGH_DATA) {
+    const jsQR   = jsQRRef.current;
+
+    if (!video || !canvas || video.readyState < video.HAVE_ENOUGH_DATA || !jsQR) {
       rafRef.current = requestAnimationFrame(scanLoop);
       return;
     }
@@ -90,28 +111,29 @@ export function QRScanner({ onScan, active }: QRScannerProps) {
       rafRef.current = requestAnimationFrame(scanLoop);
       return;
     }
-    canvas.width  = w;
-    canvas.height = h;
+
+    // Scan at half resolution to further reduce CPU load
+    const sw = Math.round(w / 2);
+    const sh = Math.round(h / 2);
+    canvas.width  = sw;
+    canvas.height = sh;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) { rafRef.current = requestAnimationFrame(scanLoop); return; }
 
     try {
-      ctx.drawImage(video, 0, 0, w, h);
-      const imageData = ctx.getImageData(0, 0, w, h);
+      ctx.drawImage(video, 0, 0, sw, sh);
+      const imageData = ctx.getImageData(0, 0, sw, sh);
+      lastScanTs.current = now;
 
-      import("jsqr").then(({ default: jsQR }) => {
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "dontInvert",
-        });
-        if (code?.data) onScanRef.current(code.data.trim());
-      }).catch(() => {});
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "dontInvert",
+      });
+      if (code?.data) onScanRef.current(code.data.trim());
     } catch {
       // frame failed (low memory / video not ready on iOS) — skip silently
     }
 
-    if (mountedRef.current) {
-      rafRef.current = requestAnimationFrame(scanLoop);
-    }
+    rafRef.current = requestAnimationFrame(scanLoop);
   }, []);
 
   async function startCamera() {
