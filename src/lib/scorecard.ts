@@ -17,12 +17,18 @@ export interface HomeworkStat {
   submitRate: number;        // 0-100
 }
 
+export interface ActivityStat {
+  count:    number;          // sessions where score was recorded
+  avgScore: number | null;   // null if no scores recorded yet
+}
+
 export interface Scorecard {
   participantId: string;
   trainingId:    string;
   attendance:    AttendanceStat;
   homework:      HomeworkStat;
-  overallScore:  number; // 70 % attendance + 30 % homework
+  activity:      ActivityStat;
+  overallScore:  number; // avg of available metrics (each 0–100)
 }
 
 // ─── Single participant scorecard ─────────────────────────────────────────────
@@ -31,20 +37,20 @@ export async function getParticipantScorecard(
   participantId: string,
   trainingId:    string,
 ): Promise<Scorecard> {
-  const [sessionIds, attendanceRecords, homeworks] = await Promise.all([
+  const [sessions, attendanceRecords, homeworks, activityScores] = await Promise.all([
     // All non-cancelled sessions for the training
     prisma.session.findMany({
-      where: { trainingId, isCancelled: false, forceClosed: false },
+      where:  { trainingId, isCancelled: false, forceClosed: false },
       select: { id: true },
     }),
     // Attendance records for this participant in this training
     prisma.attendance.findMany({
-      where: { participantId, session: { trainingId } },
+      where:  { participantId, session: { trainingId } },
       select: { status: true },
     }),
     // Homeworks with this participant's submission + grade
     prisma.homework.findMany({
-      where: { trainingId },
+      where:  { trainingId },
       select: {
         id:       true,
         maxScore: true,
@@ -54,10 +60,15 @@ export async function getParticipantScorecard(
         },
       },
     }),
+    // Activity scores for this participant across all sessions of this training
+    prisma.activityScore.findMany({
+      where:  { participantId, session: { trainingId } },
+      select: { score: true },
+    }),
   ]);
 
   // ── Attendance ────────────────────────────────────────────────────────────
-  const total = sessionIds.length;
+  const total = sessions.length;
   let present = 0, late = 0, excused = 0, absent = 0;
   for (const rec of attendanceRecords) {
     if      (rec.status === "present")  present++;
@@ -83,18 +94,30 @@ export async function getParticipantScorecard(
     }
   }
   const hwTotal      = homeworks.length;
-  const hwAvg        = hwGraded > 0 ? Math.round(hwScoreSum / hwGraded) : null;
-  const hwSubmitRate = hwTotal  === 0 ? 0 : Math.round((hwSubmitted / hwTotal) * 100);
+  const hwAvg        = hwGraded   > 0 ? Math.round(hwScoreSum / hwGraded) : null;
+  const hwSubmitRate = hwTotal    === 0 ? 0 : Math.round((hwSubmitted / hwTotal) * 100);
 
-  // ── Overall (70 % att + 30 % hw) ─────────────────────────────────────────
-  const hwComponent = hwAvg ?? hwSubmitRate;
-  const overall     = Math.round(attRate * 0.7 + hwComponent * 0.3);
+  // ── Activity ──────────────────────────────────────────────────────────────
+  const actCount = activityScores.length;
+  const actAvg   = actCount > 0
+    ? Math.round(activityScores.reduce((s, r) => s + r.score, 0) / actCount)
+    : null;
+
+  // ── Overall — average of available metrics ────────────────────────────────
+  // attendance always counts (defaults to 0 if no sessions)
+  // homework counts only when at least one grade exists
+  // activity counts only when at least one score exists
+  const components: number[] = [attRate];
+  if (hwAvg !== null)  components.push(hwAvg);
+  if (actAvg !== null) components.push(actAvg);
+  const overall = Math.round(components.reduce((s, v) => s + v, 0) / components.length);
 
   return {
     participantId,
     trainingId,
     attendance: { total, present, late, excused, absent, rate: attRate },
     homework:   { total: hwTotal, submitted: hwSubmitted, graded: hwGraded, avgScore: hwAvg, submitRate: hwSubmitRate },
+    activity:   { count: actCount, avgScore: actAvg },
     overallScore: overall,
   };
 }

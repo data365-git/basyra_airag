@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/Header";
 import { SessionStatusBadge, AttendanceBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +13,7 @@ import { Select, Input } from "@/components/ui/Input";
 import { formatDate, formatTime } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
+import { Zap } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function SessionDetailPage() {
@@ -91,7 +93,16 @@ export default function SessionDetailPage() {
         subtitle={`${training?.name} · ${formatDate(session.session_date)} · ${formatTime(session.session_time)}`}
         back
         backHref={`/trainings/${trainingId}`}
-        actions={<SessionStatusBadge status={session.status} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <SessionStatusBadge status={session.status} />
+            <Link href={`/trainings/${trainingId}/sessions/${sessionId}/activity`}>
+              <Button size="sm" variant="outline">
+                <Zap size={14} /> Faollik
+              </Button>
+            </Link>
+          </div>
+        }
       />
 
       {/* Stats */}

@@ -3,9 +3,16 @@
  * Env:  TELEGRAM_BOT_TOKEN, NEXT_PUBLIC_APP_URL
  */
 
-import { Bot, Context } from "grammy";
+import { Bot, Context, InlineKeyboard } from "grammy";
 import prisma from "@/lib/prisma";
 import { getParticipantScorecard } from "@/lib/scorecard";
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://basyralmss-production.up.railway.app";
+
+/** Inline keyboard with the portal Web App button */
+function portalKeyboard() {
+  return new InlineKeyboard().webApp("🌐 Shaxsiy kabinetim", `${APP_URL}/portal/login`);
+}
 
 let bot: Bot | null = null;
 
@@ -76,7 +83,8 @@ function registerHandlers(b: Bot) {
         "👋 <b>Assalomu alaykum!</b>\n\n" +
         "Bu Basyra o'quv markazi botidir.\n\n" +
         "Hisobingizni ulash uchun administratoringizdan <b>havola</b> oling.\n\n" +
-        "Buyruqlar:\n/mystatus — statistikam\n/homework — vazifalar"
+        "Buyruqlar:\n/mystatus — statistikam\n/homework — vazifalar",
+        { reply_markup: portalKeyboard() }
       );
       return;
     }
@@ -112,7 +120,9 @@ function registerHandlers(b: Bot) {
       `✅ <b>Muvaffaqiyatli ulandi!</b>\n\n` +
       `Xush kelibsiz, <b>${linkCode.participant.fullName}</b>!\n\n` +
       `📊 /mystatus — davomat va baholar\n` +
-      `📝 /homework — vazifalar`
+      `📝 /homework — vazifalar\n\n` +
+      `👇 Shaxsiy kabinetingizga kirish uchun tugmani bosing:`,
+      { reply_markup: portalKeyboard() }
     );
   });
 
@@ -148,13 +158,16 @@ function registerHandlers(b: Bot) {
 
       text +=
         `📚 <b>${tr.name}</b>\n` +
-        `Davomat: ${bar(sc.attendance.rate)}\n` +
+        `📅 Davomat: ${bar(sc.attendance.rate)}\n` +
         `  ✅ ${sc.attendance.present}  ⏰ ${sc.attendance.late}  ❌ ${sc.attendance.absent}\n`;
 
       if (sc.homework.total > 0) {
-        text += `Vazifalar: ${sc.homework.submitted}/${sc.homework.total}`;
+        text += `📝 Vazifalar: ${sc.homework.submitted}/${sc.homework.total}`;
         if (sc.homework.avgScore !== null) text += ` · avg ${sc.homework.avgScore}%`;
         text += "\n";
+      }
+      if (sc.activity.avgScore !== null) {
+        text += `⚡ Faollik: ${bar(sc.activity.avgScore)} (${sc.activity.count} ta sessiya)\n`;
       }
       text += `⭐ <b>Umumiy: ${sc.overallScore}%</b>\n\n`;
     }
@@ -279,7 +292,8 @@ function registerHandlers(b: Bot) {
 
     // Unrecognised
     await reply(ctx,
-      "Buyruqlar:\n/mystatus — statistikam\n/homework — vazifalar"
+      "Buyruqlar:\n/mystatus — statistikam\n/homework — vazifalar",
+      { reply_markup: portalKeyboard() }
     );
   });
 

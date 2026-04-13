@@ -211,8 +211,8 @@ model Homework {
   training    Training             @relation(fields: [trainingId], references: [id], onDelete: Cascade)
   title       String
   description String?
+  startDate   String?              @map("start_date") // "YYYY-MM-DD" plain string, nullable
   dueDate     String?              @map("due_date")   // "YYYY-MM-DD" plain string, nullable
-  maxScore    Int                  @default(100) @map("max_score")
   createdById String?              @map("created_by")
   createdBy   StaffUser?           @relation(fields: [createdById], references: [id])
   createdAt   DateTime             @default(now()) @map("created_at")
