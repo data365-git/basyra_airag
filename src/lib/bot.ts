@@ -157,7 +157,7 @@ function registerHandlers(b: Bot) {
     });
 
     if (!link) {
-      await reply(ctx, "⚠️ Hisobingiz ulanmagan.\n\nAdministratoringizdan havola oling.");
+      await reply(ctx, "⚠️ Hisobingiz ulanmagan.\n\n/login buyrug'i orqali kirish mumkin.");
       return;
     }
 
@@ -167,29 +167,54 @@ function registerHandlers(b: Bot) {
       return;
     }
 
-    let text = `📊 <b>${link.participant.fullName}</b>\n\n`;
+    let text = `👤 <b>${link.participant.fullName}</b>\n`;
+    text += "─".repeat(28) + "\n\n";
 
     for (const tr of trainings) {
-      const sc = await getParticipantScorecard(link.participantId, tr.id);
-      const bar = (v: number) => "█".repeat(Math.round(v / 10)) + "░".repeat(10 - Math.round(v / 10)) + ` ${v}%`;
+      const sc  = await getParticipantScorecard(link.participantId, tr.id);
+      const bar = (v: number) => {
+        const filled = Math.round(v / 10);
+        return "▓".repeat(filled) + "░".repeat(10 - filled) + ` <b>${v}%</b>`;
+      };
 
+      text += `📚 <b>${tr.name}</b>\n\n`;
+
+      // Attendance
       text +=
-        `📚 <b>${tr.name}</b>\n` +
         `📅 Davomat: ${bar(sc.attendance.rate)}\n` +
-        `  ✅ ${sc.attendance.present}  ⏰ ${sc.attendance.late}  ❌ ${sc.attendance.absent}\n`;
+        `   ✅ ${sc.attendance.present}  ⏰ ${sc.attendance.late}  💙 ${sc.attendance.excused}  ❌ ${sc.attendance.absent}`;
+      if (sc.attendance.total > 0) text += `  (jami ${sc.attendance.total})`;
+      text += "\n\n";
 
+      // Homework
       if (sc.homework.total > 0) {
-        text += `📝 Vazifalar: ${sc.homework.submitted}/${sc.homework.total}`;
-        if (sc.homework.avgScore !== null) text += ` · avg ${sc.homework.avgScore}%`;
-        text += "\n";
+        text += `📝 Vazifalar: ${sc.homework.submitted}/${sc.homework.total} topshirildi`;
+        if (sc.homework.avgScore !== null) text += ` · o'rtacha ${bar(sc.homework.avgScore)}`;
+        text += "\n\n";
       }
-      if (sc.activity.avgScore !== null) {
-        text += `⚡ Faollik: ${bar(sc.activity.avgScore)} (${sc.activity.count} ta sessiya)\n`;
+
+      // Activity
+      if (sc.activity.count > 0 && sc.activity.avgScore !== null) {
+        text += `⚡ Faollik: ${bar(sc.activity.avgScore)} (${sc.activity.count} sessiya)\n\n`;
       }
-      text += `⭐ <b>Umumiy: ${sc.overallScore}%</b>\n\n`;
+
+      text += `🏆 <b>Umumiy ball: ${sc.overallScore}%</b>\n`;
+      text += "─".repeat(28) + "\n\n";
     }
 
     await reply(ctx, text.trim(), { reply_markup: linkedKeyboard() });
+  });
+
+  // ── /cancel ─────────────────────────────────────────────────────────────────
+  b.command("cancel", async (ctx) => {
+    await logMessage(ctx, "in", ctx.message?.text);
+    const chatKey = String(ctx.chat!.id);
+    if (pendingSubmissions.has(chatKey)) {
+      pendingSubmissions.delete(chatKey);
+      await reply(ctx, "❌ Topshiriq jarayoni bekor qilindi.\n\n/homework — qaytadan boshlash");
+    } else {
+      await reply(ctx, "Hozirda faol jarayon yo'q.\n\n/homework — vazifalarni ko'rish");
+    }
   });
 
   // ── /homework ───────────────────────────────────────────────────────────────
@@ -202,21 +227,26 @@ function registerHandlers(b: Bot) {
     });
 
     if (!link) {
-      await reply(ctx, "⚠️ Hisobingiz ulanmagan. Administratoringizdan havola oling.");
+      await reply(ctx, "⚠️ Hisobingiz ulanmagan. /login buyrug'ini yuboring.");
       return;
     }
 
+    const today       = new Date().toISOString().slice(0, 10); // UTC date is fine for display filter
     const trainingIds = link.participant.trainingParticipants.map((tp) => tp.trainingId);
     const homeworks   = await prisma.homework.findMany({
-      where:   { trainingId: { in: trainingIds } },
+      where: {
+        trainingId: { in: trainingIds },
+        // Filter: show only homeworks with no dueDate, or dueDate >= today
+        OR: [{ dueDate: null }, { dueDate: { gte: today } }],
+      },
       include: {
         training:    { select: { name: true } },
         submissions: {
-          where:  { participantId: link.participantId },
-          select: { id: true, grade: { select: { score: true } } },
+          where:   { participantId: link.participantId },
+          include: { grade: true, files: { select: { id: true } } },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: "asc" },
     });
 
     if (homeworks.length === 0) {
@@ -225,28 +255,38 @@ function registerHandlers(b: Bot) {
     }
 
     let text = "📝 <b>Vazifalar:</b>\n\n";
+    const kb  = new InlineKeyboard();
+
     homeworks.forEach((hw, i) => {
-      const sub  = hw.submissions[0];
-      const done = !!sub;
+      const sub    = hw.submissions[0];
       const graded = sub?.grade;
+      const icon   = graded ? "✅" : sub ? "📤" : "⏳";
+
       text +=
-        `${i + 1}. ${done ? (graded ? "✅" : "📤") : "⏳"} <b>${hw.title}</b>\n` +
+        `${i + 1}. ${icon} <b>${hw.title}</b>\n` +
         `   📚 ${hw.training.name}\n` +
-        (hw.dueDate ? `   📅 Muddat: ${hw.dueDate}\n` : "") +
-        (graded ? `   ⭐ Baho: ${graded.score}/${hw.maxScore}\n` : "") +
+        (hw.dueDate  ? `   📅 Muddat: ${hw.dueDate}\n`              : "") +
+        (graded      ? `   ⭐ Baho: ${graded.score}/${hw.maxScore}\n` : "") +
+        (sub && !graded && sub.files.length > 0
+          ? `   📎 ${sub.files.length} ta fayl topshirilgan\n`       : "") +
         "\n";
+
+      // Show button for ungraded (can re-submit or first submit)
+      if (!graded) {
+        const label = sub ? `📤 ${hw.title.slice(0, 20)}` : `⏳ ${hw.title.slice(0, 20)}`;
+        kb.text(label, `hw_select:${hw.id}`).row();
+      }
     });
 
-    text += `\nTopshirish uchun raqam yuboring (1–${homeworks.length})`;
+    const hasButtons = homeworks.some((hw) => !hw.submissions[0]?.grade);
+    if (!hasButtons) {
+      text += "\n✅ Barcha vazifalar baholangan!";
+      await reply(ctx, text, { reply_markup: linkedKeyboard() });
+      return;
+    }
 
-    // Store homework list in pending state for number selection
-    const chatKey = String(ctx.chat!.id);
-    (ctx as any)._hwList = homeworks; // temp storage for reply handler
-    pendingSubmissions.set(chatKey, { homeworkId: "__selecting__", submissionId: null });
-    // Store the list for number lookup
-    homeworkListCache.set(chatKey, homeworks.map((hw) => hw.id));
-
-    await reply(ctx, text);
+    text += "👇 Topshirmoqchi bo'lgan vazifani tanlang:";
+    await reply(ctx, text, { reply_markup: kb });
   });
 
   // ── /login — phone number authentication ────────────────────────────────
@@ -343,61 +383,115 @@ function registerHandlers(b: Bot) {
     );
   });
 
-  // ── Text messages (number selection + "done") ────────────────────────────
+  // ── Callback: homework selected from inline keyboard ──────────────────────
+  b.callbackQuery(/^hw_select:(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const hwId    = ctx.match[1];
+    const chatKey = String(ctx.chat!.id);
+    const chatId  = BigInt(ctx.chat!.id);
+
+    const [hw, link] = await Promise.all([
+      prisma.homework.findUnique({
+        where:   { id: hwId },
+        include: {
+          submissions: {
+            where:   { participantId: "" }, // will override below
+            include: { grade: true, files: { select: { id: true } } },
+          },
+        },
+      }),
+      prisma.telegramLink.findFirst({ where: { chatId } }),
+    ]);
+
+    if (!link) { await reply(ctx, "Hisob ulanmagan."); return; }
+    if (!hw)   { await reply(ctx, "Vazifa topilmadi."); return; }
+
+    // Re-fetch submission with correct participantId
+    const existingSub = await prisma.homeworkSubmission.findUnique({
+      where:   { homeworkId_participantId: { homeworkId: hwId, participantId: link.participantId } },
+      include: { grade: true, files: { select: { id: true } } },
+    });
+
+    // If already graded, inform and exit
+    if (existingSub?.grade) {
+      await reply(ctx,
+        `✅ <b>${hw.title}</b>\n\n` +
+        `Bu vazifa allaqachon baholangan: <b>${existingSub.grade.score}/${hw.maxScore}</b>.\n\n` +
+        (existingSub.grade.feedback ? `💬 ${existingSub.grade.feedback}\n\n` : "") +
+        "Boshqa vazifani tanlash uchun /homework."
+      );
+      return;
+    }
+
+    // Create or reuse submission
+    const sub = await prisma.homeworkSubmission.upsert({
+      where:  { homeworkId_participantId: { homeworkId: hwId, participantId: link.participantId } },
+      update: {},
+      create: { homeworkId: hwId, participantId: link.participantId },
+    });
+
+    pendingSubmissions.set(chatKey, { homeworkId: hwId, submissionId: sub.id });
+
+    const fileCount  = existingSub?.files.length ?? 0;
+    const doneKb     = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
+
+    let prompt = `📎 <b>${hw.title}</b>\n\n`;
+    if (existingSub && fileCount > 0) {
+      prompt += `Allaqachon ${fileCount} ta fayl yuborilgan.\n\n`;
+      prompt += `Qo'shimcha fayl yuborishingiz yoki ✅ Yakunlash tugmasini bosing.`;
+    } else {
+      prompt += `Fayl yuboring (hujjat, audio, video, rasm) yoki matn yozing.\n\n` +
+                `Tugatgach ✅ <b>Yakunlash</b> tugmasini bosing.\n` +
+                `Bekor qilish: /cancel`;
+    }
+
+    await reply(ctx, prompt, { reply_markup: doneKb });
+  });
+
+  // ── Callback: done button ──────────────────────────────────────────────────
+  b.callbackQuery("hw_done", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const chatKey = String(ctx.chat!.id);
+    const pending = pendingSubmissions.get(chatKey);
+
+    if (!pending || !pending.submissionId) {
+      await reply(ctx, "Hozirda faol topshiriq yo'q. /homework — qaytadan boshlash.");
+      return;
+    }
+
+    pendingSubmissions.delete(chatKey);
+    await reply(ctx,
+      "✅ <b>Topshirildi!</b>\n\nVazifangiz qabul qilindi. O'qituvchi tez orada baholaydi.\n\n" +
+      "/homework — boshqa vazifalar\n/mystatus — statistikam",
+      { reply_markup: linkedKeyboard() }
+    );
+  });
+
+  // ── Text messages (plain text submission + "done" fallback) ───────────────
   b.on("message:text", async (ctx) => {
     await logMessage(ctx, "in", ctx.message.text);
     const chatKey = String(ctx.chat.id);
     const text    = ctx.message.text.trim();
     const pending = pendingSubmissions.get(chatKey);
 
-    // Number selection — pick a homework
-    if (pending?.homeworkId === "__selecting__") {
-      const idx  = parseInt(text, 10) - 1;
-      const list = homeworkListCache.get(chatKey) ?? [];
-      const hwId = list[idx];
-      if (!hwId) {
-        await reply(ctx, "Noto'g'ri raqam. /homework buyrug'ini qayta yuboring.");
-        return;
-      }
-
-      const hw = await prisma.homework.findUnique({ where: { id: hwId } });
-      if (!hw) { await reply(ctx, "Vazifa topilmadi."); return; }
-
-      // Create or find submission
-      const chatId = BigInt(ctx.chat.id);
-      const link   = await prisma.telegramLink.findFirst({ where: { chatId } });
-      if (!link) { await reply(ctx, "Hisob ulanmagan."); return; }
-
-      const sub = await prisma.homeworkSubmission.upsert({
-        where:  { homeworkId_participantId: { homeworkId: hwId, participantId: link.participantId } },
-        update: {},
-        create: { homeworkId: hwId, participantId: link.participantId },
-      });
-
-      pendingSubmissions.set(chatKey, { homeworkId: hwId, submissionId: sub.id });
-
-      await reply(ctx,
-        `📎 <b>${hw.title}</b>\n\n` +
-        `Fayl yuboring (hujjat, audio, video, rasm) yoki matn yozing.\n` +
-        `Tugatgach <b>done</b> deb yozing.`
-      );
-      return;
-    }
-
-    // "done" — finish submission
-    if (pending && pending.homeworkId !== "__selecting__" && text.toLowerCase() === "done") {
+    // "done" fallback (typed instead of button)
+    if (pending && pending.submissionId && text.toLowerCase() === "done") {
       pendingSubmissions.delete(chatKey);
-      await reply(ctx, "✅ <b>Topshirildi!</b> Moderator tez orada baholaydi.");
+      await reply(ctx, "✅ <b>Topshirildi!</b> Moderator tez orada baholaydi.", { reply_markup: linkedKeyboard() });
       return;
     }
 
     // Plain text submission
-    if (pending && pending.homeworkId !== "__selecting__" && pending.submissionId) {
+    if (pending && pending.submissionId) {
       await prisma.homeworkSubmission.update({
         where: { id: pending.submissionId },
         data:  { text },
       });
-      await reply(ctx, "✅ Matn saqlandi. Yana fayl yuborishingiz yoki <b>done</b> deb yozishingiz mumkin.");
+      const doneKb = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
+      await reply(ctx,
+        "✅ Matn saqlandi. Yana fayl yuborishingiz yoki ✅ Yakunlash tugmasini bosing.\n/cancel — bekor qilish",
+        { reply_markup: doneKb }
+      );
       return;
     }
 
@@ -411,7 +505,7 @@ function registerHandlers(b: Bot) {
   // ── File messages (document, audio, video, voice, photo) ────────────────
   b.on(["message:document", "message:audio", "message:video", "message:voice", "message:photo"], async (ctx) => {
     const chatKey = String(ctx.chat.id);
-    const pending = pendingSubmissions.get(chatKey);
+    let   pending = pendingSubmissions.get(chatKey);
 
     const msg = ctx.message;
     let fileId: string | undefined;
@@ -449,12 +543,34 @@ function registerHandlers(b: Bot) {
 
     await logMessage(ctx, "in", undefined, { messageType: fileType, telegramFileId: fileId, fileName, fileSizeBytes: fileSize });
 
-    if (!pending || pending.homeworkId === "__selecting__" || !pending.submissionId) {
-      await reply(ctx, "📎 Fayl qabul qilindi, lekin hozirda topshiriq tanlanmagan.\n\nAvval /homework buyrug'ini yuboring.");
+    // ── Server-restart recovery: if no in-memory pending state, look in DB ──
+    if (!pending || !pending.submissionId) {
+      const chatId  = BigInt(ctx.chat.id);
+      const link    = await prisma.telegramLink.findFirst({ where: { chatId } });
+      if (link) {
+        // Find the most recent open (ungraded) submission from the last 24h
+        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recent = await prisma.homeworkSubmission.findFirst({
+          where: {
+            participantId: link.participantId,
+            grade:        null,
+            submittedAt:  { gte: cutoff },
+          },
+          orderBy: { submittedAt: "desc" },
+        });
+        if (recent) {
+          pending = { homeworkId: recent.homeworkId, submissionId: recent.id };
+          pendingSubmissions.set(chatKey, pending);
+        }
+      }
+    }
+
+    if (!pending || !pending.submissionId) {
+      await reply(ctx, "📎 Fayl qabul qilindi, lekin hozirda topshiriq tanlanmagan.\n\n/homework — vazifani tanlang.");
       return;
     }
 
-    // Save HomeworkFile record (storageUrl will be filled when R2 download is implemented)
+    // Save HomeworkFile record
     await prisma.homeworkFile.create({
       data: {
         submissionId:   pending.submissionId,
@@ -465,15 +581,14 @@ function registerHandlers(b: Bot) {
       },
     });
 
-    const kb = fileSize ? ` (${Math.round(fileSize / 1024)} KB)` : "";
-    await reply(ctx, `✅ Fayl qabul qilindi${kb}. Yana fayl yuborishingiz yoki <b>done</b> deb yozishingiz mumkin.`);
+    const sizeLabel = fileSize ? ` (${Math.round(fileSize / 1024)} KB)` : "";
+    const doneKb    = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
+    await reply(ctx,
+      `✅ <b>${fileName}</b>${sizeLabel} qabul qilindi.\n\nYana fayl yuborishingiz yoki yakunlash tugmasini bosing.\n/cancel — bekor qilish`,
+      { reply_markup: doneKb }
+    );
   });
 }
-
-// ─── In-memory homework list cache ────────────────────────────────────────────
-// Maps chatId → list of homeworkIds in the order shown
-
-const homeworkListCache = new Map<string, string[]>();
 
 // ─── Notify attendee when their submission is graded ─────────────────────────
 

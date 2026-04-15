@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { getTodayInTashkent } from "@/lib/sessionWindow";
 
 export interface AttendanceStat {
   total:   number;
@@ -37,15 +38,20 @@ export async function getParticipantScorecard(
   participantId: string,
   trainingId:    string,
 ): Promise<Scorecard> {
+  const today = getTodayInTashkent(); // "YYYY-MM-DD" in Asia/Tashkent
+
   const [sessions, attendanceRecords, homeworks, activityScores] = await Promise.all([
-    // All non-cancelled sessions for the training
+    // Only sessions that have already happened (today or earlier)
     prisma.session.findMany({
-      where:  { trainingId, isCancelled: false, forceClosed: false },
+      where:  { trainingId, isCancelled: false, forceClosed: false, sessionDate: { lte: today } },
       select: { id: true },
     }),
-    // Attendance records for this participant in this training
+    // Attendance records only for past/today sessions
     prisma.attendance.findMany({
-      where:  { participantId, session: { trainingId } },
+      where:  {
+        participantId,
+        session: { trainingId, isCancelled: false, forceClosed: false, sessionDate: { lte: today } },
+      },
       select: { status: true },
     }),
     // Homeworks with this participant's submission + grade

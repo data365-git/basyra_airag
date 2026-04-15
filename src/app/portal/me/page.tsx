@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   LogOut, User, Loader2, BookOpen, CheckCircle2, Clock,
-  ChevronDown, ChevronUp, AlertCircle, Star, Send, Zap, Calendar,
+  ChevronDown, ChevronUp, AlertCircle, Star, Send, Calendar,
+  Trash2, FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -17,6 +18,12 @@ interface PortalMe {
   trainings: Array<{ id: string; name: string; color: string; status: string }>;
 }
 
+interface AttendanceHistoryEntry {
+  date:           string;
+  session_number: number;
+  status:         string;
+}
+
 interface HomeworkItem {
   id:          string;
   title:       string;
@@ -27,6 +34,7 @@ interface HomeworkItem {
     id:           string;
     text:         string | null;
     submitted_at: string;
+    file_count:   number;
     grade: { score: number; feedback: string | null } | null;
   } | null;
 }
@@ -43,8 +51,9 @@ interface ScorecardData {
   activity: {
     count: number; avgScore: number | null;
   };
-  overallScore: number;
-  homeworks:    HomeworkItem[];
+  overallScore:      number;
+  attendanceHistory: AttendanceHistoryEntry[];
+  homeworks:         HomeworkItem[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -53,6 +62,20 @@ function scoreColor(v: number) {
   if (v >= 80) return "#22C55E";
   if (v >= 60) return "#F59E0B";
   return "#EF4444";
+}
+
+/** "2026-04-15" → "15 Apr" */
+function formatDate(iso: string): string {
+  const [, m, d] = iso.split("-");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${parseInt(d, 10)} ${months[parseInt(m, 10) - 1]}`;
+}
+
+function statusLabel(s: string): { label: string; cls: string } {
+  if (s === "present")  return { label: "Keldi",   cls: "text-green-600 bg-green-50" };
+  if (s === "late")     return { label: "Kech",    cls: "text-amber-600 bg-amber-50" };
+  if (s === "excused")  return { label: "Sababli", cls: "text-blue-500  bg-blue-50"  };
+  return                       { label: "Kelmadi", cls: "text-red-500   bg-red-50"   };
 }
 
 function ProgressBar({ value, color }: { value: number; color?: string }) {
@@ -129,17 +152,32 @@ function FifaCard({
 // ─── Homework card ────────────────────────────────────────────────────────────
 
 function HomeworkCard({
-  hw,
+  hw, onUpdate,
 }: {
-  hw: HomeworkItem;
-  trainingId: string;
-  participantId: string;
+  hw:       HomeworkItem;
   onUpdate: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open,      setOpen]      = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const hasSubmitted = !!hw.submission;
   const hasGrade     = !!hw.submission?.grade;
+
+  async function cancelSubmission() {
+    if (!confirm("Topshiriqni bekor qilishni xohlaysizmi?")) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/portal/homeworks/${hw.id}/submission`, { method: "DELETE" });
+      if (res.ok) {
+        onUpdate();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error ?? "Xatolik yuz berdi");
+      }
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -162,11 +200,11 @@ function HomeworkCard({
           <p className="font-semibold text-gray-900 text-sm leading-snug truncate">{hw.title}</p>
           <div className="flex items-center gap-2 mt-0.5">
             {hw.due_date && (
-              <p className="text-xs text-gray-400">Muddat: {hw.due_date}</p>
+              <p className="text-xs text-gray-400">Muddat: {formatDate(hw.due_date)}</p>
             )}
             {hasGrade && (
               <span className="text-xs text-green-600 font-semibold">
-                ✓ {hw.submission!.grade!.score}%
+                ✓ {hw.submission!.grade!.score}/{hw.max_score}
               </span>
             )}
             {hasSubmitted && !hasGrade && (
@@ -189,10 +227,43 @@ function HomeworkCard({
             <div className="bg-green-50 border border-green-100 rounded-xl p-3 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-green-800">Baho</span>
-                <span className="text-sm font-bold text-green-700">{hw.submission!.grade!.score}%</span>
+                <span className="text-sm font-bold text-green-700">
+                  {hw.submission!.grade!.score}/{hw.max_score}
+                </span>
               </div>
               {hw.submission!.grade!.feedback && (
                 <p className="text-xs text-green-700 leading-relaxed">{hw.submission!.grade!.feedback}</p>
+              )}
+            </div>
+          )}
+
+          {/* Submitted — show file count + optional cancel */}
+          {hasSubmitted && (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={13} className="text-blue-500 shrink-0" />
+                <p className="text-xs text-blue-700 font-medium">
+                  Topshirildi · {formatDate(hw.submission!.submitted_at.slice(0, 10))}
+                </p>
+              </div>
+              {hw.submission!.file_count > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <FileText size={12} className="text-blue-400" />
+                  <p className="text-xs text-blue-600">{hw.submission!.file_count} ta fayl</p>
+                </div>
+              )}
+              {!hasGrade && (
+                <button
+                  onClick={cancelSubmission}
+                  disabled={cancelling}
+                  className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors mt-1 disabled:opacity-50"
+                >
+                  {cancelling
+                    ? <Loader2 size={11} className="animate-spin" />
+                    : <Trash2 size={11} />
+                  }
+                  Bekor qilish
+                </button>
               )}
             </div>
           )}
@@ -207,15 +278,86 @@ function HomeworkCard({
               </p>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
 
-          {/* Submitted, waiting for grade */}
-          {hasSubmitted && !hasGrade && (
-            <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-3">
-              <p className="text-xs text-amber-700 font-medium">Baholanishini kuting</p>
-              <p className="text-xs text-amber-600 mt-0.5">Vazifangiz qabul qilindi, o'qituvchi tez orada baholaydi.</p>
+// ─── Attendance card with history ────────────────────────────────────────────
+
+function AttendanceCard({ sc, attColor }: { sc: ScorecardData; attColor: string }) {
+  const [showHistory, setShowHistory] = useState(false);
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Calendar size={15} className="text-gray-400" />
+          <p className="text-sm font-semibold text-gray-700">Davomat</p>
+        </div>
+        <span
+          className="text-sm font-bold px-2.5 py-0.5 rounded-full"
+          style={{ background: `${attColor}22`, color: attColor }}
+        >
+          {sc.attendance.rate}%
+        </span>
+      </div>
+      <div className="w-full bg-gray-100 rounded-full h-2">
+        <div
+          className="h-2 rounded-full transition-all duration-700"
+          style={{ width: `${sc.attendance.rate}%`, background: attColor }}
+        />
+      </div>
+      <div className="grid grid-cols-4 gap-2 pt-1">
+        {[
+          { label: "Keldi",   value: sc.attendance.present, cls: "text-green-600" },
+          { label: "Kech",    value: sc.attendance.late,    cls: "text-amber-600" },
+          { label: "Sababli", value: sc.attendance.excused, cls: "text-blue-500"  },
+          { label: "Kelmadi", value: sc.attendance.absent,  cls: "text-red-500"   },
+        ].map((item) => (
+          <div key={item.label} className="text-center">
+            <p className={`text-xl font-bold ${item.cls}`}>{item.value}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{item.label}</p>
+          </div>
+        ))}
+      </div>
+      {sc.attendance.total > 0 && (
+        <p className="text-xs text-gray-400 text-center">Jami {sc.attendance.total} dars</p>
+      )}
+
+      {/* History toggle */}
+      {sc.attendanceHistory.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors w-full justify-center pt-1"
+          >
+            {showHistory
+              ? <><ChevronUp size={13} /> So&apos;nggi darslarni yashirish</>
+              : <><ChevronDown size={13} /> So&apos;nggi darslar</>
+            }
+          </button>
+
+          {showHistory && (
+            <div className="space-y-1.5 pt-1">
+              {sc.attendanceHistory.map((h) => {
+                const { label, cls } = statusLabel(h.status);
+                return (
+                  <div key={`${h.date}-${h.session_number}`}
+                    className="flex items-center justify-between text-xs px-2 py-1.5 rounded-lg bg-gray-50">
+                    <span className="text-gray-500">
+                      {h.session_number}-dars · {formatDate(h.date)}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
+                      {label}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
@@ -256,7 +398,6 @@ function TrainingScorecard({
 
   const attColor = scoreColor(sc.attendance.rate);
   const hwPct    = sc.homework.avgScore ?? 0;
-  const actPct   = sc.activity.avgScore ?? 0;
 
   return (
     <div className="space-y-4">
@@ -265,42 +406,7 @@ function TrainingScorecard({
       <FifaCard name={name} training={training} sc={sc} />
 
       {/* ── Attendance detail (always shown) ──────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Calendar size={15} className="text-gray-400" />
-            <p className="text-sm font-semibold text-gray-700">Davomat</p>
-          </div>
-          <span
-            className="text-sm font-bold px-2.5 py-0.5 rounded-full"
-            style={{ background: `${attColor}22`, color: attColor }}
-          >
-            {sc.attendance.rate}%
-          </span>
-        </div>
-        <div className="w-full bg-gray-100 rounded-full h-2">
-          <div
-            className="h-2 rounded-full transition-all duration-700"
-            style={{ width: `${sc.attendance.rate}%`, background: attColor }}
-          />
-        </div>
-        <div className="grid grid-cols-4 gap-2 pt-1">
-          {[
-            { label: "Keldi",   value: sc.attendance.present, cls: "text-green-600" },
-            { label: "Kech",    value: sc.attendance.late,    cls: "text-amber-600" },
-            { label: "Sababli", value: sc.attendance.excused, cls: "text-blue-500"  },
-            { label: "Kelmadi", value: sc.attendance.absent,  cls: "text-red-500"   },
-          ].map((item) => (
-            <div key={item.label} className="text-center">
-              <p className={`text-xl font-bold ${item.cls}`}>{item.value}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{item.label}</p>
-            </div>
-          ))}
-        </div>
-        {sc.attendance.total > 0 && (
-          <p className="text-xs text-gray-400 text-center">Jami {sc.attendance.total} dars</p>
-        )}
-      </div>
+      <AttendanceCard sc={sc} attColor={attColor} />
 
       {/* ── Homework detail (always shown) ────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
@@ -333,37 +439,6 @@ function TrainingScorecard({
         )}
       </div>
 
-      {/* ── Activity detail (always shown) ────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Zap size={15} className="text-gray-400" />
-            <p className="text-sm font-semibold text-gray-700">Faollik</p>
-          </div>
-          {sc.activity.avgScore !== null && (
-            <span
-              className="text-sm font-bold px-2.5 py-0.5 rounded-full"
-              style={{ background: `${scoreColor(actPct)}22`, color: scoreColor(actPct) }}
-            >
-              {actPct}%
-            </span>
-          )}
-        </div>
-        {sc.activity.count > 0 ? (
-          <>
-            <div className="w-full bg-gray-100 rounded-full h-2">
-              <div
-                className="h-2 rounded-full transition-all duration-700"
-                style={{ width: `${actPct}%`, background: scoreColor(actPct) }}
-              />
-            </div>
-            <p className="text-xs text-gray-400">{sc.activity.count} ta sessiyada baholangan</p>
-          </>
-        ) : (
-          <p className="text-xs text-gray-400 italic">Hali faollik baholanmagan</p>
-        )}
-      </div>
-
       {/* ── Homework list ──────────────────────────────────────────────────── */}
       {sc.homeworks.length > 0 && (
         <div className="space-y-2">
@@ -372,8 +447,6 @@ function TrainingScorecard({
             <HomeworkCard
               key={hw.id}
               hw={hw}
-              trainingId={training.id}
-              participantId=""
               onUpdate={load}
             />
           ))}

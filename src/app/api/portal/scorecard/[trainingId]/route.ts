@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPortalUser } from "@/lib/portalAuth";
 import { getParticipantScorecard } from "@/lib/scorecard";
+import { getTodayInTashkent } from "@/lib/sessionWindow";
 import prisma from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -13,30 +14,60 @@ export async function GET(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { trainingId } = await params;
+  const today = getTodayInTashkent();
 
-  // Ensure participant is enrolled in this training
+  // Ensure participant is enrolled
   const enrollment = await prisma.trainingParticipant.findUnique({
     where: { trainingId_participantId: { trainingId, participantId: user.sub } },
   });
   if (!enrollment) return NextResponse.json({ error: "Not enrolled" }, { status: 403 });
 
-  // Scorecard
-  const sc = await getParticipantScorecard(user.sub, trainingId);
+  // Scorecard aggregate + per-session history + homeworks (parallel)
+  const [sc, attendanceHistory, homeworks] = await Promise.all([
+    getParticipantScorecard(user.sub, trainingId),
 
-  // Also return homeworks with submission status for this participant
-  const homeworks = await prisma.homework.findMany({
-    where:   { trainingId },
-    orderBy: { createdAt: "asc" },
-    include: {
-      submissions: {
-        where:   { participantId: user.sub },
-        include: { grade: true },
+    // Last 10 sessions with this participant's attendance status
+    prisma.attendance.findMany({
+      where: {
+        participantId: user.sub,
+        session: {
+          trainingId,
+          isCancelled: false,
+          forceClosed: false,
+          sessionDate: { lte: today },
+        },
       },
-    },
-  });
+      select: {
+        status: true,
+        session: { select: { sessionDate: true, sessionNumber: true } },
+      },
+      orderBy: { session: { sessionDate: "desc" } },
+      take: 10,
+    }),
+
+    // Homeworks with submission + grade + file count
+    prisma.homework.findMany({
+      where:   { trainingId },
+      orderBy: { createdAt: "asc" },
+      include: {
+        submissions: {
+          where:   { participantId: user.sub },
+          include: {
+            grade: true,
+            files: { select: { id: true } },
+          },
+        },
+      },
+    }),
+  ]);
 
   return NextResponse.json({
     ...sc,
+    attendanceHistory: attendanceHistory.map((r) => ({
+      date:           r.session.sessionDate,
+      session_number: r.session.sessionNumber,
+      status:         r.status,
+    })),
     homeworks: homeworks.map((hw) => {
       const sub = hw.submissions[0] ?? null;
       return {
@@ -49,6 +80,7 @@ export async function GET(
           id:           sub.id,
           text:         sub.text,
           submitted_at: sub.submittedAt,
+          file_count:   sub.files.length,
           grade: sub.grade ? { score: sub.grade.score, feedback: sub.grade.feedback } : null,
         } : null,
       };
