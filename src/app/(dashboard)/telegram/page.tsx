@@ -9,6 +9,7 @@ import {
   MessageCircle, ArrowDownToLine, File, Image, Mic,
 } from "lucide-react";
 import { usePermission } from "@/hooks/usePermission";
+import { ConfirmModal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 
 interface LinkedParticipant {
@@ -74,8 +75,9 @@ export default function TelegramAdminPage() {
   const [list,         setList]         = useState<LinkedParticipant[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [message,      setMessage]      = useState("");
-  const [sending,      setSending]      = useState(false);
-  const [selected,     setSelected]     = useState<Set<string>>(new Set());
+  const [sending,         setSending]         = useState(false);
+  const [selected,        setSelected]        = useState<Set<string>>(new Set());
+  const [broadcastConfirm, setBroadcastConfirm] = useState(false);
 
   // Conversation panel
   const [activeId,     setActiveId]     = useState<string | null>(null);
@@ -108,6 +110,16 @@ export default function TelegramAdminPage() {
     const targetIds = selected.size > 0 ? [...selected] : list.map((p) => p.id);
     if (targetIds.length === 0) return;
 
+    // Require confirmation when sending to all unselected recipients (> 5)
+    if (selected.size === 0 && list.length > 5) {
+      setBroadcastConfirm(true);
+      return;
+    }
+
+    await doSend(targetIds);
+  }
+
+  async function doSend(targetIds: string[]) {
     setSending(true);
     const res = await fetch("/api/telegram/broadcast", {
       method:  "POST",
@@ -286,6 +298,19 @@ export default function TelegramAdminPage() {
           </div>
         </Card>
       </div>
+
+      <ConfirmModal
+        open={broadcastConfirm}
+        onClose={() => setBroadcastConfirm(false)}
+        onConfirm={() => {
+          setBroadcastConfirm(false);
+          doSend(list.map((p) => p.id));
+        }}
+        danger
+        title="Ommaviy xabar yuborish"
+        message={`Barcha ${list.length} ta ishtirokchiga xabar yuboriladi. Tasdiqlaysizmi?`}
+        confirmLabel="Yuborish"
+      />
     </div>
   );
 }

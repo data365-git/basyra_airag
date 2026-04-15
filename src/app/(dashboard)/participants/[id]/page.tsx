@@ -28,8 +28,10 @@ export default function ParticipantProfilePage() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [deleteOpen,      setDeleteOpen]      = useState(false);
+  const [deleting,        setDeleting]        = useState(false);
+  const [unlinkTgOpen,    setUnlinkTgOpen]    = useState(false);
+  const [deleteLoginOpen, setDeleteLoginOpen] = useState(false);
 
   // Portal login state
   interface AuthInfo { id: string; username: string; lastLoginAt: string | null; createdAt: string }
@@ -84,6 +86,7 @@ export default function ParticipantProfilePage() {
   async function handleUnlinkTelegram() {
     await fetch(`/api/participants/${id}/telegram`, { method: "DELETE" });
     setTgInfo((prev) => prev ? { ...prev, linked: false, chatId: null, username: null, firstName: null, linkedAt: null } : prev);
+    setUnlinkTgOpen(false);
     toast.success("Telegram uzildi");
   }
 
@@ -128,6 +131,7 @@ export default function ParticipantProfilePage() {
   async function handleDeleteLogin() {
     await fetch(`/api/participants/${id}/auth`, { method: "DELETE" });
     setAuthInfo(null);
+    setDeleteLoginOpen(false);
     toast.success("Login o'chirildi");
   }
 
@@ -254,7 +258,7 @@ export default function ParticipantProfilePage() {
                     Parolni yangilash
                   </button>
                   <button
-                    onClick={handleDeleteLogin}
+                    onClick={() => setDeleteLoginOpen(true)}
                     className="text-xs text-red-500 hover:text-red-700 underline ml-auto"
                   >
                     O'chirish
@@ -287,7 +291,7 @@ export default function ParticipantProfilePage() {
                   </div>
                 </div>
                 <button
-                  onClick={handleUnlinkTelegram}
+                  onClick={() => setUnlinkTgOpen(true)}
                   className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 underline"
                 >
                   <Unlink size={11} /> Telegram'ni uzish
@@ -452,6 +456,26 @@ export default function ParticipantProfilePage() {
         title={t("participants.delete_title")}
         message={t("participants.delete_message", { name: participant.full_name })}
         confirmLabel={deleting ? t("common.deleting") : t("common.delete")}
+      />
+
+      <ConfirmModal
+        open={unlinkTgOpen}
+        onClose={() => setUnlinkTgOpen(false)}
+        onConfirm={handleUnlinkTelegram}
+        danger
+        title="Telegram'ni uzish"
+        message={`${participant.full_name} uchun Telegram ulanishini uzmoqchimisiz? Ishtirokchi bot orqali xabar ola olmaydi.`}
+        confirmLabel="Uzish"
+      />
+
+      <ConfirmModal
+        open={deleteLoginOpen}
+        onClose={() => setDeleteLoginOpen(false)}
+        onConfirm={handleDeleteLogin}
+        danger
+        title="Portal loginni o'chirish"
+        message={`${participant.full_name} uchun portal kirish ma'lumotlarini o'chirmoqchimisiz? Ishtirokchi portaga kira olmaydi.`}
+        confirmLabel="O'chirish"
       />
 
       {/* Create login modal */}

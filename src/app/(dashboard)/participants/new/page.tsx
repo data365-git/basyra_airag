@@ -146,7 +146,7 @@ export default function NewParticipantPage() {
           name={created.name}
           credentials={created.credentials}
           participantId={created.id}
-          onContinue={() => router.push("/participants")}
+          onContinue={() => { router.refresh(); router.push("/participants"); }}
         />
       </div>
     );
