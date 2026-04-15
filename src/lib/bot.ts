@@ -28,16 +28,6 @@ export function getBot(): Bot {
   bot = new Bot(token);
   registerHandlers(bot);
 
-  // Set persistent menu button (bottom-left button in every chat with this bot)
-  // This makes the web app accessible without needing to send a message first
-  bot.api.setMyDefaultMenuButton({
-    menu_button: {
-      type:    "web_app",
-      text:    "📊 Kabinet",
-      web_app: { url: `${APP_URL}/portal/me` },
-    },
-  }).catch((e) => console.error("[BOT] Failed to set menu button:", e));
-
   return bot;
 }
 
