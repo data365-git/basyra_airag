@@ -394,16 +394,18 @@ export default function PortalMePage() {
         return;
       }
 
-      // 401 — try Telegram Mini App auto-login before redirecting
-      const initData = (window as any).Telegram?.WebApp?.initData;
-      if (initData) {
+      // 401 — try Telegram Mini App auto-login before redirecting.
+      // Detect by WebApp presence, NOT by initData truthiness — initData can
+      // legitimately be an empty string on some open paths.
+      const twa = (window as any).Telegram?.WebApp;
+      if (twa) {
         try {
-          (window as any).Telegram.WebApp.ready?.();
-          (window as any).Telegram.WebApp.expand?.();
+          twa.ready?.();
+          twa.expand?.();
           const authRes = await fetch("/api/portal/telegram-miniapp-login", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ initData }),
+            body:    JSON.stringify({ initData: twa.initData ?? "" }),
           });
           if (authRes.ok) {
             // Cookie set — retry the /me request

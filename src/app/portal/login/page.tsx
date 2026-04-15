@@ -42,10 +42,19 @@ function LoginForm() {
   // ── On mount: try Mini App auto-login first ──────────────────────────────
   useEffect(() => {
     const twa = window.Telegram?.WebApp;
-    if (twa?.initData) {
-      // Opened inside Telegram — auto-authenticate with no user interaction
+
+    if (twa) {
+      // ── Inside Telegram Mini App — NEVER load Login Widget ──────────────
       twa.ready();
       twa.expand();
+
+      if (!twa.initData) {
+        // Telegram opened the Mini App but didn't send initData (some open paths).
+        // Can't auto-authenticate — show a clear error instead of a broken widget.
+        setError("not_linked");
+        return;
+      }
+
       setLoading(true);
       setHint("Telegram orqali kirilmoqda...");
 

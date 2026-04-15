@@ -14,9 +14,9 @@ function linkedKeyboard() {
   return new InlineKeyboard().webApp("📊 Shaxsiy kabinetni ochish", `${APP_URL}/portal/me`);
 }
 
-/** Keyboard shown to unlinked users — opens portal login page */
+/** Keyboard shown to unlinked users — /portal/me handles auth + redirect */
 function loginKeyboard() {
-  return new InlineKeyboard().webApp("🌐 Shaxsiy kabinet", `${APP_URL}/portal/login`);
+  return new InlineKeyboard().webApp("🌐 Shaxsiy kabinet", `${APP_URL}/portal/me`);
 }
 
 let bot: Bot | null = null;
