@@ -3,6 +3,7 @@
  * Env:  TELEGRAM_BOT_TOKEN, NEXT_PUBLIC_APP_URL
  */
 
+import { randomUUID } from "crypto";
 import { Bot, Context, InlineKeyboard, Keyboard } from "grammy";
 import prisma from "@/lib/prisma";
 import { getParticipantScorecard } from "@/lib/scorecard";
@@ -27,6 +28,16 @@ export function getBot(): Bot {
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN not set");
   bot = new Bot(token);
   registerHandlers(bot);
+
+  // Set the persistent menu button (bottom-left in every chat with this bot).
+  // grammy 1.x method is setChatMenuButton — omitting chat_id sets the default.
+  bot.api.setChatMenuButton({
+    menu_button: {
+      type:    "web_app",
+      text:    "📊 Kabinet",
+      web_app: { url: `${APP_URL}/portal/me` },
+    },
+  }).catch((e: unknown) => console.error("[BOT] Failed to set menu button:", e));
 
   return bot;
 }
@@ -309,7 +320,7 @@ function registerHandlers(b: Bot) {
     }
 
     // Create a one-time 10-minute token
-    const token     = crypto.randomUUID();
+    const token     = randomUUID();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await prisma.phoneLoginToken.create({
