@@ -103,14 +103,13 @@ export async function getParticipantScorecard(
     ? Math.round(activityScores.reduce((s, r) => s + r.score, 0) / actCount)
     : null;
 
-  // ── Overall — average of available metrics ────────────────────────────────
-  // attendance always counts (defaults to 0 if no sessions)
-  // homework counts only when at least one grade exists
-  // activity counts only when at least one score exists
-  const components: number[] = [attRate];
-  if (hwAvg !== null)  components.push(hwAvg);
-  if (actAvg !== null) components.push(actAvg);
-  const overall = Math.round(components.reduce((s, v) => s + v, 0) / components.length);
+  // ── Overall — always (attendance + homework + activity) / 3 ─────────────
+  // Missing metrics contribute 0, not a smaller denominator. A shrinking
+  // denominator would make a student with no homework look the same as one
+  // with 100% homework, which is wrong.
+  const hwComponent  = hwAvg  ?? 0;
+  const actComponent = actAvg ?? 0;
+  const overall = Math.round((attRate + hwComponent + actComponent) / 3);
 
   return {
     participantId,
