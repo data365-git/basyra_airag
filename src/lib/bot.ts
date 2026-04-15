@@ -91,9 +91,18 @@ async function reply(ctx: Context, text: string, options?: object): Promise<void
 }
 
 // ─── Pending submission state (in-memory, per chatId) ────────────────────────
-// Key: chatId string  Value: { homeworkId, step: "awaiting_files" | "done" }
-
 const pendingSubmissions = new Map<string, { homeworkId: string; submissionId: string | null }>();
+
+// ─── Pending file awaiting confirmation (in-memory, per chatId) ───────────────
+// Set when user sends a file; cleared after confirm/reject/cancel.
+interface PendingFile {
+  submissionId: string;
+  fileName:     string;
+  fileType:     string;
+  fileSizeBytes: number | null;
+  telegramFileId: string | null;
+}
+const pendingFiles = new Map<string, PendingFile>();
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -218,8 +227,10 @@ function registerHandlers(b: Bot) {
   b.command("cancel", async (ctx) => {
     await logMessage(ctx, "in", ctx.message?.text);
     const chatKey = String(ctx.chat!.id);
-    if (pendingSubmissions.has(chatKey)) {
-      pendingSubmissions.delete(chatKey);
+    const hadPending = pendingSubmissions.has(chatKey) || pendingFiles.has(chatKey);
+    pendingSubmissions.delete(chatKey);
+    pendingFiles.delete(chatKey);
+    if (hadPending) {
       await reply(ctx, "❌ Topshiriq jarayoni bekor qilindi.\n\n/homework — qaytadan boshlash");
     } else {
       await reply(ctx, "Hozirda faol jarayon yo'q.\n\n/homework — vazifalarni ko'rish");
@@ -472,6 +483,49 @@ function registerHandlers(b: Bot) {
     );
   });
 
+  // ── Callback: confirm pending file ────────────────────────────────────────
+  b.callbackQuery("hw_file_confirm", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const chatKey = String(ctx.chat!.id);
+    const pf      = pendingFiles.get(chatKey);
+
+    if (!pf) {
+      await reply(ctx, "Tasdiqlanadigan fayl topilmadi.");
+      return;
+    }
+
+    pendingFiles.delete(chatKey);
+
+    await prisma.homeworkFile.create({
+      data: {
+        submissionId:   pf.submissionId,
+        fileName:       pf.fileName,
+        fileType:       pf.fileType,
+        fileSizeBytes:  pf.fileSizeBytes,
+        telegramFileId: pf.telegramFileId,
+      },
+    });
+
+    const sizeLabel = pf.fileSizeBytes ? ` (${Math.round(pf.fileSizeBytes / 1024)} KB)` : "";
+    const doneKb    = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
+    await reply(ctx,
+      `✅ <b>${pf.fileName}</b>${sizeLabel} saqlandi.\n\nYana fayl yuborishingiz yoki yakunlash tugmasini bosing.\n/cancel — bekor qilish`,
+      { reply_markup: doneKb }
+    );
+  });
+
+  // ── Callback: reject pending file ─────────────────────────────────────────
+  b.callbackQuery("hw_file_reject", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const chatKey = String(ctx.chat!.id);
+    pendingFiles.delete(chatKey);
+    const doneKb = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
+    await reply(ctx,
+      "❌ Fayl bekor qilindi. Qaytadan yuborishingiz yoki yakunlash tugmasini bosing.\n/cancel — topshiriqdan chiqish",
+      { reply_markup: doneKb }
+    );
+  });
+
   // ── Text messages (plain text submission + "done" fallback) ───────────────
   b.on("message:text", async (ctx) => {
     await logMessage(ctx, "in", ctx.message.text);
@@ -575,22 +629,22 @@ function registerHandlers(b: Bot) {
       return;
     }
 
-    // Save HomeworkFile record
-    await prisma.homeworkFile.create({
-      data: {
-        submissionId:   pending.submissionId,
-        fileName,
-        fileType,
-        fileSizeBytes:  fileSize ?? null,
-        telegramFileId: fileId ?? null,
-      },
+    // Hold file in memory — ask user to confirm before writing to DB
+    pendingFiles.set(chatKey, {
+      submissionId:   pending.submissionId,
+      fileName,
+      fileType,
+      fileSizeBytes:  fileSize ?? null,
+      telegramFileId: fileId ?? null,
     });
 
-    const sizeLabel = fileSize ? ` (${Math.round(fileSize / 1024)} KB)` : "";
-    const doneKb    = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
+    const sizeLabel  = fileSize ? ` (${Math.round(fileSize / 1024)} KB)` : "";
+    const confirmKb  = new InlineKeyboard()
+      .text("✅ Tasdiqlash",      "hw_file_confirm")
+      .text("🔄 Qayta yuklash",   "hw_file_reject");
     await reply(ctx,
-      `✅ <b>${fileName}</b>${sizeLabel} qabul qilindi.\n\nYana fayl yuborishingiz yoki yakunlash tugmasini bosing.\n/cancel — bekor qilish`,
-      { reply_markup: doneKb }
+      `📎 <b>${fileName}</b>${sizeLabel}\n\nBu faylni topshiriqqa qo'shaylikmi?`,
+      { reply_markup: confirmKb }
     );
   });
 }

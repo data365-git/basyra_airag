@@ -118,7 +118,7 @@ export default function TrainingDetailPage() {
   const [allParticipants, setAllParticipants] = useState<any[]>([]);
   const [enrolling, setEnrolling] = useState<Set<string>>(new Set());
   const [unenrolling, setUnenrolling] = useState<Set<string>>(new Set());
-  const [unenrollConfirm, setUnenrollConfirm] = useState<{ participantId: string; name: string } | null>(null);
+  const [unenrollConfirm, setUnenrollConfirm] = useState<{ participantId: string; name: string; attendanceCount: number } | null>(null);
   const [newParticipantForm, setNewParticipantForm] = useState({ full_name: "", phone: "", email: "" });
   const [creatingAndEnrolling, setCreatingAndEnrolling] = useState(false);
 
@@ -251,7 +251,8 @@ export default function TrainingDetailPage() {
   }
 
   function handleUnenroll(participantId: string, name: string) {
-    setUnenrollConfirm({ participantId, name });
+    const attendanceCount = attendance.filter((a) => a.participant_id === participantId).length;
+    setUnenrollConfirm({ participantId, name, attendanceCount });
   }
 
   function getParticipantRate(participantId: string) {
@@ -528,7 +529,13 @@ export default function TrainingDetailPage() {
         onConfirm={confirmUnenroll}
         danger
         title={t("trainings.unenroll_title")}
-        message={t("trainings.unenroll_message", { name: unenrollConfirm?.name ?? "" })}
+        message={
+          unenrollConfirm
+            ? unenrollConfirm.attendanceCount > 0
+              ? `${t("trainings.unenroll_message", { name: unenrollConfirm.name })}\n\n⚠️ Bu ishtirokchining ${unenrollConfirm.attendanceCount} ta davomat yozuvi bor. Kursdan chiqarsangiz, barcha davomat ma'lumotlari o'chiriladi.`
+              : t("trainings.unenroll_message", { name: unenrollConfirm.name })
+            : ""
+        }
         confirmLabel={t("trainings.unenroll_confirm_label")}
       />
 
