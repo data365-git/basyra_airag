@@ -39,6 +39,15 @@ export function getBot(): Bot {
     },
   }).catch((e: unknown) => console.error("[BOT] Failed to set menu button:", e));
 
+  // Register slash-command autocomplete list shown when user types "/".
+  bot.api.setMyCommands([
+    { command: "start",    description: "Botni boshlash" },
+    { command: "login",    description: "Kabinetga kirish" },
+    { command: "mystatus", description: "Mening statistikam" },
+    { command: "homework", description: "Vazifalar ro'yxati" },
+    { command: "cancel",   description: "Amalni bekor qilish" },
+  ]).catch((e: unknown) => console.error("[BOT] setMyCommands failed:", e));
+
   return bot;
 }
 
@@ -390,43 +399,35 @@ function registerHandlers(b: Bot) {
     const chatKey = String(ctx.chat!.id);
     const chatId  = BigInt(ctx.chat!.id);
 
-    const [hw, link] = await Promise.all([
-      prisma.homework.findUnique({
-        where:   { id: hwId },
-        include: {
-          submissions: {
-            where:   { participantId: "" }, // will override below
-            include: { grade: true, files: { select: { id: true } } },
-          },
-        },
-      }),
-      prisma.telegramLink.findFirst({ where: { chatId } }),
-    ]);
+    try {
+      const link = await prisma.telegramLink.findFirst({ where: { chatId } });
+      if (!link) { await reply(ctx, "Hisob ulanmagan. /login buyrug'ini yuboring."); return; }
 
-    if (!link) { await reply(ctx, "Hisob ulanmagan."); return; }
-    if (!hw)   { await reply(ctx, "Vazifa topilmadi."); return; }
+      const [hw, existingSub] = await Promise.all([
+        prisma.homework.findUnique({ where: { id: hwId } }),
+        prisma.homeworkSubmission.findUnique({
+          where:   { homeworkId_participantId: { homeworkId: hwId, participantId: link.participantId } },
+          include: { grade: true, files: { select: { id: true } } },
+        }),
+      ]);
 
-    // Re-fetch submission with correct participantId
-    const existingSub = await prisma.homeworkSubmission.findUnique({
-      where:   { homeworkId_participantId: { homeworkId: hwId, participantId: link.participantId } },
-      include: { grade: true, files: { select: { id: true } } },
-    });
+      if (!hw) { await reply(ctx, "Vazifa topilmadi."); return; }
 
-    // If already graded, inform and exit
-    if (existingSub?.grade) {
-      await reply(ctx,
-        `✅ <b>${hw.title}</b>\n\n` +
-        `Bu vazifa allaqachon baholangan: <b>${existingSub.grade.score}/${hw.maxScore}</b>.\n\n` +
-        (existingSub.grade.feedback ? `💬 ${existingSub.grade.feedback}\n\n` : "") +
-        "Boshqa vazifani tanlash uchun /homework."
-      );
-      return;
-    }
+      // If already graded, inform and exit
+      if (existingSub?.grade) {
+        await reply(ctx,
+          `✅ <b>${hw.title}</b>\n\n` +
+          `Bu vazifa allaqachon baholangan: <b>${existingSub.grade.score}/${hw.maxScore}</b>.\n\n` +
+          (existingSub.grade.feedback ? `💬 ${existingSub.grade.feedback}\n\n` : "") +
+          "Boshqa vazifani tanlash uchun /homework."
+        );
+        return;
+      }
 
-    // Create or reuse submission
-    const sub = await prisma.homeworkSubmission.upsert({
-      where:  { homeworkId_participantId: { homeworkId: hwId, participantId: link.participantId } },
-      update: {},
+      // Create or reuse submission
+      const sub = await prisma.homeworkSubmission.upsert({
+        where:  { homeworkId_participantId: { homeworkId: hwId, participantId: link.participantId } },
+        update: {},
       create: { homeworkId: hwId, participantId: link.participantId },
     });
 
@@ -446,6 +447,10 @@ function registerHandlers(b: Bot) {
     }
 
     await reply(ctx, prompt, { reply_markup: doneKb });
+    } catch (err) {
+      console.error("[BOT] hw_select callback error:", err);
+      await reply(ctx, "⚠️ Xato yuz berdi. Qayta urinib ko'ring.");
+    }
   });
 
   // ── Callback: done button ──────────────────────────────────────────────────
