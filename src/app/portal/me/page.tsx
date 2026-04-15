@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   LogOut, User, Loader2, BookOpen, CheckCircle2, Clock,
-  ChevronDown, ChevronUp, AlertCircle, Star, Send,
+  ChevronDown, ChevronUp, AlertCircle, Star, Send, Zap, Calendar,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -49,38 +49,81 @@ interface ScorecardData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function ScoreRing({ value, size = 80, color = "#3B82F6" }: { value: number; size?: number; color?: string }) {
-  const r   = (size - 10) / 2;
-  const circ = 2 * Math.PI * r;
-  const dash = (value / 100) * circ;
-
-  return (
-    <svg width={size} height={size} className="-rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#E5E7EB" strokeWidth={8} />
-      <circle
-        cx={size / 2} cy={size / 2} r={r} fill="none"
-        stroke={color} strokeWidth={8}
-        strokeDasharray={`${dash} ${circ}`}
-        strokeLinecap="round"
-        style={{ transition: "stroke-dasharray 0.6s ease" }}
-      />
-    </svg>
-  );
-}
-
-function StatusDot({ status }: { status: string }) {
-  const cls =
-    status === "present"  ? "bg-green-500" :
-    status === "late"     ? "bg-amber-500" :
-    status === "excused"  ? "bg-blue-400"  :
-    "bg-gray-300";
-  return <span className={`inline-block w-2 h-2 rounded-full ${cls}`} />;
-}
-
 function scoreColor(v: number) {
   if (v >= 80) return "#22C55E";
   if (v >= 60) return "#F59E0B";
   return "#EF4444";
+}
+
+function ProgressBar({ value, color }: { value: number; color?: string }) {
+  return (
+    <div className="w-full bg-white/20 rounded-full h-1.5">
+      <div
+        className="h-1.5 rounded-full transition-all duration-700"
+        style={{ width: `${Math.min(value, 100)}%`, background: color ?? "white" }}
+      />
+    </div>
+  );
+}
+
+// ─── FIFA-style top card ──────────────────────────────────────────────────────
+
+function FifaCard({
+  name, training, sc,
+}: {
+  name:     string;
+  training: PortalMe["trainings"][0];
+  sc:       ScorecardData;
+}) {
+  const color = training.color || "#3B82F6";
+  return (
+    <div
+      className="rounded-3xl p-5 text-white relative overflow-hidden shadow-lg"
+      style={{ background: `linear-gradient(135deg, ${color}ff 0%, ${color}99 100%)` }}
+    >
+      {/* Decorative circle */}
+      <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full bg-white/10 pointer-events-none" />
+      <div className="absolute -bottom-10 -left-10 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
+
+      {/* Name row */}
+      <div className="flex items-center gap-3 mb-5 relative">
+        <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black shrink-0 backdrop-blur-sm">
+          {name.charAt(0).toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <p className="font-bold text-base leading-tight truncate">{name}</p>
+          <p className="text-xs opacity-70 mt-0.5 truncate">{training.name}</p>
+        </div>
+        <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-white/15 shrink-0">
+          {training.status === "active" ? "Aktiv" : training.status === "upcoming" ? "Kutilmoqda" : "Tugagan"}
+        </span>
+      </div>
+
+      {/* Big score */}
+      <div className="text-center my-4 relative">
+        <p className="text-7xl font-black leading-none" style={{ textShadow: "0 2px 12px rgba(0,0,0,0.2)" }}>
+          {sc.overallScore}
+        </p>
+        <p className="text-sm opacity-60 mt-2 uppercase tracking-widest font-semibold">Umumiy ball</p>
+      </div>
+
+      {/* Three stats */}
+      <div className="grid grid-cols-3 gap-0 mt-4 border-t border-white/20 pt-4 relative">
+        <div className="text-center">
+          <p className="text-2xl font-bold">{sc.attendance.rate}%</p>
+          <p className="text-xs opacity-60 mt-0.5">📅 Davomat</p>
+        </div>
+        <div className="text-center border-x border-white/20">
+          <p className="text-2xl font-bold">{sc.homework.avgScore ?? 0}%</p>
+          <p className="text-xs opacity-60 mt-0.5">📝 Vazifa</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold">{sc.activity.avgScore ?? 0}%</p>
+          <p className="text-xs opacity-60 mt-0.5">⚡ Faollik</p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Homework card ────────────────────────────────────────────────────────────
@@ -181,8 +224,9 @@ function HomeworkCard({
 // ─── Scorecard section for one training ──────────────────────────────────────
 
 function TrainingScorecard({
-  training, participantId,
+  name, training,
 }: {
+  name:     string;
   training: PortalMe["trainings"][0];
   participantId: string;
 }) {
@@ -210,133 +254,129 @@ function TrainingScorecard({
   }
   if (!sc) return null;
 
-  const color = training.color || "#3B82F6";
+  const attColor = scoreColor(sc.attendance.rate);
+  const hwPct    = sc.homework.avgScore ?? 0;
+  const actPct   = sc.activity.avgScore ?? 0;
 
   return (
     <div className="space-y-4">
-      {/* Overall score */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <div className="flex items-center gap-5">
-          <div className="relative">
-            <ScoreRing value={sc.overallScore} size={88} color={scoreColor(sc.overallScore)} />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xl font-bold text-gray-900">{sc.overallScore}</span>
-            </div>
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-gray-500 mb-1">Umumiy ball</p>
-            <p className="text-2xl font-bold text-gray-900">{sc.overallScore}%</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {[
-                "Davomat",
-                sc.homework.avgScore !== null ? "Vazifalar" : null,
-                sc.activity.avgScore !== null ? "Faollik" : null,
-              ].filter(Boolean).join(" · ")}
-            </p>
-          </div>
-        </div>
-      </div>
 
-      {/* Attendance */}
+      {/* ── FIFA card ─────────────────────────────────────────────────────── */}
+      <FifaCard name={name} training={training} sc={sc} />
+
+      {/* ── Attendance detail (always shown) ──────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-gray-700">Davomat</p>
+          <div className="flex items-center gap-2">
+            <Calendar size={15} className="text-gray-400" />
+            <p className="text-sm font-semibold text-gray-700">Davomat</p>
+          </div>
           <span
             className="text-sm font-bold px-2.5 py-0.5 rounded-full"
-            style={{ background: `${scoreColor(sc.attendance.rate)}22`, color: scoreColor(sc.attendance.rate) }}
+            style={{ background: `${attColor}22`, color: attColor }}
           >
             {sc.attendance.rate}%
           </span>
         </div>
         <div className="w-full bg-gray-100 rounded-full h-2">
           <div
-            className="h-2 rounded-full transition-all"
-            style={{ width: `${sc.attendance.rate}%`, background: scoreColor(sc.attendance.rate) }}
+            className="h-2 rounded-full transition-all duration-700"
+            style={{ width: `${sc.attendance.rate}%`, background: attColor }}
           />
         </div>
         <div className="grid grid-cols-4 gap-2 pt-1">
           {[
-            { label: "Keldi",    value: sc.attendance.present, color: "text-green-600" },
-            { label: "Kech",     value: sc.attendance.late,    color: "text-amber-600" },
-            { label: "Sababli",  value: sc.attendance.excused, color: "text-blue-500"  },
-            { label: "Kelmadi",  value: sc.attendance.absent,  color: "text-red-500"   },
+            { label: "Keldi",   value: sc.attendance.present, cls: "text-green-600" },
+            { label: "Kech",    value: sc.attendance.late,    cls: "text-amber-600" },
+            { label: "Sababli", value: sc.attendance.excused, cls: "text-blue-500"  },
+            { label: "Kelmadi", value: sc.attendance.absent,  cls: "text-red-500"   },
           ].map((item) => (
             <div key={item.label} className="text-center">
-              <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
-              <p className="text-xs text-gray-400">{item.label}</p>
+              <p className={`text-xl font-bold ${item.cls}`}>{item.value}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{item.label}</p>
             </div>
           ))}
         </div>
-        <p className="text-xs text-gray-400 text-center">
-          Jami {sc.attendance.total} dars
-        </p>
+        {sc.attendance.total > 0 && (
+          <p className="text-xs text-gray-400 text-center">Jami {sc.attendance.total} dars</p>
+        )}
       </div>
 
-      {/* Homework summary */}
-      {sc.homework.total > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-2">
-          <div className="flex items-center justify-between">
+      {/* ── Homework detail (always shown) ────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BookOpen size={15} className="text-gray-400" />
             <p className="text-sm font-semibold text-gray-700">Vazifalar</p>
-            <span className="text-xs text-gray-400">
-              {sc.homework.submitted}/{sc.homework.total} topshirildi
-            </span>
           </div>
-          <div className="w-full bg-gray-100 rounded-full h-2">
-            <div
-              className="h-2 rounded-full bg-blue-500 transition-all"
-              style={{ width: `${sc.homework.submitRate}%` }}
-            />
-          </div>
-          {sc.homework.avgScore !== null && (
-            <p className="text-xs text-gray-500">
-              O'rtacha baho: <span className="font-semibold text-gray-800">{sc.homework.avgScore}%</span>
-            </p>
-          )}
+          <span className="text-xs text-gray-400">
+            {sc.homework.submitted}/{sc.homework.total} topshirildi
+          </span>
         </div>
-      )}
+        {sc.homework.total > 0 ? (
+          <>
+            <div className="w-full bg-gray-100 rounded-full h-2">
+              <div
+                className="h-2 rounded-full bg-blue-500 transition-all duration-700"
+                style={{ width: `${sc.homework.submitRate}%` }}
+              />
+            </div>
+            {sc.homework.avgScore !== null && (
+              <p className="text-xs text-gray-500">
+                O&apos;rtacha baho:{" "}
+                <span className="font-semibold text-gray-800">{hwPct}%</span>
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-gray-400 italic">Hali vazifa berilmagan</p>
+        )}
+      </div>
 
-      {/* Activity */}
-      {sc.activity.avgScore !== null && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-700">⚡ Faollik</p>
+      {/* ── Activity detail (always shown) ────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Zap size={15} className="text-gray-400" />
+            <p className="text-sm font-semibold text-gray-700">Faollik</p>
+          </div>
+          {sc.activity.avgScore !== null && (
             <span
               className="text-sm font-bold px-2.5 py-0.5 rounded-full"
-              style={{ background: `${scoreColor(sc.activity.avgScore)}22`, color: scoreColor(sc.activity.avgScore) }}
+              style={{ background: `${scoreColor(actPct)}22`, color: scoreColor(actPct) }}
             >
-              {sc.activity.avgScore}%
+              {actPct}%
             </span>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-2">
-            <div
-              className="h-2 rounded-full transition-all"
-              style={{ width: `${sc.activity.avgScore}%`, background: scoreColor(sc.activity.avgScore) }}
-            />
-          </div>
-          <p className="text-xs text-gray-400">{sc.activity.count} ta sessiyada baholangan</p>
+          )}
         </div>
-      )}
+        {sc.activity.count > 0 ? (
+          <>
+            <div className="w-full bg-gray-100 rounded-full h-2">
+              <div
+                className="h-2 rounded-full transition-all duration-700"
+                style={{ width: `${actPct}%`, background: scoreColor(actPct) }}
+              />
+            </div>
+            <p className="text-xs text-gray-400">{sc.activity.count} ta sessiyada baholangan</p>
+          </>
+        ) : (
+          <p className="text-xs text-gray-400 italic">Hali faollik baholanmagan</p>
+        )}
+      </div>
 
-      {/* Homework list */}
+      {/* ── Homework list ──────────────────────────────────────────────────── */}
       {sc.homeworks.length > 0 && (
         <div className="space-y-2">
-          <p className="text-sm font-semibold text-gray-600 px-1">Vazifalar ro'yxati</p>
+          <p className="text-sm font-semibold text-gray-600 px-1">Vazifalar ro&apos;yxati</p>
           {sc.homeworks.map((hw) => (
             <HomeworkCard
               key={hw.id}
               hw={hw}
               trainingId={training.id}
-              participantId={participantId}
+              participantId=""
               onUpdate={load}
             />
           ))}
-        </div>
-      )}
-
-      {sc.homework.total === 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center text-gray-400">
-          <BookOpen size={28} className="mx-auto mb-2 text-gray-300" />
-          <p className="text-sm">Hali vazifa yo'q</p>
         </div>
       )}
     </div>
@@ -484,30 +524,11 @@ export default function PortalMePage() {
         )}
 
         {activeTraining && (
-          <>
-            {/* Training header */}
-            <div
-              className="rounded-2xl p-4 text-white"
-              style={{ background: activeTraining.color || "#3B82F6" }}
-            >
-              <p className="text-xs font-semibold opacity-70 uppercase tracking-wider">Kurs</p>
-              <p className="text-lg font-bold mt-0.5 leading-snug">{activeTraining.name}</p>
-              <span className={`mt-2 inline-block text-xs px-2 py-0.5 rounded-full ${
-                activeTraining.status === "active"   ? "bg-white/20 text-white" :
-                activeTraining.status === "upcoming" ? "bg-white/20 text-white" :
-                "bg-black/20 text-white/70"
-              }`}>
-                {activeTraining.status === "active"    ? "Aktiv" :
-                 activeTraining.status === "upcoming"  ? "Kutilmoqda" :
-                 "Tugagan"}
-              </span>
-            </div>
-
-            <TrainingScorecard
-              training={activeTraining}
-              participantId={me.id}
-            />
-          </>
+          <TrainingScorecard
+            name={me.name}
+            training={activeTraining}
+            participantId={me.id}
+          />
         )}
 
         {/* Logout — placed at bottom to avoid accidental taps */}

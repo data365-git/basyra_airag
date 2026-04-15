@@ -34,7 +34,7 @@ export function getBot(): Bot {
   bot.api.setChatMenuButton({
     menu_button: {
       type:    "web_app",
-      text:    "📊 Kabinet",
+      text:    "Kabinet",
       web_app: { url: `${APP_URL}/portal/me` },
     },
   }).catch((e: unknown) => console.error("[BOT] Failed to set menu button:", e));
