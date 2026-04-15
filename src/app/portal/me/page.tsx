@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   LogOut, User, Loader2, BookOpen, CheckCircle2, Clock,
-  ChevronDown, ChevronUp, Send, AlertCircle, Star,
+  ChevronDown, ChevronUp, AlertCircle, Star, Send,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -86,38 +86,17 @@ function scoreColor(v: number) {
 // ─── Homework card ────────────────────────────────────────────────────────────
 
 function HomeworkCard({
-  hw, trainingId, participantId, onUpdate,
+  hw,
 }: {
   hw: HomeworkItem;
   trainingId: string;
   participantId: string;
   onUpdate: () => void;
 }) {
-  const [open,        setOpen]        = useState(false);
-  const [text,        setText]        = useState(hw.submission?.text ?? "");
-  const [submitting,  setSubmitting]  = useState(false);
+  const [open, setOpen] = useState(false);
 
   const hasSubmitted = !!hw.submission;
   const hasGrade     = !!hw.submission?.grade;
-
-  async function submit() {
-    if (!text.trim()) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/homeworks/${hw.id}/submissions`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ text }),
-      });
-      if (!res.ok) throw new Error();
-      toast.success("Topshirildi!");
-      onUpdate();
-    } catch {
-      toast.error("Xato yuz berdi");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -138,16 +117,19 @@ function HomeworkCard({
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 text-sm leading-snug truncate">{hw.title}</p>
-          {hw.due_date && (
-            <p className="text-xs text-gray-400 mt-0.5">
-              Muddat: {hw.due_date}
-              {hasGrade && (
-                <span className="ml-2 text-green-600 font-medium">
-                  {hw.submission!.grade!.score}/{hw.max_score}
-                </span>
-              )}
-            </p>
-          )}
+          <div className="flex items-center gap-2 mt-0.5">
+            {hw.due_date && (
+              <p className="text-xs text-gray-400">Muddat: {hw.due_date}</p>
+            )}
+            {hasGrade && (
+              <span className="text-xs text-green-600 font-semibold">
+                ✓ {hw.submission!.grade!.score}%
+              </span>
+            )}
+            {hasSubmitted && !hasGrade && (
+              <span className="text-xs text-blue-500 font-medium">Topshirildi</span>
+            )}
+          </div>
         </div>
         {open ? <ChevronUp size={15} className="text-gray-400 shrink-0" /> : <ChevronDown size={15} className="text-gray-400 shrink-0" />}
       </button>
@@ -164,9 +146,7 @@ function HomeworkCard({
             <div className="bg-green-50 border border-green-100 rounded-xl p-3 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-green-800">Baho</span>
-                <span className="text-sm font-bold text-green-700">
-                  {hw.submission!.grade!.score} / {hw.max_score}
-                </span>
+                <span className="text-sm font-bold text-green-700">{hw.submission!.grade!.score}%</span>
               </div>
               {hw.submission!.grade!.feedback && (
                 <p className="text-xs text-green-700 leading-relaxed">{hw.submission!.grade!.feedback}</p>
@@ -174,31 +154,22 @@ function HomeworkCard({
             </div>
           )}
 
-          {/* Submission area */}
-          {!hasGrade && (
-            <div className="space-y-2">
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={hasSubmitted ? "Javobingizni yangilang..." : "Javobingizni yozing..."}
-                rows={4}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
-              />
-              <button
-                onClick={submit}
-                disabled={submitting || !text.trim()}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
-              >
-                {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                {hasSubmitted ? "Yangilash" : "Topshirish"}
-              </button>
+          {/* Not submitted yet — show bot instruction */}
+          {!hasSubmitted && (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-3 flex items-start gap-2.5">
+              <Send size={14} className="text-blue-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-blue-700 leading-snug">
+                Vazifani topshirish uchun Telegram botga fayl yuboring.
+                Bot menyusidan <b>/homework</b> ni tanlang.
+              </p>
             </div>
           )}
 
-          {hasSubmitted && !hasGrade && hw.submission!.text && (
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-              <p className="text-xs text-blue-700 font-semibold mb-1">Topshirilgan javob</p>
-              <p className="text-xs text-blue-800 leading-relaxed">{hw.submission!.text}</p>
+          {/* Submitted, waiting for grade */}
+          {hasSubmitted && !hasGrade && (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-3">
+              <p className="text-xs text-amber-700 font-medium">Baholanishini kuting</p>
+              <p className="text-xs text-amber-600 mt-0.5">Vazifangiz qabul qilindi, o'qituvchi tez orada baholaydi.</p>
             </div>
           )}
         </div>
@@ -473,7 +444,7 @@ export default function PortalMePage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+      <div className="bg-white border-b border-gray-100 px-4 py-3 flex items-center sticky top-0 z-10 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center">
             <User size={18} className="text-blue-600" />
@@ -483,13 +454,6 @@ export default function PortalMePage() {
             <p className="text-xs text-gray-400 leading-tight">@{me.username}</p>
           </div>
         </div>
-        <button
-          onClick={logout}
-          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-600 transition-colors px-2 py-1.5 rounded-lg hover:bg-red-50"
-        >
-          <LogOut size={15} />
-          Chiqish
-        </button>
       </div>
 
       <div className="max-w-lg mx-auto px-4 pt-5 space-y-5">
@@ -545,6 +509,17 @@ export default function PortalMePage() {
             />
           </>
         )}
+
+        {/* Logout — placed at bottom to avoid accidental taps */}
+        <div className="pt-4 pb-2 flex justify-center">
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-red-400 transition-colors px-4 py-2 rounded-lg"
+          >
+            <LogOut size={13} />
+            Tizimdan chiqish
+          </button>
+        </div>
       </div>
     </div>
   );
