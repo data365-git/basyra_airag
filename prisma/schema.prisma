@@ -133,6 +133,7 @@ model Participant {
   telegramLinkCode     TelegramLinkCode?
   activityScores       ActivityScore[]
   telegramMessages     TelegramMessage[]
+  phoneLoginTokens     PhoneLoginToken[]
 
   @@map("participants")
 }
@@ -320,4 +321,15 @@ model TelegramLinkCode {
   createdAt     DateTime    @default(now()) @map("created_at")
 
   @@map("telegram_link_codes")
+}
+
+model PhoneLoginToken {
+  id            String      @id @default(uuid())
+  participantId String      @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  token         String      @unique
+  expiresAt     DateTime    @map("expires_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("phone_login_tokens")
 }

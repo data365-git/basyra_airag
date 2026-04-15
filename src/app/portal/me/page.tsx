@@ -382,6 +382,30 @@ export default function PortalMePage() {
 
   useEffect(() => {
     async function init() {
+      // ── Phone token login (from bot /login flow) ────────────────────────
+      // Check ?token= before anything else so the cookie is set on first load.
+      const urlParams = new URLSearchParams(window.location.search);
+      const phoneToken = urlParams.get("token");
+      if (phoneToken) {
+        try {
+          const tokenRes = await fetch("/api/portal/phone-token-login", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ token: phoneToken }),
+          });
+          if (!tokenRes.ok) {
+            // Token invalid or expired — go to login with error hint
+            router.replace("/portal/login");
+            return;
+          }
+          // Cookie set — remove token from URL so refresh doesn't reuse it
+          window.history.replaceState({}, "", "/portal/me");
+        } catch {
+          router.replace("/portal/login");
+          return;
+        }
+      }
+
       const r = await fetch("/api/portal/me");
 
       if (r.status !== 401) {

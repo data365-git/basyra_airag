@@ -3,7 +3,7 @@
  * Env:  TELEGRAM_BOT_TOKEN, NEXT_PUBLIC_APP_URL
  */
 
-import { Bot, Context, InlineKeyboard } from "grammy";
+import { Bot, Context, InlineKeyboard, Keyboard } from "grammy";
 import prisma from "@/lib/prisma";
 import { getParticipantScorecard } from "@/lib/scorecard";
 
@@ -89,7 +89,7 @@ function registerHandlers(b: Bot) {
         "👋 <b>Assalomu alaykum!</b>\n\n" +
         "Bu Basyra o'quv markazi botidir.\n\n" +
         "Hisobingizni ulash uchun administratoringizdan <b>havola</b> oling.\n\n" +
-        "Buyruqlar:\n/mystatus — statistikam\n/homework — vazifalar",
+        "Buyruqlar:\n/login — kabinetga kirish\n/mystatus — statistikam\n/homework — vazifalar",
         { reply_markup: loginKeyboard() }
       );
       return;
@@ -238,6 +238,100 @@ function registerHandlers(b: Bot) {
     await reply(ctx, text);
   });
 
+  // ── /login — phone number authentication ────────────────────────────────
+  b.command("login", async (ctx) => {
+    await logMessage(ctx, "in", ctx.message?.text);
+    const chatId = BigInt(ctx.chat!.id);
+
+    // Already linked → just open the portal
+    const existing = await prisma.telegramLink.findFirst({ where: { chatId } });
+    if (existing) {
+      await reply(ctx,
+        "✅ Hisobingiz allaqachon ulangan!\n\n👇 Shaxsiy kabinetni ochish uchun tugmani bosing:",
+        { reply_markup: linkedKeyboard() }
+      );
+      return;
+    }
+
+    // Ask user to share their phone number via native Telegram button
+    const kb = new Keyboard()
+      .requestContact("📱 Telefon raqamini ulashish")
+      .resized()
+      .oneTime();
+
+    await reply(ctx,
+      "📱 <b>Kirish</b>\n\n" +
+      "Kabinetga kirish uchun telefon raqamingizni ulashing.\n\n" +
+      "👇 Quyidagi tugmani bosing — Telegram avtomatik raqamingizni yuboradi:",
+      { reply_markup: kb }
+    );
+  });
+
+  // ── Contact message — phone number received ──────────────────────────────
+  b.on("message:contact", async (ctx) => {
+    await logMessage(ctx, "in", `[contact: ${ctx.message.contact.phone_number}]`);
+
+    const raw       = ctx.message.contact.phone_number;
+    const normalized = raw.replace(/\D/g, ""); // strip all non-digits → "998901234567"
+
+    // Select only the fields we need — consistent shape for both lookup paths
+    const pSelect = { id: true, fullName: true, phone: true } as const;
+
+    // Try exact match first (with and without leading +), then fuzzy-match all phones
+    let participant: { id: string; fullName: string; phone: string | null } | null =
+      await prisma.participant.findFirst({
+        where:  { OR: [{ phone: normalized }, { phone: `+${normalized}` }] },
+        select: pSelect,
+      });
+
+    if (!participant) {
+      // Fallback: normalize every stored phone and compare
+      const allWithPhone = await prisma.participant.findMany({
+        where:  { phone: { not: null } },
+        select: pSelect,
+      });
+      participant = allWithPhone.find(
+        (p) => p.phone!.replace(/\D/g, "") === normalized
+      ) ?? null;
+    }
+
+    if (!participant) {
+      await ctx.reply(
+        `❌ <b>Raqamingiz tizimda topilmadi.</b>\n\n` +
+        `Ehtimol, siz administratorga bu raqamni emas boshqa raqam bergansiz.\n\n` +
+        `Iltimos, administratoringiz bilan bog'laning va ` +
+        `quyidagi raqamni ularga yuboring:\n` +
+        `📱 <code>${raw}</code>\n\n` +
+        `Administrator raqamingizni tizimga qo'shgandan so'ng qayta urinib ko'ring.`,
+        { parse_mode: "HTML", reply_markup: { remove_keyboard: true } }
+      );
+      return;
+    }
+
+    // Create a one-time 10-minute token
+    const token     = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await prisma.phoneLoginToken.create({
+      data: { participantId: participant.id, token, expiresAt },
+    });
+
+    const portalUrl = `${APP_URL}/portal/me?token=${token}`;
+
+    await ctx.reply(
+      `✅ <b>Topildi!</b> Xush kelibsiz, <b>${participant.fullName}</b>!\n\n` +
+      `👇 Kabinetga kirish uchun tugmani bosing (havola 10 daqiqa amal qiladi):`,
+      {
+        parse_mode:   "HTML",
+        reply_markup: new InlineKeyboard().webApp("🔑 Kabinetga kirish", portalUrl),
+      }
+    );
+
+    await logMessage(ctx, "out",
+      `✅ Topildi! ${participant.fullName} — token yuborildi`
+    );
+  });
+
   // ── Text messages (number selection + "done") ────────────────────────────
   b.on("message:text", async (ctx) => {
     await logMessage(ctx, "in", ctx.message.text);
@@ -298,7 +392,7 @@ function registerHandlers(b: Bot) {
 
     // Unrecognised
     await reply(ctx,
-      "Buyruqlar:\n/mystatus — statistikam\n/homework — vazifalar",
+      "Buyruqlar:\n/login — kabinetga kirish\n/mystatus — statistikam\n/homework — vazifalar",
       { reply_markup: loginKeyboard() }
     );
   });
