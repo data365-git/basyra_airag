@@ -28,6 +28,36 @@ interface TelegramUser {
   hash: string;
 }
 
+// ─── Synchronous Telegram Mini App detection ──────────────────────────────────
+// Called inside useState() initializer so it runs before the first render,
+// preventing the Login Widget from ever appearing inside a Mini App.
+//
+// Two detection paths:
+//  1. window.Telegram.WebApp   — native Telegram clients (always synchronous)
+//  2. URL hash #tgWebAppData=… — Telegram Web / some fallback clients
+interface TgCtx { isInTg: boolean; initData: string }
+
+function detectTelegramContext(): TgCtx {
+  if (typeof window === "undefined") return { isInTg: false, initData: "" };
+
+  // Path 1 — native WebApp object
+  const twa = window.Telegram?.WebApp;
+  if (twa) {
+    twa.ready?.();
+    twa.expand?.();
+    return { isInTg: true, initData: twa.initData ?? "" };
+  }
+
+  // Path 2 — URL hash injected by Telegram before page JS runs
+  if (window.location.hash.includes("tgWebApp")) {
+    const hp  = new URLSearchParams(window.location.hash.slice(1));
+    const raw = hp.get("tgWebAppData") ?? "";
+    return { isInTg: true, initData: decodeURIComponent(raw) };
+  }
+
+  return { isInTg: false, initData: "" };
+}
+
 // ─── Inner component (needs useSearchParams → must be in Suspense) ────────────
 function LoginForm() {
   const router       = useRouter();
@@ -37,20 +67,17 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [hint,    setHint]    = useState("");
 
+  // Runs synchronously before the first render — isInTg is correct from frame 0
+  const [tgCtx] = useState<TgCtx>(detectTelegramContext);
+
   const redirect = searchParams.get("redirect") ?? "/portal/me";
 
-  // ── On mount: try Mini App auto-login first ──────────────────────────────
+  // ── Effect: Mini App auth OR Login Widget injection ──────────────────────
   useEffect(() => {
-    const twa = window.Telegram?.WebApp;
-
-    if (twa) {
-      // ── Inside Telegram Mini App — NEVER load Login Widget ──────────────
-      twa.ready();
-      twa.expand();
-
-      if (!twa.initData) {
-        // Telegram opened the Mini App but didn't send initData (some open paths).
-        // Can't auto-authenticate — show a clear error instead of a broken widget.
+    if (tgCtx.isInTg) {
+      // ── Inside Telegram — NEVER inject Login Widget ──────────────────────
+      if (!tgCtx.initData) {
+        // Mini App opened without initData (some open paths) — show error
         setError("not_linked");
         return;
       }
@@ -61,20 +88,16 @@ function LoginForm() {
       fetch("/api/portal/telegram-miniapp-login", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ initData: twa.initData }),
+        body:    JSON.stringify({ initData: tgCtx.initData }),
       })
         .then(async (res) => {
           const data = await res.json().catch(() => ({}));
           if (res.ok) {
             router.replace(redirect);
-          } else if (data.error === "not_linked") {
-            setLoading(false);
-            setHint("");
-            setError("not_linked");
           } else {
             setLoading(false);
             setHint("");
-            setError(data.error ?? "Kirish amalga oshmadi");
+            setError(data.error === "not_linked" ? "not_linked" : (data.error ?? "Kirish amalga oshmadi"));
           }
         })
         .catch(() => {
@@ -83,10 +106,10 @@ function LoginForm() {
           setError("Tarmoq xatosi. Qayta urinib ko'ring.");
         });
 
-      return; // Don't inject Login Widget when inside Telegram
+      return;
     }
 
-    // ── Normal browser: inject Telegram Login Widget ─────────────────────
+    // ── Normal browser — inject Telegram Login Widget ────────────────────
     window.onTelegramAuth = async (user: TelegramUser) => {
       setError("");
       setLoading(true);
@@ -120,19 +143,43 @@ function LoginForm() {
     script.async = true;
     widgetRef.current.appendChild(script);
 
-    return () => {
-      window.onTelegramAuth = undefined as any;
-    };
-  }, [redirect, router]);
+    return () => { window.onTelegramAuth = undefined as any; };
+  }, [tgCtx, redirect, router]);
 
+  // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6 text-center">
       {loading ? (
+        /* Spinner (shown during any auth attempt) */
         <div className="flex flex-col items-center gap-3 py-4">
           <Loader2 size={32} className="animate-spin text-blue-500" />
           <p className="text-sm text-gray-500">{hint || "Kirilmoqda..."}</p>
         </div>
+
+      ) : tgCtx.isInTg ? (
+        /* Inside Telegram — never show the Login Widget, only status */
+        <div className="flex flex-col items-center gap-4 py-4">
+          {error === "not_linked" ? (
+            <div className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3 text-left w-full">
+              <p className="font-semibold">Hisob ulanmagan</p>
+              <p className="mt-1 text-red-500">
+                Telegram hisobingiz tizimga ulanmagan. Botda <b>/login</b> buyrug'ini yuboring.
+              </p>
+            </div>
+          ) : error ? (
+            <div className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3 text-left w-full">
+              {error}
+            </div>
+          ) : (
+            <>
+              <Loader2 size={28} className="animate-spin text-blue-400" />
+              <p className="text-sm text-gray-500">Ulanilmoqda...</p>
+            </>
+          )}
+        </div>
+
       ) : (
+        /* Normal browser — show Login Widget */
         <>
           <div className="space-y-2">
             <p className="text-base font-semibold text-gray-800">Telegram orqali kiring</p>
@@ -141,7 +188,7 @@ function LoginForm() {
             </p>
           </div>
 
-          {/* Telegram Login Widget renders here (browser only) */}
+          {/* Login Widget injects here */}
           <div ref={widgetRef} className="flex justify-center min-h-[48px]" />
 
           {error && (
