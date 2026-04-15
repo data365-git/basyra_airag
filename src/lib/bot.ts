@@ -7,7 +7,7 @@ import { Bot, Context, InlineKeyboard } from "grammy";
 import prisma from "@/lib/prisma";
 import { getParticipantScorecard } from "@/lib/scorecard";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://basyralmss-production.up.railway.app";
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://basyra-lmss.up.railway.app").replace(/\/$/, "");
 
 /** Keyboard shown AFTER successful linking — opens portal dashboard directly */
 function linkedKeyboard() {
@@ -27,6 +27,17 @@ export function getBot(): Bot {
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN not set");
   bot = new Bot(token);
   registerHandlers(bot);
+
+  // Set persistent menu button (bottom-left button in every chat with this bot)
+  // This makes the web app accessible without needing to send a message first
+  bot.api.setMyDefaultMenuButton({
+    menu_button: {
+      type:    "web_app",
+      text:    "📊 Kabinet",
+      web_app: { url: `${APP_URL}/portal/me` },
+    },
+  }).catch((e) => console.error("[BOT] Failed to set menu button:", e));
+
   return bot;
 }
 
