@@ -14,6 +14,7 @@ import { ConfirmModal } from "@/components/ui/Modal";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { formatDate, getAttendanceColorClass } from "@/lib/utils";
+import { fmtUzDate, fmtUzDateTime } from "@/lib/dateFormat";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
@@ -241,7 +242,7 @@ export default function ParticipantProfilePage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">So'ngi kirish</span>
-                  <span>{authInfo.lastLoginAt ? new Date(authInfo.lastLoginAt).toLocaleString("uz-UZ") : "Hali kirmagan"}</span>
+                  <span>{authInfo.lastLoginAt ? fmtUzDateTime(authInfo.lastLoginAt) : "Hali kirmagan"}</span>
                 </div>
                 <div className="flex gap-2 pt-1">
                   <a
@@ -286,7 +287,7 @@ export default function ParticipantProfilePage() {
                       {tgInfo.username && <span className="text-gray-400 font-normal ml-1">@{tgInfo.username}</span>}
                     </p>
                     {tgInfo.linkedAt && (
-                      <p className="text-xs text-gray-500">{new Date(tgInfo.linkedAt).toLocaleDateString("uz-UZ")}</p>
+                      <p className="text-xs text-gray-500">{fmtUzDate(tgInfo.linkedAt)}</p>
                     )}
                   </div>
                 </div>
@@ -336,7 +337,7 @@ export default function ParticipantProfilePage() {
                       </p>
                       {tgInfo.codeExpiresAt && (
                         <p className="text-xs text-gray-400">
-                          Muddati: {new Date(tgInfo.codeExpiresAt).toLocaleString("uz-UZ")}
+                          Muddati: {fmtUzDateTime(tgInfo.codeExpiresAt)}
                         </p>
                       )}
                     </div>

@@ -22,8 +22,27 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const { score, feedback } = body;
 
-  if (typeof score !== "number" || score < 0) {
-    return NextResponse.json({ error: "score required" }, { status: 400 });
+  if (typeof score !== "number" || !Number.isFinite(score) || score < 0) {
+    return NextResponse.json({ error: "score must be a non-negative number" }, { status: 400 });
+  }
+
+  // Look up the homework's maxScore so we can validate the upper bound and
+  // pass the real value to the Telegram notification (no more hard-coded 100).
+  const sub = await prisma.homeworkSubmission.findUnique({
+    where:   { id: submissionId },
+    include: {
+      homework:    { select: { title: true, maxScore: true } },
+      participant: { select: { id: true } },
+    },
+  });
+  if (!sub) return NextResponse.json({ error: "Submission not found" }, { status: 404 });
+
+  const maxScore = sub.homework.maxScore;
+  if (score > maxScore) {
+    return NextResponse.json(
+      { error: `score must be ≤ ${maxScore}` },
+      { status: 400 }
+    );
   }
 
   const grade = await prisma.homeworkGrade.upsert({
@@ -33,19 +52,12 @@ export async function POST(
   });
 
   // Fire Telegram notification (non-blocking)
-  prisma.homeworkSubmission.findUnique({
-    where:   { id: submissionId },
-    include: { homework: { select: { title: true } }, participant: { select: { id: true } } },
-  }).then((sub) => {
-    if (sub) {
-      notifyGraded({
-        participantId: sub.participant.id,
-        homeworkTitle: sub.homework.title,
-        score,
-        maxScore:      100,
-        feedback:      feedback?.trim() || null,
-      }).catch(() => {});
-    }
+  notifyGraded({
+    participantId: sub.participant.id,
+    homeworkTitle: sub.homework.title,
+    score,
+    maxScore,
+    feedback:      feedback?.trim() || null,
   }).catch(() => {});
 
   return NextResponse.json(grade, { status: 201 });

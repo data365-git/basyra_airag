@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { format, parseISO } from "date-fns";
+import { fmtUzDate } from "@/lib/dateFormat";
 
 export const DAYS_OF_WEEK = [
   "Sunday",
@@ -49,7 +50,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDate(date: string | Date, fmt = "MMM d, yyyy"): string {
+/**
+ * Format a date.
+ *
+ * - When called WITHOUT a `fmt` argument, returns the Uzbek long form
+ *   ("17 Aprel 2026") in Tashkent time. Use this for any user-facing date.
+ * - When called WITH a `fmt`, uses date-fns formatting verbatim. Reserved for
+ *   non-user-facing strings (export columns, time-only displays like "h:mm a").
+ *
+ * Prefer importing `fmtUzDate` / `fmtUzDateTime` / `fmtUzDateShort` from
+ * `@/lib/dateFormat` directly in new UI code — it makes intent explicit.
+ */
+export function formatDate(date: string | Date, fmt?: string): string {
+  if (!fmt) return fmtUzDate(date);
   const d = typeof date === "string" ? parseISO(date) : date;
   return format(d, fmt);
 }

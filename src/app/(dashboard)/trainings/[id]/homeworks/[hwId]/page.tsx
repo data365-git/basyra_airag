@@ -6,8 +6,9 @@ import { PageHeader } from "@/components/layout/Header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { usePermission } from "@/hooks/usePermission";
-import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image, File } from "lucide-react";
+import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image, File, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
+import { fmtUzDate, fmtUzDateTime } from "@/lib/dateFormat";
 
 interface SubmissionFile {
   id:               string;
@@ -90,17 +91,49 @@ function GradeCell({
   maxScore: number;
   onGraded: () => void;
 }) {
-  const [score,    setScore]    = useState(sub.grade?.score ?? maxScore);
-  const [feedback, setFeedback] = useState(sub.grade?.feedback ?? "");
+  // IMPORTANT: keep score as a string so the field renders empty until the
+  // grader types something. Initialising with `maxScore` was the cause of the
+  // "100/100 even though I typed 90" bug — clicking Save before any input
+  // submitted the pre-filled max value.
+  const initialScore    = sub.grade?.score != null ? String(sub.grade.score) : "";
+  const initialFeedback = sub.grade?.feedback ?? "";
+
+  const [score,    setScore]    = useState<string>(initialScore);
+  const [feedback, setFeedback] = useState(initialFeedback);
   const [saving,   setSaving]   = useState(false);
   const [open,     setOpen]     = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  function openForEdit() {
+    // Reset state from the latest sub.grade in case it changed between renders
+    setScore(sub.grade?.score != null ? String(sub.grade.score) : "");
+    setFeedback(sub.grade?.feedback ?? "");
+    setOpen(true);
+  }
+
+  function cancel() {
+    setScore(initialScore);
+    setFeedback(initialFeedback);
+    setOpen(false);
+  }
 
   async function save() {
+    const trimmed = score.trim();
+    if (trimmed === "") {
+      toast.error("Ball kiriting");
+      return;
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n < 0 || n > maxScore) {
+      toast.error(`Ball 0 dan ${maxScore} gacha bo'lishi kerak`);
+      return;
+    }
+
     setSaving(true);
     const res = await fetch(`/api/homeworks/${hwId}/submissions/${sub.id}/grade`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ score: Number(score), feedback: feedback.trim() || null }),
+      body:    JSON.stringify({ score: n, feedback: feedback.trim() || null }),
     });
     setSaving(false);
     if (res.ok) {
@@ -108,58 +141,93 @@ function GradeCell({
       setOpen(false);
       onGraded();
     } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Xato");
+    }
+  }
+
+  async function deleteGrade() {
+    if (!sub.grade) return;
+    if (!confirm("Bahoni o'chirishni tasdiqlaysizmi? Ishtirokchi qayta baholanishi mumkin.")) return;
+    setDeleting(true);
+    const res = await fetch(`/api/homeworks/${hwId}/submissions/${sub.id}/grade`, {
+      method: "DELETE",
+    });
+    setDeleting(false);
+    if (res.ok) {
+      toast.success("Baho o'chirildi");
+      setOpen(false);
+      onGraded();
+    } else {
       toast.error("Xato");
     }
   }
 
+  // Existing grade — show clickable badge to enter edit mode
   if (sub.grade && !open) {
     return (
       <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-1 text-sm font-semibold text-green-700 hover:text-green-900 transition-colors"
+        onClick={openForEdit}
+        className="inline-flex items-center gap-1 text-sm font-semibold text-green-700 hover:text-green-900 transition-colors group"
+        title="Bahoni tahrirlash"
       >
         <Star size={13} className="text-amber-400" />
         {sub.grade.score}/{maxScore}
+        <Pencil size={11} className="text-gray-300 group-hover:text-gray-500 ml-0.5" />
       </button>
     );
   }
 
-  if (open || !sub.grade) {
-    return (
-      <div className="flex items-center gap-2">
-        <input
-          type="number"
-          min={0}
-          max={maxScore}
-          value={score}
-          onChange={(e) => setScore(Number(e.target.value))}
-          className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <span className="text-gray-400 text-sm">/{maxScore}</span>
-        <input
-          type="text"
-          value={feedback}
-          onChange={(e) => setFeedback(e.target.value)}
-          placeholder="Izoh"
-          className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+  // Edit form (used both for first-time grading and editing existing)
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <input
+        type="number"
+        min={0}
+        max={maxScore}
+        step="1"
+        inputMode="numeric"
+        value={score}
+        onChange={(e) => setScore(e.target.value)}
+        placeholder={`0–${maxScore}`}
+        className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <span className="text-gray-400 text-sm">/{maxScore}</span>
+      <input
+        type="text"
+        value={feedback}
+        onChange={(e) => setFeedback(e.target.value)}
+        placeholder="Izoh"
+        className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <button
+        onClick={save}
+        disabled={saving || deleting}
+        className="px-3 py-1 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+      >
+        {saving ? <Loader2 size={12} className="animate-spin" /> : "Saqlash"}
+      </button>
+      {sub.grade && (
         <button
-          onClick={save}
-          disabled={saving}
-          className="px-3 py-1 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          onClick={deleteGrade}
+          disabled={saving || deleting}
+          className="px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50 transition-colors"
+          title="Bahoni o'chirish"
         >
-          {saving ? <Loader2 size={12} className="animate-spin" /> : "Saqlash"}
+          {deleting ? <Loader2 size={12} className="animate-spin" /> : "O'chirish"}
         </button>
-        {open && (
-          <button onClick={() => setOpen(false)} className="text-xs text-gray-400 hover:text-gray-600">
-            Bekor
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  return null;
+      )}
+      {open && (
+        <button
+          onClick={cancel}
+          disabled={saving || deleting}
+          className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50"
+        >
+          Bekor
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function HomeworkDetailPage() {
@@ -203,7 +271,7 @@ export default function HomeworkDetailPage() {
     <div className="space-y-6">
       <PageHeader
         title={hw.title}
-        subtitle={`Maksimal ball: ${hw.max_score}${hw.due_date ? ` · Muddat: ${hw.due_date}` : ""}`}
+        subtitle={`Maksimal ball: ${hw.max_score}${hw.due_date ? ` · Muddat: ${fmtUzDate(hw.due_date)}` : ""}`}
         back
         backHref={`/trainings/${trainingId}/homeworks`}
       />
@@ -256,7 +324,7 @@ export default function HomeworkDetailPage() {
                     {sub.grade
                       ? <CheckCircle2 size={12} className="text-green-500" />
                       : <Clock size={12} className="text-gray-300" />}
-                    {new Date(sub.submitted_at).toLocaleDateString("uz-UZ")}
+                    {fmtUzDateTime(sub.submitted_at)}
                   </span>
                 </Td>
                 <Td>

@@ -10,6 +10,7 @@ import { TableSkeleton } from "@/components/ui/Skeleton";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
 import { downloadQR } from "@/lib/qr/generate";
+import { fmtUzDate } from "@/lib/dateFormat";
 import type { Participant } from "@/types";
 
 export default function ParticipantsPage() {
@@ -87,7 +88,7 @@ export default function ParticipantsPage() {
                 <Td className="font-medium text-gray-900">{p.full_name}</Td>
                 <Td className="text-gray-500">{p.phone || "—"}</Td>
                 <Td className="text-gray-500">{p.email || "—"}</Td>
-                <Td className="text-gray-500 text-xs">{new Date(p.created_at).toLocaleDateString()}</Td>
+                <Td className="text-gray-500 text-xs">{fmtUzDate(p.created_at)}</Td>
                 <Td>
                   <Button
                     size="sm"

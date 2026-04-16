@@ -3,6 +3,7 @@
 import { RotateCcw } from "lucide-react";
 import { useTranslation } from "@/providers/LanguageProvider";
 import { cn } from "@/lib/utils";
+import { fmtUzTime } from "@/lib/dateFormat";
 
 interface Props {
   name:              string;
@@ -61,7 +62,7 @@ export function ConfirmOverrideSheet({
             <div className="flex justify-between">
               <span className="text-white/50">Belgilangan vaqt</span>
               <span className="text-white/80 text-xs">
-                {new Date(existingScannedAt).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}
+                {fmtUzTime(existingScannedAt)}
               </span>
             </div>
           )}

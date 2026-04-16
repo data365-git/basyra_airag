@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { DAYS_OF_WEEK_UZ, DAYS_SHORT_UZ, WEEK_DISPLAY_ORDER, generateSessionDates, cn } from "@/lib/utils";
+import { fmtUzDate } from "@/lib/dateFormat";
 import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 
@@ -201,7 +202,7 @@ export function TrainingForm({ defaultValues, trainingId }: TrainingFormProps) {
                 {sessionCount} session{sessionCount !== 1 ? "s" : ""}
               </span>
               {form.start_date && form.end_date
-                ? ` between ${new Date(form.start_date).toLocaleDateString()} and ${new Date(form.end_date).toLocaleDateString()}`
+                ? ` between ${fmtUzDate(form.start_date)} and ${fmtUzDate(form.end_date)}`
                 : ""}
             </span>
           </p>

@@ -11,6 +11,7 @@ import {
 import { usePermission } from "@/hooks/usePermission";
 import { ConfirmModal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
+import { fmtUzTime, fmtUzDateShort } from "@/lib/dateFormat";
 
 interface LinkedParticipant {
   id:         string;
@@ -34,7 +35,7 @@ interface TelegramMsg {
 
 function MessageBubble({ msg }: { msg: TelegramMsg }) {
   const isOut = msg.direction === "out";
-  const time  = new Date(msg.created_at).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
+  const time  = fmtUzTime(msg.created_at);
 
   const icon =
     msg.messageType === "photo"    ? <Image  size={14} className="shrink-0 text-blue-400" /> :
@@ -253,7 +254,7 @@ export default function TelegramAdminPage() {
                   <div className="flex items-center gap-1.5 shrink-0">
                     <MessageCircle size={14} className="text-blue-400" />
                     <span className="text-xs text-gray-400">
-                      {new Date(p.linked_at).toLocaleDateString("uz-UZ", { day: "2-digit", month: "2-digit" })}
+                      {fmtUzDateShort(p.linked_at)}
                     </span>
                   </div>
                 </div>
