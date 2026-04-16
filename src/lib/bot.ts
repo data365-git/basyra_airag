@@ -54,6 +54,7 @@ export function getBot(): Bot {
     { command: "mystatus", description: "Mening statistikam" },
     { command: "homework", description: "Vazifalar ro'yxati" },
     { command: "cancel",   description: "Amalni bekor qilish" },
+    { command: "debug",    description: "Diagnostika ma'lumoti" },
   ]).catch((e: unknown) => console.error("[BOT] setMyCommands failed:", e));
 
   return bot;
@@ -232,6 +233,37 @@ function registerHandlers(b: Bot) {
   });
 
   // ── /cancel ─────────────────────────────────────────────────────────────────
+  // ── /debug — diagnostic: confirms link, env, and that callbacks reach the bot ─
+  b.command("debug", async (ctx) => {
+    await logMessage(ctx, "in", ctx.message?.text);
+    try {
+      const chatId = ctx.chat ? BigInt(ctx.chat.id) : null;
+      const link   = chatId ? await prisma.telegramLink.findFirst({ where: { chatId } }) : null;
+      const info = {
+        chatId:        ctx.chat?.id ?? null,
+        userId:        ctx.from?.id ?? null,
+        username:      ctx.from?.username ?? null,
+        linked:        !!link,
+        participantId: link?.participantId ?? null,
+        appUrl:        process.env.NEXT_PUBLIC_APP_URL ?? null,
+      };
+      await ctx.reply(`<pre>${JSON.stringify(info, null, 2).replace(/[<>&]/g, (c) =>
+        c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;")}</pre>`, { parse_mode: "HTML" });
+    } catch (err) {
+      console.error("[BOT] /debug error:", err);
+      await ctx.reply("❌ debug error: " + (err as Error).message);
+    }
+  });
+
+  // ── Catch-all callback_query log — proves callbacks are arriving at all ──────
+  // Registered BEFORE the typed handlers so it logs every incoming callback even
+  // when the typed handler later answers and short-circuits.
+  b.on("callback_query:data", async (ctx, next) => {
+    console.log("[BOT] callback_query received:",
+      JSON.stringify({ data: ctx.callbackQuery.data, chatId: ctx.chat?.id, userId: ctx.from?.id }));
+    await next();
+  });
+
   b.command("cancel", async (ctx) => {
     await logMessage(ctx, "in", ctx.message?.text);
     const chatKey = String(ctx.chat!.id);
