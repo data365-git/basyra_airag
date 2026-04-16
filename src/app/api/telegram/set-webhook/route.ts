@@ -27,7 +27,13 @@ export async function GET(req: NextRequest) {
     {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ url: webhookUrl, allowed_updates: ["message"] }),
+      // IMPORTANT: must include "callback_query" — without it, Telegram silently
+      // drops every inline-button click (hw_select, hw_done, hw_file_confirm, …)
+      // and the bot appears unresponsive even though the handlers are registered.
+      body:    JSON.stringify({
+        url:             webhookUrl,
+        allowed_updates: ["message", "callback_query", "edited_message"],
+      }),
     }
   );
   const data = await res.json();
