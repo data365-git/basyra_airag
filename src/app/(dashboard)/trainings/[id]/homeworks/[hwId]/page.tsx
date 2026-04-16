@@ -9,6 +9,7 @@ import { usePermission } from "@/hooks/usePermission";
 import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image, File, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 import { fmtUzDate, fmtUzDateTime } from "@/lib/dateFormat";
+import { SubmissionTimeline } from "@/components/homework/SubmissionTimeline";
 
 interface SubmissionFile {
   id:               string;
@@ -237,6 +238,7 @@ export default function HomeworkDetailPage() {
   const [hw,   setHw]   = useState<HomeworkMeta | null>(null);
   const [subs, setSubs] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
+  const [timeline, setTimeline] = useState<{ subId: string; name: string } | null>(null);
 
   // Fetch homework meta from the training's homework list
   async function load() {
@@ -309,7 +311,15 @@ export default function HomeworkDetailPage() {
               <EmptyRow cols={4} message="Hali topshiriq yo'q" />
             ) : subs.map((sub) => (
               <Tr key={sub.id}>
-                <Td className="font-medium text-gray-900">{sub.participant.full_name}</Td>
+                <Td className="font-medium text-gray-900">
+                  <button
+                    onClick={() => setTimeline({ subId: sub.id, name: sub.participant.full_name })}
+                    className="hover:text-blue-600 hover:underline transition-colors text-left"
+                    title="Tarixni ko'rish"
+                  >
+                    {sub.participant.full_name}
+                  </button>
+                </Td>
                 <Td className="max-w-xs">
                   {sub.text && (
                     <p className="text-sm text-gray-700 line-clamp-2">{sub.text}</p>
@@ -341,6 +351,16 @@ export default function HomeworkDetailPage() {
           </Tbody>
         </Table>
       </Card>
+
+      {/* Submission activity timeline drawer */}
+      {timeline && (
+        <SubmissionTimeline
+          hwId={hwId}
+          subId={timeline.subId}
+          participantName={timeline.name}
+          onClose={() => setTimeline(null)}
+        />
+      )}
     </div>
   );
 }

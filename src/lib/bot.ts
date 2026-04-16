@@ -8,6 +8,7 @@ import { Bot, Context, InlineKeyboard, Keyboard } from "grammy";
 import prisma from "@/lib/prisma";
 import { getParticipantScorecard } from "@/lib/scorecard";
 import { uploadTelegramFileToR2 } from "@/lib/r2Upload";
+import { logSubmissionEvent, SubmissionEventType } from "@/lib/submissionEvents";
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://basyra-lmss.up.railway.app").replace(/\/$/, "");
 
@@ -455,7 +456,10 @@ function registerHandlers(b: Bot) {
       const chatKey = String(ctx.chat!.id);
       const chatId  = BigInt(ctx.chat!.id);
 
-      const link = await prisma.telegramLink.findFirst({ where: { chatId } });
+      const link = await prisma.telegramLink.findFirst({
+        where:   { chatId },
+        include: { participant: { select: { fullName: true } } },
+      });
       if (!link) { await reply(ctx, "Hisob ulanmagan. /login buyrug'ini yuboring."); return; }
 
       const [hw, existingSub] = await Promise.all([
@@ -480,13 +484,24 @@ function registerHandlers(b: Bot) {
       }
 
       // Create or reuse submission
+      const isNewSub = !existingSub;
       const sub = await prisma.homeworkSubmission.upsert({
         where:  { homeworkId_participantId: { homeworkId: hwId, participantId: link.participantId } },
         update: {},
-      create: { homeworkId: hwId, participantId: link.participantId },
-    });
+        create: { homeworkId: hwId, participantId: link.participantId },
+      });
 
-    pendingSubmissions.set(chatKey, { homeworkId: hwId, submissionId: sub.id });
+      if (isNewSub) {
+        void logSubmissionEvent(prisma, {
+          submissionId: sub.id,
+          actorId:      link.participantId,
+          actorRole:    "participant",
+          actorName:    link.participant?.fullName ?? "Noma'lum",
+          eventType:    SubmissionEventType.SUBMITTED,
+        });
+      }
+
+      pendingSubmissions.set(chatKey, { homeworkId: hwId, submissionId: sub.id });
 
     const fileCount  = existingSub?.files.length ?? 0;
     const doneKb     = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
@@ -548,12 +563,22 @@ function registerHandlers(b: Bot) {
         fileSizeBytes:  pf.fileSizeBytes,
         telegramFileId: pf.telegramFileId,
       },
+      include: { submission: { select: { participantId: true, participant: { select: { fullName: true } } } } },
     });
 
     // Fire-and-forget: copy the Telegram file to R2 in the background so the
     // download endpoint can serve a permanent URL after the 1-hour Telegram
     // URL expires. Failure is logged but never blocks the user reply.
     void uploadTelegramFileToR2(hf.id);
+
+    void logSubmissionEvent(prisma, {
+      submissionId: pf.submissionId,
+      actorId:      hf.submission.participantId,
+      actorRole:    "participant",
+      actorName:    hf.submission.participant.fullName,
+      eventType:    SubmissionEventType.FILE_ADDED,
+      meta:         { filename: pf.fileName, size: pf.fileSizeBytes, fileType: pf.fileType },
+    });
 
     const sizeLabel = pf.fileSizeBytes ? ` (${Math.round(pf.fileSizeBytes / 1024)} KB)` : "";
     const doneKb    = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
@@ -591,9 +616,18 @@ function registerHandlers(b: Bot) {
 
     // Plain text submission
     if (pending && pending.submissionId) {
-      await prisma.homeworkSubmission.update({
-        where: { id: pending.submissionId },
-        data:  { text },
+      const updatedSub = await prisma.homeworkSubmission.update({
+        where:   { id: pending.submissionId },
+        data:    { text },
+        include: { participant: { select: { fullName: true } } },
+      });
+      void logSubmissionEvent(prisma, {
+        submissionId: pending.submissionId,
+        actorId:      updatedSub.participantId,
+        actorRole:    "participant",
+        actorName:    updatedSub.participant.fullName,
+        eventType:    SubmissionEventType.TEXT_EDITED,
+        meta:         { text: text.slice(0, 200) },
       });
       const doneKb = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
       await reply(ctx,

@@ -233,6 +233,7 @@ model HomeworkSubmission {
   submittedAt   DateTime       @default(now()) @map("submitted_at")
   grade         HomeworkGrade?
   files         HomeworkFile[]
+  events        SubmissionEvent[]
 
   @@unique([homeworkId, participantId])
   @@map("homework_submissions")
@@ -263,6 +264,32 @@ model HomeworkGrade {
   gradedAt     DateTime           @default(now()) @map("graded_at")
 
   @@map("homework_grades")
+}
+
+enum SubmissionEventType {
+  SUBMITTED
+  TEXT_EDITED
+  FILE_ADDED
+  FILE_DELETED
+  RESUBMITTED
+  GRADED
+  GRADE_EDITED
+  GRADE_DELETED
+}
+
+model SubmissionEvent {
+  id           String              @id @default(cuid())
+  submissionId String              @map("submission_id")
+  submission   HomeworkSubmission  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  actorId      String              @map("actor_id")   // StaffUser.id or Participant.id (string, no FK so both types work)
+  actorRole    String              @map("actor_role")  // "participant" | "curator" | "admin"
+  actorName    String              @map("actor_name")  // denormalized display name
+  eventType    SubmissionEventType @map("event_type")
+  meta         Json?               // { filename, size, oldScore, newScore, text, … }
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  @@index([submissionId])
+  @@map("submission_events")
 }
 
 model ActivityScore {

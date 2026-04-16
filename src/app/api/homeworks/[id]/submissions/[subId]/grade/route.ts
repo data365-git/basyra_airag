@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { notifyGraded } from "@/lib/bot";
+import { logSubmissionEvent, SubmissionEventType } from "@/lib/submissionEvents";
 
 async function getStaffUser() {
   const jar   = await cookies();
@@ -33,6 +34,7 @@ export async function POST(
     include: {
       homework:    { select: { title: true, maxScore: true } },
       participant: { select: { id: true } },
+      grade:       { select: { score: true } },
     },
   });
   if (!sub) return NextResponse.json({ error: "Submission not found" }, { status: 404 });
@@ -45,10 +47,25 @@ export async function POST(
     );
   }
 
+  const isEdit    = sub.grade !== null;
+  const oldScore  = sub.grade?.score ?? null;
+
   const grade = await prisma.homeworkGrade.upsert({
     where:  { submissionId },
     update: { score, feedback: feedback?.trim() || null, gradedById: user.sub, gradedAt: new Date() },
     create: { submissionId, score, feedback: feedback?.trim() || null, gradedById: user.sub },
+  });
+
+  // Log event (non-blocking)
+  void logSubmissionEvent(prisma, {
+    submissionId,
+    actorId:   user.sub,
+    actorRole: "curator",
+    actorName: user.email ?? "Curator",
+    eventType: isEdit ? SubmissionEventType.GRADE_EDITED : SubmissionEventType.GRADED,
+    meta:      isEdit
+      ? { oldScore, newScore: score, feedback: feedback?.trim() || null }
+      : { score, maxScore, feedback: feedback?.trim() || null },
   });
 
   // Fire Telegram notification (non-blocking)
@@ -73,5 +90,12 @@ export async function DELETE(
 
   const { subId: submissionId } = await params;
   await prisma.homeworkGrade.delete({ where: { submissionId } }).catch(() => null);
+  void logSubmissionEvent(prisma, {
+    submissionId,
+    actorId:   user.sub,
+    actorRole: "curator",
+    actorName: user.email ?? "Curator",
+    eventType: SubmissionEventType.GRADE_DELETED,
+  });
   return new NextResponse(null, { status: 204 });
 }
