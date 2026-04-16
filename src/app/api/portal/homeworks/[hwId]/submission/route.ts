@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPortalUser } from "@/lib/portalAuth";
 import { getTodayInTashkent } from "@/lib/sessionWindow";
+import { deleteR2ObjectByPublicUrl } from "@/lib/r2Upload";
 import prisma from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export async function DELETE(
     include: {
       submissions: {
         where:   { participantId: user.sub },
-        include: { grade: true },
+        include: { grade: true, files: { select: { storageUrl: true } } },
       },
     },
   });
@@ -48,8 +49,14 @@ export async function DELETE(
     }
   }
 
+  // Collect R2 URLs to clean up AFTER the cascade delete succeeds
+  const r2Urls = sub.files.map((f) => f.storageUrl).filter((u): u is string => !!u);
+
   // Cascade deletes HomeworkFile and HomeworkGrade
   await prisma.homeworkSubmission.delete({ where: { id: sub.id } });
+
+  // Fire-and-forget R2 cleanup — do not block the response
+  for (const url of r2Urls) void deleteR2ObjectByPublicUrl(url);
 
   return NextResponse.json({ success: true });
 }

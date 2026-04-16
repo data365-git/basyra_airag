@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
+import { deleteR2ObjectByPublicUrl } from "@/lib/r2Upload";
 import { cookies } from "next/headers";
 
 async function getStaffUser() {
@@ -18,7 +19,20 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+
+  // Gather R2 URLs across all child submissions' files BEFORE cascade delete
+  const files = await prisma.homeworkFile.findMany({
+    where:  { submission: { homeworkId: id }, storageUrl: { not: null } },
+    select: { storageUrl: true },
+  });
+
   await prisma.homework.delete({ where: { id } });
+
+  // Fire-and-forget R2 cleanup
+  for (const f of files) {
+    if (f.storageUrl) void deleteR2ObjectByPublicUrl(f.storageUrl);
+  }
+
   return new NextResponse(null, { status: 204 });
 }
 

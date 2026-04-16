@@ -7,6 +7,7 @@ import { randomUUID } from "crypto";
 import { Bot, Context, InlineKeyboard, Keyboard } from "grammy";
 import prisma from "@/lib/prisma";
 import { getParticipantScorecard } from "@/lib/scorecard";
+import { uploadTelegramFileToR2 } from "@/lib/r2Upload";
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://basyra-lmss.up.railway.app").replace(/\/$/, "");
 
@@ -303,6 +304,12 @@ function registerHandlers(b: Bot) {
       }
     });
 
+    if (ungradedBtns.length === 0) {
+      text += "\n✅ Barcha vazifalar baholangan!";
+      await reply(ctx, text, { reply_markup: linkedKeyboard() });
+      return;
+    }
+
     // Build keyboard: numbered buttons grouped 3 per row
     const kb = new InlineKeyboard();
     ungradedBtns.forEach((btn, j) => {
@@ -310,14 +317,7 @@ function registerHandlers(b: Bot) {
       kb.text(btn.label, btn.data);
     });
 
-    const hasButtons = homeworks.some((hw) => !hw.submissions[0]?.grade);
-    if (!hasButtons) {
-      text += "\n✅ Barcha vazifalar baholangan!";
-      await reply(ctx, text, { reply_markup: linkedKeyboard() });
-      return;
-    }
-
-    text += "👇 Topshirmoqchi bo'lgan vazifani tanlang:";
+    text += "👇 Topshirmoqchi bo'lgan vazifa raqamini tanlang:";
     await reply(ctx, text, { reply_markup: kb });
   });
 
@@ -508,7 +508,7 @@ function registerHandlers(b: Bot) {
 
     pendingFiles.delete(chatKey);
 
-    await prisma.homeworkFile.create({
+    const hf = await prisma.homeworkFile.create({
       data: {
         submissionId:   pf.submissionId,
         fileName:       pf.fileName,
@@ -517,6 +517,11 @@ function registerHandlers(b: Bot) {
         telegramFileId: pf.telegramFileId,
       },
     });
+
+    // Fire-and-forget: copy the Telegram file to R2 in the background so the
+    // download endpoint can serve a permanent URL after the 1-hour Telegram
+    // URL expires. Failure is logged but never blocks the user reply.
+    void uploadTelegramFileToR2(hf.id);
 
     const sizeLabel = pf.fileSizeBytes ? ` (${Math.round(pf.fileSizeBytes / 1024)} KB)` : "";
     const doneKb    = new InlineKeyboard().text("✅ Yakunlash", "hw_done");

@@ -39,11 +39,15 @@ function FileList({ files }: { files: SubmissionFile[] }) {
   if (files.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1.5 mt-1">
-      {files.map((f) => (
-        f.storage_url ? (
+      {files.map((f) => {
+        // Prefer download proxy — works for both R2-uploaded and Telegram-only files
+        const href = (f.storage_url || f.telegram_file_id)
+          ? `/api/homework-files/${f.id}/download`
+          : null;
+        return href ? (
           <a
             key={f.id}
-            href={f.storage_url}
+            href={href}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded-lg transition-colors"
@@ -56,14 +60,14 @@ function FileList({ files }: { files: SubmissionFile[] }) {
           <span
             key={f.id}
             className="inline-flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-500 text-xs rounded-lg"
-            title="Telegram orqali yuborilgan (yuklab olish hali mavjud emas)"
+            title="Fayl mavjud emas"
           >
             <FileIcon type={f.file_type} />
             <span className="max-w-[120px] truncate">{f.file_name}</span>
             {f.file_size_bytes && <span className="text-gray-400">{Math.round(f.file_size_bytes / 1024)}KB</span>}
           </span>
-        )
-      ))}
+        );
+      })}
     </div>
   );
 }

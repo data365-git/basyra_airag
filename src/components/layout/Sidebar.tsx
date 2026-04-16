@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, BookOpen, Users, QrCode, BarChart3,
-  Settings, ChevronRight, ChevronLeft, Send,
+  Settings, ChevronRight, ChevronLeft, Send, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,6 +24,7 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { label: "nav.dashboard",    href: "/",             icon: LayoutDashboard, page: null,           action: "view" },
   { label: "nav.trainings",    href: "/trainings",    icon: BookOpen,        page: "trainings",    action: "view" },
+  { label: "nav.homeworks",    href: "/homeworks",    icon: ClipboardList,   page: "trainings",    action: "view" },
   { label: "nav.participants", href: "/participants", icon: Users,           page: "participants", action: "view" },
   { label: "nav.scanner",      href: "/scanner",      icon: QrCode,          page: "scanner",      action: "view" },
   { label: "nav.reports",      href: "/reports",      icon: BarChart3,       page: "reports",      action: "view" },
