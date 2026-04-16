@@ -10,6 +10,13 @@ import { getParticipantScorecard } from "@/lib/scorecard";
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://basyra-lmss.up.railway.app").replace(/\/$/, "");
 
+const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
+function fmtUzDate(d: string | Date | null | undefined): string {
+  if (!d) return "";
+  const dt = typeof d === "string" ? new Date(d + "T00:00:00") : d;
+  return `${dt.getDate()} ${UZ_MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
+}
+
 /** Keyboard shown AFTER successful linking — opens portal dashboard directly */
 function linkedKeyboard() {
   return new InlineKeyboard().webApp("📊 Shaxsiy kabinetni ochish", `${APP_URL}/portal/me`);
@@ -275,7 +282,7 @@ function registerHandlers(b: Bot) {
     }
 
     let text = "📝 <b>Vazifalar:</b>\n\n";
-    const kb  = new InlineKeyboard();
+    const ungradedBtns: { label: string; data: string }[] = [];
 
     homeworks.forEach((hw, i) => {
       const sub    = hw.submissions[0];
@@ -285,17 +292,22 @@ function registerHandlers(b: Bot) {
       text +=
         `${i + 1}. ${icon} <b>${hw.title}</b>\n` +
         `   📚 ${hw.training.name}\n` +
-        (hw.dueDate  ? `   📅 Muddat: ${hw.dueDate}\n`              : "") +
-        (graded      ? `   ⭐ Baho: ${graded.score}/${hw.maxScore}\n` : "") +
+        (hw.dueDate ? `   📅 Muddat: ${fmtUzDate(hw.dueDate)}\n`    : "") +
+        (graded     ? `   ⭐ Baho: ${graded.score}/${hw.maxScore}\n` : "") +
         (sub && !graded && sub.files.length > 0
           ? `   📎 ${sub.files.length} ta fayl topshirilgan\n`       : "") +
         "\n";
 
-      // Show button for ungraded (can re-submit or first submit)
       if (!graded) {
-        const label = sub ? `📤 ${hw.title.slice(0, 20)}` : `⏳ ${hw.title.slice(0, 20)}`;
-        kb.text(label, `hw_select:${hw.id}`).row();
+        ungradedBtns.push({ label: `${i + 1}`, data: `hw_select:${hw.id}` });
       }
+    });
+
+    // Build keyboard: numbered buttons grouped 3 per row
+    const kb = new InlineKeyboard();
+    ungradedBtns.forEach((btn, j) => {
+      if (j > 0 && j % 3 === 0) kb.row();
+      kb.text(btn.label, btn.data);
     });
 
     const hasButtons = homeworks.some((hw) => !hw.submissions[0]?.grade);
@@ -405,12 +417,12 @@ function registerHandlers(b: Bot) {
 
   // ── Callback: homework selected from inline keyboard ──────────────────────
   b.callbackQuery(/^hw_select:(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery();
-    const hwId    = ctx.match[1];
-    const chatKey = String(ctx.chat!.id);
-    const chatId  = BigInt(ctx.chat!.id);
-
     try {
+      await ctx.answerCallbackQuery();
+      const hwId    = ctx.match[1];
+      const chatKey = String(ctx.chat!.id);
+      const chatId  = BigInt(ctx.chat!.id);
+
       const link = await prisma.telegramLink.findFirst({ where: { chatId } });
       if (!link) { await reply(ctx, "Hisob ulanmagan. /login buyrug'ini yuboring."); return; }
 
