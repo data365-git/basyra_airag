@@ -124,6 +124,11 @@ model Participant {
   email                String?
   photoUrl             String?               @map("photo_url")
   qrToken              String                @unique @default(uuid()) @map("qr_token")
+  isBlocked            Boolean               @default(false) @map("is_blocked")
+  blockedAt            DateTime?             @map("blocked_at")
+  blockedReason        String?               @map("blocked_reason")
+  lastSeenAt           DateTime?             @map("last_seen_at")
+  phoneVerifiedAt      DateTime?             @map("phone_verified_at")
   createdAt            DateTime              @default(now()) @map("created_at")
   trainingParticipants TrainingParticipant[]
   attendance           Attendance[]
@@ -328,15 +333,31 @@ model TelegramMessage {
 }
 
 model TelegramLink {
-  id            String      @id @default(uuid())
-  participantId String      @unique @map("participant_id")
-  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  chatId        BigInt      @map("chat_id")
-  username      String?
-  firstName     String?     @map("first_name")
-  linkedAt      DateTime    @default(now()) @map("linked_at")
+  id                  String      @id @default(uuid())
+  participantId       String      @unique @map("participant_id")
+  participant         Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  chatId              BigInt      @map("chat_id")
+  username            String?
+  firstName           String?     @map("first_name")
+  verifiedPhone       String?     @map("verified_phone")       // E.164, set on contact-share
+  verifiedByContact   Boolean     @default(false) @map("verified_by_contact")
+  linkedAt            DateTime    @default(now()) @map("linked_at")
 
   @@map("telegram_links")
+}
+
+model BotAuthLog {
+  id             String   @id @default(cuid())
+  telegramUserId BigInt   @map("telegram_user_id")
+  chatId         BigInt   @map("chat_id")
+  phone          String?
+  event          String   // see BotAuthEvent in src/lib/botAuth.ts
+  meta           Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([telegramUserId])
+  @@index([phone])
+  @@map("bot_auth_log")
 }
 
 model TelegramLinkCode {
