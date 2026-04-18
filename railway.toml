@@ -1,2 +1,2 @@
 [deploy]
-startCommand = "npx prisma migrate deploy && npm start"
+startCommand = "npx prisma migrate deploy && npx next start -p $PORT"
