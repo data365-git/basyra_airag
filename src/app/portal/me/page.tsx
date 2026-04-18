@@ -692,6 +692,28 @@ export default function PortalMePage() {
           setMe(data);
           if (data.trainings?.length > 0) setSelectedTraining(data.trainings[0].id);
         }
+
+        // ── Mini App token refresh ───────────────────────────────────────────
+        // If the /me succeeded via cookie but no localStorage token exists, we
+        // are running inside a Telegram Mini App whose cross-origin webview will
+        // drop the httpOnly cookie on subsequent fetches (e.g. /api/homeworks/:id/materials).
+        // Silently re-authenticate to get and store the Bearer token so all later
+        // portalFetch() calls include the Authorization header.
+        const twaEarly = (window as any).Telegram?.WebApp;
+        if (twaEarly && !localStorage.getItem("portal_token")) {
+          try {
+            const authRes = await fetch("/api/portal/telegram-miniapp-login", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({ initData: twaEarly.initData ?? "" }),
+            });
+            if (authRes.ok) {
+              const authData = await authRes.json().catch(() => ({}));
+              if (authData.token) localStorage.setItem("portal_token", authData.token);
+            }
+          } catch { /* non-fatal — cookie will still work for this session */ }
+        }
+
         setLoading(false);
         return;
       }
