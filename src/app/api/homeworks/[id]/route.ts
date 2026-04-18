@@ -1,22 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
+import { getFullUser } from "@/lib/getUser";
+import { hasPermission } from "@/lib/permissions";
 import { deleteR2ObjectByPublicUrl } from "@/lib/r2Upload";
-import { cookies } from "next/headers";
-
-async function getStaffUser() {
-  const jar   = await cookies();
-  const token = jar.get(COOKIE_NAME)?.value;
-  return token ? verifyJWT(token) : null;
-}
 
 // DELETE /api/homeworks/[id]
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await getStaffUser();
+  const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(user, "trainings", "delete"))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
 
@@ -41,8 +37,10 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await getStaffUser();
+  const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(user, "trainings", "edit"))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));

@@ -97,6 +97,43 @@ export async function POST(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  try {
+    const caller = await getFullUser();
+    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!hasPermission(caller, "settings.users", "delete"))
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const { id } = await request.json();
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+    // Cannot delete yourself
+    if (id === caller.id)
+      return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 });
+
+    // Protect the last superadmin
+    const target = await prisma.staffUser.findUnique({
+      where: { id },
+      include: { role: { select: { isSuperadmin: true } } },
+    });
+    if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    if (target.role?.isSuperadmin) {
+      const superadminCount = await prisma.staffUser.count({
+        where: { role: { isSuperadmin: true }, isActive: true },
+      });
+      if (superadminCount <= 1)
+        return NextResponse.json({ error: "Cannot delete the last superadmin account" }, { status: 400 });
+    }
+
+    await prisma.staffUser.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("users DELETE error:", e);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
 export async function PATCH(request: Request) {
   try {
     const caller = await getFullUser();

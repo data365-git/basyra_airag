@@ -93,7 +93,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   try {
     const user = await getFullUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (!hasPermission(user, "trainings", "edit"))
+    if (!hasPermission(user, "trainings", "delete"))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { id } = await params;

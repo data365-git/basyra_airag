@@ -1,24 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { getFullUser } from "@/lib/getUser";
+import { hasPermission } from "@/lib/permissions";
 import { deleteLocalFile } from "@/lib/localUpload";
 
 export const dynamic = "force-dynamic";
-
-async function getStaffUser() {
-  const jar   = await cookies();
-  const token = jar.get(COOKIE_NAME)?.value;
-  return token ? verifyJWT(token) : null;
-}
 
 // PATCH — update title / description / url / sort_order
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; mid: string }> },
 ) {
-  const user = await getStaffUser();
+  const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(user, "trainings", "edit"))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { mid } = await params;
   const body = await req.json().catch(() => ({}));
@@ -51,8 +47,10 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; mid: string }> },
 ) {
-  const user = await getStaffUser();
+  const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(user, "trainings", "delete"))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { mid } = await params;
   const mat = await prisma.homeworkMaterial.findUnique({ where: { id: mid } });

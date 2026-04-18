@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
@@ -19,6 +19,7 @@ import toast from "react-hot-toast";
 export default function UsersPage() {
   const router = useRouter();
   const canCreate = usePermission("settings.users", "create");
+  const canDelete = usePermission("settings.users", "delete");
   const { t } = useTranslation();
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -28,6 +29,31 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<StaffUser | null>(null);
   const [editForm, setEditForm] = useState({ role_id: "", is_active: true });
   const [saving, setSaving] = useState(false);
+
+  // Delete confirm
+  const [deletingUser, setDeletingUser] = useState<StaffUser | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  async function deleteUser() {
+    if (!deletingUser) return;
+    setDeleteLoading(true);
+    const res = await fetch("/api/users", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: deletingUser.id }),
+    });
+    setDeleteLoading(false);
+    if (res.ok) {
+      toast.success(t("settings.users.deleted"));
+      setUsers((prev) => prev.filter((u) => u.id !== deletingUser.id));
+      setDeletingUser(null);
+      router.refresh();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? t("settings.users.delete_failed"));
+      setDeletingUser(null);
+    }
+  }
 
   // Add user modal
   const [addOpen, setAddOpen] = useState(false);
@@ -164,9 +190,16 @@ export default function UsersPage() {
                   </Badge>
                 </Td>
                 <Td>
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(user)}>
-                    {t("common.edit")}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(user)}>
+                      {t("common.edit")}
+                    </Button>
+                    {canDelete && (
+                      <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeletingUser(user)}>
+                        <Trash2 size={14} />
+                      </Button>
+                    )}
+                  </div>
                 </Td>
               </Tr>
             ))}
@@ -213,6 +246,26 @@ export default function UsersPage() {
               <span className="text-sm font-medium text-gray-900">{t("settings.users.active_account")}</span>
             </label>
           </div>
+        )}
+      </Modal>
+
+      {/* Delete confirm modal */}
+      <Modal
+        open={!!deletingUser}
+        onClose={() => setDeletingUser(null)}
+        title={t("settings.users.delete_title")}
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDeletingUser(null)}>{t("common.cancel")}</Button>
+            <Button variant="danger" onClick={deleteUser} loading={deleteLoading}>{t("common.delete")}</Button>
+          </>
+        }
+      >
+        {deletingUser && (
+          <p className="text-sm text-gray-600">
+            {t("settings.users.delete_confirm", { name: deletingUser.name })}
+          </p>
         )}
       </Modal>
 
