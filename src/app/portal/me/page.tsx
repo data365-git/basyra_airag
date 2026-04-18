@@ -329,26 +329,81 @@ function HomeworkCard({
             </div>
           )}
           {!matLoading && materials && materials.length > 0 && (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <p className="text-xs font-semibold text-gray-500">O&apos;quv materiallari</p>
               {materials.map((m) => {
-                const href = m.kind === "LINK" ? m.url : m.storage_url;
-                return href ? (
-                  <a
-                    key={m.id}
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-blue-50 rounded-xl transition-colors"
-                  >
-                    <MatKindIcon kind={m.kind} />
-                    <span className="text-xs text-gray-700 font-medium truncate flex-1">{m.title}</span>
-                    {m.file_size_bytes && (
-                      <span className="text-xs text-gray-400 shrink-0">{Math.round(m.file_size_bytes / 1024)}KB</span>
-                    )}
-                  </a>
-                ) : (
-                  <div key={m.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl opacity-60">
+                const fileHref = m.storage_url ?? null;
+                const linkHref = m.url ?? null;
+
+                // ── Inline audio player ──────────────────────────────────
+                if (m.kind === "AUDIO" && fileHref) {
+                  return (
+                    <div key={m.id} className="bg-gray-50 rounded-xl px-3 py-2.5 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <MatKindIcon kind={m.kind} />
+                        <span className="text-xs text-gray-700 font-medium truncate flex-1">{m.title}</span>
+                        {m.file_size_bytes && (
+                          <span className="text-xs text-gray-400 shrink-0">
+                            {(m.file_size_bytes / (1024 * 1024)).toFixed(1)} MB
+                          </span>
+                        )}
+                      </div>
+                      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                      <audio
+                        controls
+                        src={fileHref}
+                        className="w-full h-8"
+                        style={{ colorScheme: "light" }}
+                      />
+                    </div>
+                  );
+                }
+
+                // ── File download ─────────────────────────────────────────
+                if (fileHref) {
+                  return (
+                    <div key={m.id} className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 rounded-xl">
+                      <MatKindIcon kind={m.kind} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-700 font-medium truncate">{m.title}</p>
+                        {m.file_size_bytes && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {(m.file_size_bytes / (1024 * 1024)).toFixed(1)} MB
+                          </p>
+                        )}
+                      </div>
+                      <a
+                        href={fileHref}
+                        download
+                        className="shrink-0 flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                      >
+                        Yuklab olish
+                      </a>
+                    </div>
+                  );
+                }
+
+                // ── External link ─────────────────────────────────────────
+                if (linkHref) {
+                  return (
+                    <div key={m.id} className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 rounded-xl">
+                      <MatKindIcon kind={m.kind} />
+                      <span className="text-xs text-gray-700 font-medium truncate flex-1">{m.title}</span>
+                      <a
+                        href={linkHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                      >
+                        Ochish
+                      </a>
+                    </div>
+                  );
+                }
+
+                // ── No URL available ──────────────────────────────────────
+                return (
+                  <div key={m.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl opacity-50">
                     <MatKindIcon kind={m.kind} />
                     <span className="text-xs text-gray-700 truncate flex-1">{m.title}</span>
                   </div>

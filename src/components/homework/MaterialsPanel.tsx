@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, Trash2, Link2, Video, Mic, FileText, File as FileIcon, Image,
-  MoreHorizontal, X, Upload, BookOpen,
+  MoreHorizontal, X, Upload, BookOpen, GripVertical, ExternalLink,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { DropZone } from "@/components/ui/DropZone";
@@ -26,6 +26,14 @@ export interface Material {
   sort_order:      number;
 }
 
+interface OEmbed {
+  title:       string | null;
+  description: string | null;
+  image:       string | null;
+  site_name:   string | null;
+  url:         string;
+}
+
 interface Props {
   hwId:      string;
   materials: Material[];
@@ -44,9 +52,9 @@ function mimeToKind(mime: string): Material["kind"] {
 }
 
 function fmtBytes(bytes: number): string {
-  if (bytes < 1024)          return `${bytes} B`;
-  if (bytes < 1024 * 1024)   return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024)        return `${bytes} B`;
+  if (bytes < 1048576)     return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
 function urlDomain(url: string): string {
@@ -57,12 +65,12 @@ function urlDomain(url: string): string {
 // ─── Kind chip config ─────────────────────────────────────────────────────────
 
 const KIND: Record<Material["kind"], { icon: React.ReactNode; bg: string; text: string; label: string }> = {
-  PDF:      { icon: <FileText size={15} />, bg: "bg-red-50",     text: "text-red-500",    label: "PDF"    },
-  VIDEO:    { icon: <Video    size={15} />, bg: "bg-blue-50",    text: "text-blue-500",   label: "Video"  },
-  AUDIO:    { icon: <Mic      size={15} />, bg: "bg-purple-50",  text: "text-purple-500", label: "Audio"  },
-  IMAGE:    { icon: <Image    size={15} />, bg: "bg-green-50",   text: "text-green-500",  label: "Rasm"   },
-  DOCUMENT: { icon: <FileIcon size={15} />, bg: "bg-gray-100",   text: "text-gray-500",   label: "Hujjat" },
-  LINK:     { icon: <Link2    size={15} />, bg: "bg-indigo-50",  text: "text-indigo-500", label: "Havola" },
+  PDF:      { icon: <FileText size={15} />, bg: "bg-red-50",     text: "text-red-500",     label: "PDF"    },
+  VIDEO:    { icon: <Video    size={15} />, bg: "bg-blue-50",    text: "text-blue-500",    label: "Video"  },
+  AUDIO:    { icon: <Mic      size={15} />, bg: "bg-purple-50",  text: "text-purple-500",  label: "Audio"  },
+  IMAGE:    { icon: <Image    size={15} />, bg: "bg-green-50",   text: "text-green-500",   label: "Rasm"   },
+  DOCUMENT: { icon: <FileIcon size={15} />, bg: "bg-gray-100",   text: "text-gray-500",    label: "Hujjat" },
+  LINK:     { icon: <Link2    size={15} />, bg: "bg-indigo-50",  text: "text-indigo-500",  label: "Havola" },
 };
 
 function KindChip({ kind }: { kind: Material["kind"] }) {
@@ -74,9 +82,63 @@ function KindChip({ kind }: { kind: Material["kind"] }) {
   );
 }
 
+// ─── Link preview card ────────────────────────────────────────────────────────
+
+function LinkPreviewCard({ og, url }: { og: OEmbed; url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-start gap-3 p-3 bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-xl transition-colors mt-1"
+    >
+      {og.image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={og.image}
+          alt=""
+          className="w-14 h-14 object-cover rounded-lg shrink-0 bg-gray-200"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        {og.site_name && (
+          <p className="text-xs text-gray-400 mb-0.5">{og.site_name}</p>
+        )}
+        <p className="text-sm font-medium text-gray-800 line-clamp-2 leading-snug">
+          {og.title ?? urlDomain(url)}
+        </p>
+        {og.description && (
+          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{og.description}</p>
+        )}
+      </div>
+      <ExternalLink size={13} className="text-gray-300 shrink-0 mt-0.5" />
+    </a>
+  );
+}
+
+// ─── Shimmer row ──────────────────────────────────────────────────────────────
+
+function ShimmerRow() {
+  return (
+    <div className="flex items-center gap-3 px-2 py-2.5 -mx-2 rounded-xl">
+      <div className="w-9 h-9 rounded-xl bg-gray-100 animate-pulse shrink-0" />
+      <div className="flex-1 space-y-1.5">
+        <div className="h-3 bg-gray-100 rounded-full animate-pulse w-2/3" />
+        <div className="h-2.5 bg-gray-100 rounded-full animate-pulse w-1/3" />
+      </div>
+      <div className="w-8 h-8 rounded-lg bg-gray-100 animate-pulse shrink-0" />
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) {
+
+  // ── Local ordered list (synced from props; mutated by drag) ──
+  const [localOrder, setLocalOrder] = useState<Material[]>(materials);
+  useEffect(() => { setLocalOrder(materials); }, [materials]);
 
   // ── Modal ──
   const [modalOpen, setModalOpen] = useState(false);
@@ -92,8 +154,18 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
   const [url,         setUrl]         = useState("");
 
   // ── Upload ──
-  const [progress, setProgress] = useState(-1); // -1 = idle
+  const [progress, setProgress] = useState(-1);
   const [saving,   setSaving]   = useState(false);
+  const [adding,   setAdding]   = useState(false);  // optimistic shimmer
+
+  // ── oEmbed link preview ──
+  const [preview,        setPreview]        = useState<OEmbed | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Drag-to-reorder ──
+  const draggedIdRef  = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   // ── ⋯ menu ──
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -103,7 +175,7 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
     id: string; title: string; timer: ReturnType<typeof setTimeout>
   } | null>(null);
 
-  // Close ⋯ menu on any outside click
+  // Close ⋯ menu on outside click
   useEffect(() => {
     if (!menuId) return;
     const close = () => setMenuId(null);
@@ -111,7 +183,36 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
     return () => document.removeEventListener("click", close);
   }, [menuId]);
 
-  // ── Helpers ──
+  // ── oEmbed fetch (debounced 600ms) ────────────────────────────────────────
+
+  const fetchPreview = useCallback(async (rawUrl: string) => {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) { setPreview(null); return; }
+
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/oembed?url=${encodeURIComponent(trimmed)}`);
+      if (res.ok) {
+        const data: OEmbed = await res.json();
+        setPreview(data);
+        // Auto-fill title from OG if still empty
+        setTitle((prev) => prev || data.title || "");
+      }
+    } catch { /* silent */ } finally {
+      setPreviewLoading(false);
+    }
+  }, []);
+
+  function onUrlChange(v: string) {
+    setUrl(v);
+    setPreview(null);
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    if (v.trim()) {
+      previewTimerRef.current = setTimeout(() => fetchPreview(v), 600);
+    }
+  }
+
+  // ── Modal helpers ─────────────────────────────────────────────────────────
 
   function openModal(withFile?: File) {
     resetForm();
@@ -136,6 +237,8 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
     setUrl("");
     setProgress(-1);
     setMode("file");
+    setPreview(null);
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
   }
 
   function handleDropToPanel(files: File[]) {
@@ -150,13 +253,16 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
     if (!title) setTitle(f.name.replace(/\.[^.]+$/, ""));
   }
 
+  // ── Save ──────────────────────────────────────────────────────────────────
+
   async function save() {
     if (!title.trim()) { toast.error("Sarlavha kiriting"); return; }
 
-    // ── Link mode ──
     if (mode === "link") {
       if (!url.trim()) { toast.error("URL kiriting"); return; }
       setSaving(true);
+      closeModal();
+      setAdding(true);
       const res = await fetch(`/api/homeworks/${hwId}/materials`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -168,21 +274,26 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
         }),
       });
       setSaving(false);
-      if (res.ok) { toast.success("Material qo'shildi"); closeModal(); onUpdate(); }
+      setAdding(false);
+      if (res.ok) { toast.success("Material qo'shildi"); onUpdate(); }
       else        { toast.error("Xato yuz berdi"); }
       return;
     }
 
-    // ── File mode ──
     if (!file) { toast.error("Fayl tanlang"); return; }
 
     setSaving(true);
     setProgress(0);
+    // Close modal so user can see the shimmer in the list
+    const savedTitle = title.trim();
+    const savedDesc  = description.trim();
+    closeModal();
+    setAdding(true);
 
     const fd = new FormData();
     fd.append("file",  file);
-    fd.append("title", title.trim());
-    if (description.trim()) fd.append("description", description.trim());
+    fd.append("title", savedTitle);
+    if (savedDesc) fd.append("description", savedDesc);
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -196,25 +307,24 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
         xhr.send(fd);
       });
       toast.success("Material qo'shildi");
-      closeModal();
       onUpdate();
     } catch {
       toast.error("Xato yuz berdi");
-      setProgress(-1);
     } finally {
       setSaving(false);
+      setAdding(false);
+      setProgress(-1);
     }
   }
 
+  // ── Delete + undo ─────────────────────────────────────────────────────────
+
   function startDelete(id: string, matTitle: string) {
     setMenuId(null);
-    // Cancel any existing pending deletion first
     if (undoItem) {
       clearTimeout(undoItem.timer);
-      // Commit the previous deletion immediately since user deleted another item
       fetch(`/api/homeworks/${hwId}/materials/${undoItem.id}`, { method: "DELETE" })
-        .then(() => onUpdate())
-        .catch(() => {});
+        .then(() => onUpdate()).catch(() => {});
     }
     const timer = setTimeout(async () => {
       await fetch(`/api/homeworks/${hwId}/materials/${id}`, { method: "DELETE" });
@@ -231,10 +341,56 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
     toast("Bekor qilindi");
   }
 
-  const canSave = title.trim() !== "" && (mode === "link" ? url.trim() !== "" : file !== null);
+  // ── Drag-to-reorder ───────────────────────────────────────────────────────
 
-  // Optimistically hide item pending deletion
-  const visible = undoItem ? materials.filter((m) => m.id !== undoItem.id) : materials;
+  function onDragStart(id: string) {
+    draggedIdRef.current = id;
+  }
+
+  function onDragOver(e: React.DragEvent, targetId: string) {
+    e.preventDefault();
+    if (draggedIdRef.current && draggedIdRef.current !== targetId) {
+      setDragOverId(targetId);
+    }
+  }
+
+  function onDrop(e: React.DragEvent, targetId: string) {
+    e.preventDefault();
+    const srcId = draggedIdRef.current;
+    if (!srcId || srcId === targetId) { setDragOverId(null); return; }
+
+    const next = [...localOrder];
+    const from = next.findIndex((m) => m.id === srcId);
+    const to   = next.findIndex((m) => m.id === targetId);
+    if (from === -1 || to === -1) { setDragOverId(null); return; }
+
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setLocalOrder(next);
+    setDragOverId(null);
+    draggedIdRef.current = null;
+
+    // Persist new sort_order in background (fire-and-forget)
+    void Promise.all(
+      next.map((m, i) =>
+        fetch(`/api/homeworks/${hwId}/materials/${m.id}`, {
+          method:  "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ sort_order: i }),
+        })
+      )
+    );
+  }
+
+  function onDragEnd() {
+    draggedIdRef.current = null;
+    setDragOverId(null);
+  }
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+
+  const canSave = title.trim() !== "" && (mode === "link" ? url.trim() !== "" : file !== null);
+  const visible = undoItem ? localOrder.filter((m) => m.id !== undoItem.id) : localOrder;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -261,7 +417,7 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
       </div>
 
       {/* ── Empty state ── */}
-      {visible.length === 0 && (
+      {visible.length === 0 && !adding && (
         canManage ? (
           <DropZone onFiles={handleDropToPanel} className="p-10">
             <div className="flex flex-col items-center gap-3 text-center pointer-events-none">
@@ -284,28 +440,49 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
             </div>
           </DropZone>
         ) : (
-          <div className="py-8 text-center space-y-2">
+          <div className="py-8 text-center">
             <p className="text-sm text-gray-400">Hali material qo&apos;shilmagan.</p>
           </div>
         )
       )}
 
       {/* ── Material list ── */}
-      {visible.length > 0 && (
+      {(visible.length > 0 || adding) && (
         <div className="space-y-0.5">
+          {/* Optimistic shimmer row at top while uploading */}
+          {adding && <ShimmerRow />}
+
           {visible.map((m) => {
-            const href = m.kind === "LINK" ? m.url : m.storage_url;
-            const sub  = m.kind === "LINK" && m.url
+            const href      = m.kind === "LINK" ? m.url : m.storage_url;
+            const subLabel  = m.kind === "LINK" && m.url
               ? urlDomain(m.url)
               : m.file_size_bytes
               ? fmtBytes(m.file_size_bytes)
               : KIND[m.kind].label;
+            const isDragTarget = dragOverId === m.id;
 
             return (
               <div
                 key={m.id}
-                className="group flex items-center gap-3 px-2 py-2.5 -mx-2 rounded-xl hover:bg-gray-50 transition-colors"
+                draggable={canManage}
+                onDragStart={() => onDragStart(m.id)}
+                onDragOver={(e) => onDragOver(e, m.id)}
+                onDrop={(e) => onDrop(e, m.id)}
+                onDragEnd={onDragEnd}
+                className={cn(
+                  "group flex items-center gap-3 px-2 py-2.5 -mx-2 rounded-xl transition-colors",
+                  isDragTarget ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-gray-50",
+                  canManage && "cursor-grab active:cursor-grabbing",
+                )}
               >
+                {/* Drag handle */}
+                {canManage && (
+                  <GripVertical
+                    size={14}
+                    className="text-gray-200 group-hover:text-gray-400 transition-colors shrink-0 -ml-1"
+                  />
+                )}
+
                 <KindChip kind={m.kind} />
 
                 <div className="flex-1 min-w-0">
@@ -315,16 +492,17 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors block truncate"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {m.title}
                     </a>
                   ) : (
                     <span className="text-sm font-medium text-gray-900 block truncate">{m.title}</span>
                   )}
-                  <p className="text-xs text-gray-400 mt-0.5 truncate">{sub}</p>
+                  <p className="text-xs text-gray-400 mt-0.5 truncate">{subLabel}</p>
                 </div>
 
-                {/* ⋯ menu — admin only */}
+                {/* ⋯ menu */}
                 {canManage && (
                   <div className="relative shrink-0">
                     <button
@@ -378,6 +556,22 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
         </div>
       )}
 
+      {/* ── Upload progress bar (floating, outside modal) ── */}
+      {progress >= 0 && !modalOpen && (
+        <div className="mt-3 space-y-1.5">
+          <div className="flex justify-between text-xs text-gray-400">
+            <span>Yuklanmoqda…</span>
+            <span className="tabular-nums">{progress}%</span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="h-1.5 rounded-full bg-blue-500 transition-all duration-150"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── Add material modal ── */}
       <Modal
         open={modalOpen}
@@ -406,7 +600,12 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
               { value: "link", label: <><span>🔗</span><span>Havola</span></> },
             ]}
             value={mode}
-            onChange={(v) => { setMode(v); setFile(null); setProgress(-1); }}
+            onChange={(v) => {
+              setMode(v);
+              setFile(null);
+              setProgress(-1);
+              setPreview(null);
+            }}
           />
 
           {/* ── File mode ── */}
@@ -424,7 +623,6 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
                   </div>
                 </DropZone>
               ) : (
-                /* File chip */
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
                   <KindChip kind={fileKind} />
                   <div className="flex-1 min-w-0">
@@ -442,7 +640,7 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
                 </div>
               )}
 
-              {/* Upload progress bar */}
+              {/* Progress bar (in modal while it's open) */}
               {progress >= 0 && (
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs text-gray-400">
@@ -469,14 +667,25 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
               <input
                 type="url"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => onUrlChange(e.target.value)}
                 placeholder="https://youtu.be/…"
                 autoFocus
                 className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
-              <p className="text-xs text-gray-400">
-                YouTube, Vimeo, Google Drive, Notion va boshqalar
-              </p>
+              {previewLoading && (
+                <div className="flex items-center gap-1.5 text-xs text-gray-400 px-1">
+                  <span className="inline-block w-3 h-3 rounded-full border-2 border-gray-300 border-t-blue-500 animate-spin" />
+                  Ko&apos;rib chiqilmoqda…
+                </div>
+              )}
+              {preview && !previewLoading && (
+                <LinkPreviewCard og={preview} url={url} />
+              )}
+              {!preview && !previewLoading && !url && (
+                <p className="text-xs text-gray-400">
+                  YouTube, Vimeo, Google Drive, Notion va boshqalar
+                </p>
+              )}
             </div>
           )}
 
@@ -496,8 +705,8 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
 
           {/* Description */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-gray-600 flex items-center gap-1">
-              Izoh
+            <label className="block text-xs font-semibold text-gray-600">
+              Izoh{" "}
               <span className="font-normal text-gray-400">(ixtiyoriy)</span>
             </label>
             <input
