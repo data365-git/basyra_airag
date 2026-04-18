@@ -60,10 +60,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (missingDates.length > 0) {
       const todayStr = getTodayInTashkent();
 
+      // Assign unique temp sessionNumbers (past the existing max) to avoid
+      // colliding with the unique (training_id, session_number) index. The
+      // resequence pass below renumbers everything to 1..N by date.
+      const existingMax = training.sessions.reduce(
+        (max, s) => (s.sessionNumber > max ? s.sessionNumber : max),
+        0,
+      );
+
       await prisma.session.createMany({
-        data: missingDates.map((dateStr) => ({
+        data: missingDates.map((dateStr, i) => ({
           trainingId: training!.id,
-          sessionNumber: 0, // renumbered immediately below
+          sessionNumber: existingMax + i + 1, // temp, resequenced below
           sessionDate: dateStr,
           sessionTime: training!.scheduleTime,
           status: dateStr < todayStr ? "closed" : "upcoming",
