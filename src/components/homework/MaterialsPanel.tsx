@@ -117,6 +117,43 @@ function LinkPreviewCard({ og, url }: { og: OEmbed; url: string }) {
   );
 }
 
+// ─── Upload error toast (#9 — clickable Railway fix link for R2 errors) ───────
+
+function showUploadError(msg: string) {
+  const isR2 = /r2|not configured|missing.*R2/i.test(msg);
+
+  if (isR2) {
+    toast.custom(
+      (t) => (
+        <div
+          className={cn(
+            "flex items-start gap-3 bg-white border border-red-200 shadow-lg rounded-xl px-4 py-3 text-sm max-w-sm",
+            t.visible ? "opacity-100" : "opacity-0",
+          )}
+          style={{ transition: "opacity 150ms" }}
+        >
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-red-600">Yuklash xatosi</p>
+            <p className="text-xs text-gray-500 mt-0.5 break-all">{msg}</p>
+          </div>
+          <a
+            href="https://railway.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 self-center text-xs font-semibold text-blue-600 hover:text-blue-800 underline whitespace-nowrap"
+            onClick={() => toast.dismiss(t.id)}
+          >
+            Railway&nbsp;→
+          </a>
+        </div>
+      ),
+      { duration: 10_000 },
+    );
+  } else {
+    toast.error(`Yuklash xatosi: ${msg}`);
+  }
+}
+
 // ─── Shimmer row ──────────────────────────────────────────────────────────────
 
 function ShimmerRow() {
@@ -320,7 +357,7 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
     } catch (err) {
       const msg = (err as Error).message || "noma'lum xato";
       console.error("[materials] upload failed:", msg);
-      toast.error(`Yuklash xatosi: ${msg}`);
+      showUploadError(msg);
     } finally {
       setSaving(false);
       setAdding(false);
