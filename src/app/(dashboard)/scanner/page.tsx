@@ -104,7 +104,7 @@ function extractToken(raw: string): string {
 export default function ScannerPage() {
   const canScan = usePermission("scanner", "view");
   const { pendingCount, refreshCount, syncPending } = useOfflineSync();
-  const { isServerOnline, checkNow } = useServerStatus();
+  const { checkNow } = useServerStatus();
   const { t } = useTranslation();
 
   // ── Core state machine ────────────────────────────────────────────────────
@@ -627,7 +627,7 @@ export default function ScannerPage() {
           </div>
         )}
 
-        <ScanResultOverlay result={scanResult} isOffline={!isServerOnline} />
+        <ScanResultOverlay result={scanResult} />
 
         {/* ── Override confirmation sheet ───────────────────────────────── */}
         {(pendingOverride || isConfirming) && (

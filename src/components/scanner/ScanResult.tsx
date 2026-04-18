@@ -55,10 +55,25 @@ function ParticipantAvatar({
 
 interface ScanResultOverlayProps {
   result: ScanResult | null;
-  isOffline?: boolean;
 }
 
-export function ScanResultOverlay({ result, isOffline: _isOffline }: ScanResultOverlayProps) {
+function formatLateDuration(minutesLate: number, t: (key: string, vars?: Record<string, string>) => string): string {
+  const hours = Math.floor(minutesLate / 60);
+  const minutes = minutesLate % 60;
+
+  if (hours > 0 && minutes > 0) {
+    return t("scanner.result.late_duration_hours_minutes", {
+      h: String(hours),
+      m: String(minutes),
+    });
+  }
+  if (hours > 0) {
+    return t("scanner.result.late_duration_hours", { h: String(hours) });
+  }
+  return t("scanner.result.late_duration_minutes", { m: String(minutesLate) });
+}
+
+export function ScanResultOverlay({ result }: ScanResultOverlayProps) {
   const { t } = useTranslation();
 
   if (!result) return null;
@@ -95,7 +110,9 @@ export function ScanResultOverlay({ result, isOffline: _isOffline }: ScanResultO
         {/* Late detail */}
         {isLate && result.minutesLate !== undefined && result.minutesLate > 0 && (
           <p className="text-white/80 text-sm">
-            {t("scanner.result.late_minutes", { n: String(result.minutesLate) })}
+            {t("scanner.result.late_minutes", {
+              duration: formatLateDuration(result.minutesLate, t),
+            })}
           </p>
         )}
       </div>

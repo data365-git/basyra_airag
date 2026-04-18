@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/layout/Header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { usePermission } from "@/hooks/usePermission";
-import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image, File, Pencil, AlertTriangle } from "lucide-react";
+import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image as ImageIcon, File, Pencil, AlertTriangle, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { fmtUzDate, fmtUzDateTime } from "@/lib/dateFormat";
 import { SubmissionTimeline } from "@/components/homework/SubmissionTimeline";
@@ -34,15 +34,49 @@ interface Submission {
 
 
 function FileIcon({ type }: { type: string }) {
-  if (type === "photo")    return <Image    size={13} className="text-blue-400 shrink-0" />;
+  if (type === "photo")    return <ImageIcon size={13} className="text-blue-400 shrink-0" />;
   if (type === "video")    return <Video    size={13} className="text-purple-400 shrink-0" />;
   if (type === "audio" || type === "voice") return <Mic size={13} className="text-green-400 shrink-0" />;
   if (type === "document") return <FileText size={13} className="text-orange-400 shrink-0" />;
   return <File size={13} className="text-gray-400 shrink-0" />;
 }
 
-function FileList({ files }: { files: SubmissionFile[] }) {
+function FileList({
+  files,
+  canManage,
+  hwId,
+  submissionId,
+  onDeleted,
+}: {
+  files: SubmissionFile[];
+  canManage: boolean;
+  hwId: string;
+  submissionId: string;
+  onDeleted: () => void;
+}) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   if (files.length === 0) return null;
+
+  async function deleteFile(file: SubmissionFile) {
+    if (deletingId) return;
+    if (!confirm(`"${file.file_name}" faylini o'chirishni tasdiqlaysizmi?`)) return;
+
+    setDeletingId(file.id);
+    const res = await fetch(`/api/homeworks/${hwId}/submissions/${submissionId}/files/${file.id}`, {
+      method: "DELETE",
+    });
+    setDeletingId(null);
+
+    if (res.ok) {
+      toast.success("Fayl o'chirildi");
+      onDeleted();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Faylni o'chirib bo'lmadi");
+    }
+  }
+
   return (
     <div className="flex flex-wrap gap-1.5 mt-1">
       {files.map((f) => {
@@ -50,9 +84,8 @@ function FileList({ files }: { files: SubmissionFile[] }) {
         const href = (f.storage_url || f.telegram_file_id)
           ? `/api/homework-files/${f.id}/download`
           : null;
-        return href ? (
+        const chip = href ? (
           <a
-            key={f.id}
             href={href}
             target="_blank"
             rel="noopener noreferrer"
@@ -64,13 +97,32 @@ function FileList({ files }: { files: SubmissionFile[] }) {
           </a>
         ) : (
           <span
-            key={f.id}
             className="inline-flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-500 text-xs rounded-lg"
             title="Fayl mavjud emas"
           >
             <FileIcon type={f.file_type} />
             <span className="max-w-[120px] truncate">{f.file_name}</span>
             {f.file_size_bytes && <span className="text-gray-400">{Math.round(f.file_size_bytes / 1024)}KB</span>}
+          </span>
+        );
+
+        return (
+          <span key={f.id} className="inline-flex items-center gap-1">
+            {chip}
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => deleteFile(f)}
+                disabled={deletingId === f.id}
+                className="inline-flex items-center justify-center p-1 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 disabled:opacity-50 transition-colors"
+                title="Faylni o'chirish"
+              >
+                {deletingId === f.id
+                  ? <Loader2 size={12} className="animate-spin" />
+                  : <Trash2 size={12} />
+                }
+              </button>
+            )}
           </span>
         );
       })}
@@ -259,21 +311,22 @@ export default function HomeworkDetailPage() {
   const [lateFilter, setLateFilter] = useState<"all" | "on_time" | "late">("all");
 
   // Fetch homework meta from the training's homework list
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const [hwsRes, subsRes, matsRes] = await Promise.all([
       fetch(`/api/trainings/${trainingId}/homeworks`).then((r) => r.json()),
       fetch(`/api/homeworks/${hwId}/submissions`).then((r) => r.json()),
       fetch(`/api/homeworks/${hwId}/materials`).then((r) => r.json()),
     ]);
-    const meta = Array.isArray(hwsRes) ? hwsRes.find((h: any) => h.id === hwId) : null;
+    const meta = Array.isArray(hwsRes) ? hwsRes.find((h: HomeworkMeta & { id: string }) => h.id === hwId) : null;
     setHw(meta ?? null);
     setSubs(Array.isArray(subsRes) ? subsRes : []);
     setMaterials(Array.isArray(matsRes) ? matsRes : []);
     setLoading(false);
-  }
+  }, [trainingId, hwId]);
 
-  useEffect(() => { load(); }, [hwId]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load(); }, [load]);
 
   if (loading) return (
     <div className="space-y-4">
@@ -325,7 +378,7 @@ export default function HomeworkDetailPage() {
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              {f === "all" ? "Barchasi" : f === "on_time" ? "O'z vaqtida" : "⏰ Kechikkan"}
+              {f === "all" ? "Barchasi" : f === "on_time" ? "O&apos;z vaqtida" : "⏰ Kechikkan"}
             </button>
           ))}
         </div>
@@ -369,9 +422,15 @@ export default function HomeworkDetailPage() {
                   {sub.text && (
                     <p className="text-sm text-gray-700 line-clamp-2">{sub.text}</p>
                   )}
-                  <FileList files={sub.files} />
+                  <FileList
+                    files={sub.files}
+                    canManage={canManage}
+                    hwId={hwId}
+                    submissionId={sub.id}
+                    onDeleted={load}
+                  />
                   {!sub.text && sub.files.length === 0 && (
-                    <span className="text-gray-400 text-xs italic">Bo'sh</span>
+                    <span className="text-gray-400 text-xs italic">Bo&apos;sh</span>
                   )}
                 </Td>
                 <Td className="text-xs text-gray-400 whitespace-nowrap">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/Header";
@@ -13,32 +13,86 @@ import { Select, Input } from "@/components/ui/Input";
 import { formatDate, formatTime } from "@/lib/utils";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
-import { Zap } from "lucide-react";
+import { CheckSquare, Square, Users, Zap } from "lucide-react";
 import toast from "react-hot-toast";
+
+interface SessionTraining {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface SessionDetail {
+  id: string;
+  session_number: number;
+  session_date: string;
+  session_time: string;
+  status: string;
+  training: SessionTraining;
+  records: SessionRecord[];
+}
+
+interface SessionRecord {
+  id: string;
+  session_id: string;
+  participant_id: string;
+  status: string;
+  participant: {
+    id: string;
+    full_name: string;
+    phone?: string | null;
+  };
+  scanned_at: string | null;
+  note: string | null;
+  override_by_name?: string | null;
+  override_at?: string | null;
+}
 
 export default function SessionDetailPage() {
   const { id: trainingId, sessionId } = useParams<{ id: string; sessionId: string }>();
   const { t } = useTranslation();
   const canManage = usePermission("trainings", "edit");
-  const [session, setSession] = useState<any>(null);
-  const [training, setTraining] = useState<any>(null);
-  const [records, setRecords] = useState<any[]>([]);
+  const [session, setSession] = useState<SessionDetail | null>(null);
+  const [training, setTraining] = useState<SessionTraining | null>(null);
+  const [records, setRecords] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingRecord, setEditingRecord] = useState<any>(null);
+  const [editingRecord, setEditingRecord] = useState<SessionRecord | null>(null);
   const [editForm, setEditForm] = useState({ status: "", note: "" });
   const [editLoading, setEditLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchForm, setBatchForm] = useState({ status: "present", note: "" });
+  const [batchLoading, setBatchLoading] = useState(false);
 
-  useEffect(() => { if (sessionId) load(); }, [sessionId]);
-
-  async function load() {
+  const load = useCallback(async () => {
     const data = await fetch(`/api/sessions/${sessionId}`).then((r) => r.json());
     setSession(data);
     setTraining(data.training);
     setRecords(data.records || []);
+    setSelectedIds(new Set());
     setLoading(false);
-  }
+  }, [sessionId]);
 
-  function openEdit(record: any) {
+  useEffect(() => {
+    if (!sessionId) return;
+
+    let active = true;
+
+    void (async () => {
+      const data = await fetch(`/api/sessions/${sessionId}`).then((r) => r.json());
+      if (!active) return;
+      setSession(data);
+      setTraining(data.training);
+      setRecords(data.records || []);
+      setSelectedIds(new Set());
+      setLoading(false);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
+
+  function openEdit(record: SessionRecord) {
     setEditingRecord(record);
     setEditForm({ status: record.status === "pending" ? "present" : record.status, note: record.note || "" });
   }
@@ -75,6 +129,59 @@ export default function SessionDetailPage() {
     load();
   }
 
+  function toggleSelected(participantId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(participantId)) next.delete(participantId);
+      else next.add(participantId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      if (prev.size === selectableRecords.length) return new Set();
+      return new Set(selectableRecords.map((record) => record.participant_id));
+    });
+  }
+
+  async function saveBatchEdit() {
+    if (selectedIds.size === 0) return;
+    setBatchLoading(true);
+
+    const res = await fetch("/api/attendance", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId,
+        participant_ids: [...selectedIds],
+        status: batchForm.status,
+        note: batchForm.note || null,
+      }),
+    });
+
+    setBatchLoading(false);
+
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.success(
+        data.created > 0
+          ? `${data.participant_count} ta ishtirokchi yangilandi (${data.created} ta yangi yozuv yaratildi)`
+          : `${data.participant_count} ta ishtirokchi yangilandi`
+      );
+      setSelectedIds(new Set());
+      setBatchForm((current) => ({ ...current, note: "" }));
+      load();
+      return;
+    }
+
+    const err = await res.json().catch(() => ({}));
+    toast.error(err.error ?? "Batch update failed");
+  }
+
+  const selectableRecords = records.filter((record) => record.participant_id);
+  const allSelected = selectableRecords.length > 0 && selectedIds.size === selectableRecords.length;
+
   const stats = {
     present: records.filter((r) => r.status === "present").length,
     late:    records.filter((r) => r.status === "late").length,
@@ -89,7 +196,7 @@ export default function SessionDetailPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={t("trainings.session_number", { n: session.session_number })}
+        title={t("trainings.session_number", { n: String(session.session_number) })}
         subtitle={`${training?.name} · ${formatDate(session.session_date)} · ${formatTime(session.session_time)}`}
         back
         backHref={`/trainings/${trainingId}`}
@@ -123,9 +230,54 @@ export default function SessionDetailPage() {
 
       {/* Attendance list */}
       <Card padding="none">
+        {canManage && records.length > 0 && (
+          <div className="border-b border-gray-100 px-4 py-4 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Users size={16} className="text-blue-500" />
+                {selectedIds.size > 0
+                  ? `${selectedIds.size} ta ishtirokchi tanlangan`
+                  : "Batch yangilash uchun ishtirokchilarni tanlang"}
+              </div>
+              <button
+                onClick={toggleSelectAll}
+                className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+              >
+                {allSelected ? <CheckSquare size={14} /> : <Square size={14} />}
+                {allSelected ? "Tanlovni bekor qilish" : "Barchasini tanlash"}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto] gap-3 items-end">
+              <Select
+                label={t("common.status")}
+                value={batchForm.status}
+                onChange={(e) => setBatchForm((form) => ({ ...form, status: e.target.value }))}
+              >
+                <option value="present">{t("common.status.present")}</option>
+                <option value="late">{t("common.status.late")}</option>
+                <option value="absent">{t("common.status.absent")}</option>
+                <option value="excused">{t("common.status.excused")}</option>
+              </Select>
+              <Input
+                label={t("sessions.note_label")}
+                value={batchForm.note}
+                onChange={(e) => setBatchForm((form) => ({ ...form, note: e.target.value }))}
+                placeholder="Batch override reason..."
+              />
+              <Button
+                onClick={saveBatchEdit}
+                loading={batchLoading}
+                disabled={selectedIds.size === 0}
+              >
+                Batch saqlash
+              </Button>
+            </div>
+          </div>
+        )}
         <Table>
           <Thead>
             <tr>
+              {canManage && <Th className="w-10">#</Th>}
               <Th>{t("participants.title")}</Th>
               <Th>{t("common.status")}</Th>
               <Th>{t("sessions.scanned_at")}</Th>
@@ -135,13 +287,27 @@ export default function SessionDetailPage() {
           </Thead>
           <Tbody>
             {records.length === 0
-              ? <EmptyRow cols={5} message={t("sessions.no_records")} />
+              ? <EmptyRow cols={canManage ? 6 : 5} message={t("sessions.no_records")} />
               : records.map((r) => (
               <Tr key={r.id}>
+                {canManage && (
+                  <Td>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(r.participant_id)}
+                      onChange={() => toggleSelected(r.participant_id)}
+                      className="rounded border-gray-300"
+                    />
+                  </Td>
+                )}
                 <Td className="font-medium">{r.participant?.full_name}</Td>
                 <Td><AttendanceBadge status={r.status} /></Td>
                 <Td className="text-gray-500 text-xs">
-                  {r.scanned_at ? formatDate(r.scanned_at, "h:mm a") : "—"}
+                  {r.scanned_at
+                    ? formatDate(r.scanned_at, "h:mm a")
+                    : r.override_at
+                    ? formatDate(r.override_at, "h:mm a")
+                    : "—"}
                 </Td>
                 <Td className="text-xs text-gray-500">{r.note || "—"}</Td>
                 {canManage && (

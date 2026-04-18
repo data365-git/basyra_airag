@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
+import { PORTAL_COOKIE, verifyPortalJWT } from "@/lib/portalAuth";
 
 const PUBLIC_PATHS = ["/login", "/api/auth", "/api/health", "/portal", "/api/portal", "/api/telegram/webhook", "/api/telegram/set-webhook", "/api/portal/telegram-login"];
 
@@ -25,6 +26,19 @@ export async function proxy(request: NextRequest) {
 
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const payload = token ? await verifyJWT(token) : null;
+
+  // Portal auth is valid for API requests coming from the participant portal /
+  // Telegram Mini App. Those requests use either a bearer token or the portal
+  // cookie, and still rely on route-level auth for final authorization.
+  if (!payload && pathname.startsWith("/api/")) {
+    const auth = request.headers.get("authorization") ?? request.headers.get("Authorization");
+    const bearer = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
+    const portalToken = bearer ?? request.cookies.get(PORTAL_COOKIE)?.value ?? null;
+    const portalPayload = portalToken ? await verifyPortalJWT(portalToken) : null;
+    if (portalPayload) {
+      return NextResponse.next();
+    }
+  }
 
   if (!payload) {
     // API routes → 401 JSON
