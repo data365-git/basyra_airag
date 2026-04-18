@@ -176,6 +176,7 @@ function HomeworkCard({
   const [cancelling,  setCancelling]  = useState(false);
   const [materials,   setMaterials]   = useState<PortalMaterial[] | null>(null);
   const [matLoading,  setMatLoading]  = useState(false);
+  const [sending,     setSending]     = useState<string | null>(null); // materialId being sent
 
   const hasSubmitted = !!hw.submission;
   const hasGrade     = !!hw.submission?.grade;
@@ -196,6 +197,33 @@ function HomeworkCard({
   function toggle() {
     if (!open) loadMaterials();
     setOpen((o) => !o);
+  }
+
+  async function sendViaBot(materialId: string) {
+    if (sending) return;
+    setSending(materialId);
+    try {
+      const res  = await fetch(`/api/portal/materials/${materialId}/send`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success("Telegram botga yuborildi 📨");
+      } else {
+        toast.error(data.error ?? "Yuborishda xatolik");
+      }
+    } catch {
+      toast.error("Tarmoq xatosi");
+    } finally {
+      setSending(null);
+    }
+  }
+
+  function openLink(url: string) {
+    const twa = (window as any).Telegram?.WebApp;
+    if (twa?.openLink) {
+      twa.openLink(url);
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   }
 
   async function cancelSubmission() {
@@ -359,8 +387,9 @@ function HomeworkCard({
                   );
                 }
 
-                // ── File download ─────────────────────────────────────────
+                // ── File — send via bot ───────────────────────────────────
                 if (fileHref) {
+                  const isSending = sending === m.id;
                   return (
                     <div key={m.id} className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 rounded-xl">
                       <MatKindIcon kind={m.kind} />
@@ -372,13 +401,17 @@ function HomeworkCard({
                           </p>
                         )}
                       </div>
-                      <a
-                        href={fileHref}
-                        download
-                        className="shrink-0 flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                      <button
+                        onClick={() => sendViaBot(m.id)}
+                        disabled={!!sending}
+                        className="shrink-0 flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Yuklab olish
-                      </a>
+                        {isSending
+                          ? <Loader2 size={11} className="animate-spin" />
+                          : "📨"
+                        }
+                        {isSending ? "Yuklanmoqda…" : "Botga yuborish"}
+                      </button>
                     </div>
                   );
                 }
@@ -389,14 +422,12 @@ function HomeworkCard({
                     <div key={m.id} className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 rounded-xl">
                       <MatKindIcon kind={m.kind} />
                       <span className="text-xs text-gray-700 font-medium truncate flex-1">{m.title}</span>
-                      <a
-                        href={linkHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => openLink(linkHref)}
                         className="shrink-0 flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
                       >
                         Ochish
-                      </a>
+                      </button>
                     </div>
                   );
                 }

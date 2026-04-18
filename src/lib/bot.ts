@@ -516,10 +516,34 @@ function registerHandlers(b: Bot) {
     }
 
     // ── Rule 4: look up by canonical E.164 phone ──────────────────────────
-    const participant = await prisma.participant.findFirst({
+    // Step 1 — fast exact match
+    let participant = await prisma.participant.findFirst({
       where:  { phone },
       select: { id: true, fullName: true, isBlocked: true },
     });
+
+    // Step 2 — fuzzy fallback: digits-only comparison (handles DB phones stored
+    // without "+", with spaces, local "0…" format, etc.). Self-heals on match
+    // by writing the canonical E.164 back to DB so next lookup is fast.
+    if (!participant) {
+      const digitsOnly = phone.replace(/\D/g, ""); // e.g. "998901234567"
+      const candidates = await prisma.participant.findMany({
+        where:  { phone: { not: null } },
+        select: { id: true, fullName: true, isBlocked: true, phone: true },
+      });
+      const match = candidates.find(
+        (p) => p.phone!.replace(/\D/g, "") === digitsOnly,
+      ) ?? null;
+      if (match) {
+        participant = match;
+        // Self-heal: normalise the stored phone to canonical E.164 so future
+        // exact-match queries succeed. Non-critical — never block auth on this.
+        await prisma.participant.update({
+          where: { id: match.id },
+          data:  { phone },
+        }).catch(() => null);
+      }
+    }
 
     if (!participant) {
       await logAuth(ctx, "not_found", { phone });
