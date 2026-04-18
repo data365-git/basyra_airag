@@ -4,8 +4,8 @@ import { getPortalUser } from "@/lib/portalAuth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const portalUser = await getPortalUser();
+export async function GET(req: Request) {
+  const portalUser = await getPortalUser(req);
   if (!portalUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const participant = await prisma.participant.findUnique({

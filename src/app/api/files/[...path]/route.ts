@@ -57,7 +57,7 @@ export async function GET(
   const jar    = await cookies();
   const token  = jar.get(COOKIE_NAME)?.value;
   const staff  = token ? verifyJWT(token) : null;
-  const portal = staff ? null : await getPortalUser();
+  const portal = staff ? null : await getPortalUser(_req);
 
   if (!staff && !portal) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

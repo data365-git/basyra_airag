@@ -69,6 +69,23 @@ interface ScorecardData {
   homeworks:         HomeworkItem[];
 }
 
+// ─── Portal fetch helper ──────────────────────────────────────────────────────
+// Attaches the JWT from localStorage as an Authorization header so requests
+// work inside Telegram Mini App's webview, which drops httpOnly cookies.
+
+function portalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const token = typeof window !== "undefined"
+    ? localStorage.getItem("portal_token")
+    : null;
+  return fetch(url, {
+    ...init,
+    headers: {
+      ...(init.headers as Record<string, string> | undefined),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function scoreColor(v: number) {
@@ -188,7 +205,7 @@ function HomeworkCard({
     setMatLoading(true);
     setMatError(false);
     try {
-      const res = await fetch(`/api/homeworks/${hw.id}/materials`);
+      const res = await portalFetch(`/api/homeworks/${hw.id}/materials`);
       if (res.ok) setMaterials(await res.json());
       else { setMaterials([]); setMatError(true); }
     } catch {
@@ -207,7 +224,7 @@ function HomeworkCard({
     if (sending) return;
     setSending(materialId);
     try {
-      const res  = await fetch(`/api/portal/materials/${materialId}/send`, { method: "POST" });
+      const res  = await portalFetch(`/api/portal/materials/${materialId}/send`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success("Telegram botga yuborildi 📨");
@@ -234,7 +251,7 @@ function HomeworkCard({
     if (!confirm("Topshiriqni bekor qilishni xohlaysizmi?")) return;
     setCancelling(true);
     try {
-      const res = await fetch(`/api/portal/homeworks/${hw.id}/submission`, { method: "DELETE" });
+      const res = await portalFetch(`/api/portal/homeworks/${hw.id}/submission`, { method: "DELETE" });
       if (res.ok) {
         onUpdate();
       } else {
@@ -552,7 +569,7 @@ function TrainingScorecard({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/portal/scorecard/${training.id}`);
+      const res = await portalFetch(`/api/portal/scorecard/${training.id}`);
       if (res.ok) setSc(await res.json());
     } finally {
       setLoading(false);
@@ -656,7 +673,10 @@ export default function PortalMePage() {
             router.replace("/portal/login");
             return;
           }
-          // Cookie set — remove token from URL so refresh doesn't reuse it
+          // Persist JWT for Authorization-header auth (Telegram Mini App)
+          const loginData = await tokenRes.json().catch(() => ({}));
+          if (loginData.token) localStorage.setItem("portal_token", loginData.token);
+          // Cookie also set — remove token from URL so refresh doesn't reuse it
           window.history.replaceState({}, "", "/portal/me");
         } catch {
           router.replace("/portal/login");
@@ -664,7 +684,7 @@ export default function PortalMePage() {
         }
       }
 
-      const r = await fetch("/api/portal/me");
+      const r = await portalFetch("/api/portal/me");
 
       if (r.status !== 401) {
         const data = await r.json().catch(() => null);
@@ -690,8 +710,11 @@ export default function PortalMePage() {
             body:    JSON.stringify({ initData: twa.initData ?? "" }),
           });
           if (authRes.ok) {
-            // Cookie set — retry the /me request
-            const r2 = await fetch("/api/portal/me");
+            // Persist JWT for Authorization-header auth
+            const authData = await authRes.json().catch(() => ({}));
+            if (authData.token) localStorage.setItem("portal_token", authData.token);
+            // Cookie also set — retry the /me request
+            const r2 = await portalFetch("/api/portal/me");
             const data = await r2.json().catch(() => null);
             if (data) {
               setMe(data);
@@ -711,7 +734,8 @@ export default function PortalMePage() {
   }, [router]);
 
   async function logout() {
-    await fetch("/api/portal/logout", { method: "POST" });
+    localStorage.removeItem("portal_token");
+    await portalFetch("/api/portal/logout", { method: "POST" });
     toast.success("Chiqildi");
     router.push("/portal/login");
   }

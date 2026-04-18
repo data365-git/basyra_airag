@@ -35,7 +35,28 @@ export async function verifyPortalJWT(token: string): Promise<PortalJWTPayload |
   }
 }
 
-export async function getPortalUser(): Promise<PortalJWTPayload | null> {
+/**
+ * Resolve the authenticated portal user.
+ *
+ * Checks two sources in order:
+ *  1. `Authorization: Bearer <jwt>` header — used by Telegram Mini App webview,
+ *     which drops httpOnly cookies in cross-origin contexts.
+ *  2. The `attendtrack_portal` httpOnly cookie — used by regular browsers.
+ *
+ * Pass the incoming `Request` (or `NextRequest`) to enable header auth.
+ * Omit it (legacy call sites) and only the cookie is checked.
+ */
+export async function getPortalUser(req?: Request): Promise<PortalJWTPayload | null> {
+  // 1. Authorization header — takes priority (Telegram Mini App)
+  if (req) {
+    const auth = req.headers.get("Authorization") ?? req.headers.get("authorization");
+    if (auth?.startsWith("Bearer ")) {
+      const result = await verifyPortalJWT(auth.slice(7));
+      if (result) return result;
+    }
+  }
+
+  // 2. Cookie fallback (standard browser)
   const cookieStore = await cookies();
   const token = cookieStore.get(PORTAL_COOKIE)?.value;
   if (!token) return null;

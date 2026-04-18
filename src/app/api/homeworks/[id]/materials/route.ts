@@ -47,12 +47,12 @@ function serializeMaterial(m: {
 
 // GET — list materials (staff + enrolled portal participant)
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: homeworkId } = await params;
   const staff  = await getStaffUser();
-  const portal = await getPortalUser();
+  const portal = await getPortalUser(req);
   if (!staff && !portal) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const materials = await prisma.homeworkMaterial.findMany({

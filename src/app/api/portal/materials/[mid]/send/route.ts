@@ -26,7 +26,7 @@ export async function POST(
   { params }: { params: Promise<{ mid: string }> },
 ) {
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const portal = await getPortalUser();
+  const portal = await getPortalUser(_req);
   if (!portal) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { mid } = await params;

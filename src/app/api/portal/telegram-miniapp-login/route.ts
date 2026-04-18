@@ -92,8 +92,11 @@ export async function POST(req: NextRequest) {
     maxAge:   60 * 60 * 24 * 30,
   });
 
+  // Return token in body so Mini App can store in localStorage and use
+  // as Authorization header (cookies are dropped in cross-origin webview).
   return NextResponse.json({
-    ok:   true,
-    name: link.participant.fullName,
+    ok:    true,
+    name:  link.participant.fullName,
+    token,
   });
 }

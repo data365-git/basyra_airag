@@ -53,5 +53,8 @@ export async function POST(req: NextRequest) {
     maxAge:   60 * 60 * 24 * 30,
   });
 
-  return NextResponse.json({ ok: true, name: record.participant.fullName });
+  // Also return the JWT in the response body so the Mini App webview can store
+  // it in localStorage and send it as an Authorization header on future requests
+  // (Telegram's embedded webview drops httpOnly cookies in cross-origin contexts).
+  return NextResponse.json({ ok: true, name: record.participant.fullName, token: jwt });
 }

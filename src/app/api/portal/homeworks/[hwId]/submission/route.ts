@@ -7,10 +7,10 @@ import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ hwId: string }> }
 ) {
-  const user = await getPortalUser();
+  const user = await getPortalUser(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { hwId } = await params;
