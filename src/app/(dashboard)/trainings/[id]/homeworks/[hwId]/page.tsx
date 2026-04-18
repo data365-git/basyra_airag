@@ -6,10 +6,11 @@ import { PageHeader } from "@/components/layout/Header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { usePermission } from "@/hooks/usePermission";
-import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image, File, Pencil, Link2, BookOpen, AlertTriangle, Trash2, Plus } from "lucide-react";
+import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image, File, Pencil, AlertTriangle } from "lucide-react";
 import toast from "react-hot-toast";
 import { fmtUzDate, fmtUzDateTime } from "@/lib/dateFormat";
 import { SubmissionTimeline } from "@/components/homework/SubmissionTimeline";
+import { MaterialsPanel, type Material } from "@/components/homework/MaterialsPanel";
 
 interface SubmissionFile {
   id:               string;
@@ -31,26 +32,6 @@ interface Submission {
   files:        SubmissionFile[];
 }
 
-interface Material {
-  id:             string;
-  kind:           "PDF" | "VIDEO" | "AUDIO" | "IMAGE" | "DOCUMENT" | "LINK";
-  title:          string;
-  description:    string | null;
-  storage_url:    string | null;
-  file_name:      string | null;
-  file_size_bytes: number | null;
-  url:            string | null;
-  sort_order:     number;
-}
-
-function MaterialKindIcon({ kind }: { kind: Material["kind"] }) {
-  if (kind === "LINK")     return <Link2   size={14} className="text-blue-500 shrink-0" />;
-  if (kind === "VIDEO")    return <Video   size={14} className="text-purple-500 shrink-0" />;
-  if (kind === "AUDIO")    return <Mic     size={14} className="text-green-500 shrink-0" />;
-  if (kind === "IMAGE")    return <Image   size={14} className="text-pink-500 shrink-0" />;
-  if (kind === "PDF")      return <FileText size={14} className="text-red-500 shrink-0" />;
-  return <File size={14} className="text-gray-400 shrink-0" />;
-}
 
 function FileIcon({ type }: { type: string }) {
   if (type === "photo")    return <Image    size={13} className="text-blue-400 shrink-0" />;
@@ -276,11 +257,6 @@ export default function HomeworkDetailPage() {
   const [loading,   setLoading]   = useState(true);
   const [timeline,  setTimeline]  = useState<{ subId: string; name: string } | null>(null);
   const [lateFilter, setLateFilter] = useState<"all" | "on_time" | "late">("all");
-  const [matPanel,  setMatPanel]  = useState(false);
-  const [matAdding, setMatAdding] = useState(false);
-  const [matForm,   setMatForm]   = useState({ kind: "LINK" as "LINK" | "FILE", title: "", description: "", url: "" });
-  const [matFile,   setMatFile]   = useState<File | null>(null);
-  const [matSaving, setMatSaving] = useState(false);
 
   // Fetch homework meta from the training's homework list
   async function load() {
@@ -437,175 +413,14 @@ export default function HomeworkDetailPage() {
 
       {/* Materials panel */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <BookOpen size={16} className="text-gray-400" />
-              O'quv materiallari
-            </CardTitle>
-            {canManage && (
-              <button
-                onClick={() => setMatPanel((p) => !p)}
-                className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors"
-              >
-                <Plus size={13} />
-                Qo'shish
-              </button>
-            )}
-          </div>
-        </CardHeader>
-
-        {/* Add material form */}
-        {matPanel && canManage && (
-          <div className="px-4 pb-4 border-b border-gray-100">
-            <div className="flex flex-col gap-2 p-3 bg-gray-50 rounded-xl">
-              {/* Kind selector */}
-              <div className="flex gap-1 flex-wrap">
-                {(["LINK", "FILE"] as const).map((k) => (
-                  <button
-                    key={k}
-                    onClick={() => setMatForm((f) => ({ ...f, kind: k }))}
-                    className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-                      matForm.kind === k
-                        ? "bg-blue-600 text-white"
-                        : "bg-white border border-gray-200 text-gray-600 hover:border-blue-300"
-                    }`}
-                  >
-                    {k === "LINK" ? "🔗 Havola" : "📁 Fayl"}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="text"
-                value={matForm.title}
-                onChange={(e) => setMatForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="Sarlavha"
-                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <input
-                type="text"
-                value={matForm.description}
-                onChange={(e) => setMatForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="Tavsif (ixtiyoriy)"
-                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {matForm.kind === "LINK" ? (
-                <input
-                  type="url"
-                  value={matForm.url}
-                  onChange={(e) => setMatForm((f) => ({ ...f, url: e.target.value }))}
-                  placeholder="https://..."
-                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <input
-                  type="file"
-                  onChange={(e) => setMatFile(e.target.files?.[0] ?? null)}
-                  className="text-sm text-gray-600"
-                />
-              )}
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    if (!matForm.title.trim()) { return; }
-                    setMatSaving(true);
-                    try {
-                      if (matForm.kind === "LINK") {
-                        await fetch(`/api/homeworks/${hwId}/materials`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            kind: "LINK",
-                            title: matForm.title.trim(),
-                            description: matForm.description.trim() || null,
-                            url: matForm.url.trim(),
-                          }),
-                        });
-                      } else if (matFile) {
-                        const fd = new FormData();
-                        fd.append("file", matFile);
-                        fd.append("title", matForm.title.trim());
-                        if (matForm.description.trim()) fd.append("description", matForm.description.trim());
-                        await fetch(`/api/homeworks/${hwId}/materials`, { method: "POST", body: fd });
-                      }
-                      setMatForm({ kind: "LINK", title: "", description: "", url: "" });
-                      setMatFile(null);
-                      setMatPanel(false);
-                      load();
-                    } finally {
-                      setMatSaving(false);
-                    }
-                  }}
-                  disabled={matSaving}
-                  className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                >
-                  {matSaving ? <Loader2 size={12} className="animate-spin" /> : "Saqlash"}
-                </button>
-                <button
-                  onClick={() => { setMatPanel(false); setMatForm({ kind: "LINK", title: "", description: "", url: "" }); setMatFile(null); }}
-                  className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700"
-                >
-                  Bekor
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Material list */}
-        {materials.length === 0 ? (
-          <div className="px-4 pb-4 text-sm text-gray-400 italic">Materiallar yo'q</div>
-        ) : (
-          <div className="px-4 pb-4 space-y-2">
-            {materials.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 group">
-                <MaterialKindIcon kind={m.kind} />
-                <div className="flex-1 min-w-0">
-                  {m.kind === "LINK" && m.url ? (
-                    <a
-                      href={m.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-blue-700 hover:underline truncate block"
-                    >
-                      {m.title}
-                    </a>
-                  ) : m.storage_url ? (
-                    <a
-                      href={m.storage_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-gray-800 hover:text-blue-700 truncate block"
-                    >
-                      {m.title}
-                    </a>
-                  ) : (
-                    <span className="text-sm font-medium text-gray-800 truncate block">{m.title}</span>
-                  )}
-                  {m.description && (
-                    <p className="text-xs text-gray-400 truncate">{m.description}</p>
-                  )}
-                </div>
-                {m.file_size_bytes && (
-                  <span className="text-xs text-gray-400 shrink-0">{Math.round(m.file_size_bytes / 1024)}KB</span>
-                )}
-                {canManage && (
-                  <button
-                    onClick={async () => {
-                      if (!confirm("Materialni o'chirishni tasdiqlaysizmi?")) return;
-                      await fetch(`/api/homeworks/${hwId}/materials/${m.id}`, { method: "DELETE" });
-                      load();
-                    }}
-                    className="shrink-0 p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                    title="O'chirish"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="p-5">
+          <MaterialsPanel
+            hwId={hwId}
+            materials={materials}
+            canManage={canManage}
+            onUpdate={load}
+          />
+        </div>
       </Card>
 
       {/* Submission activity timeline drawer */}
