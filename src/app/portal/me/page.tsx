@@ -176,6 +176,7 @@ function HomeworkCard({
   const [cancelling,  setCancelling]  = useState(false);
   const [materials,   setMaterials]   = useState<PortalMaterial[] | null>(null);
   const [matLoading,  setMatLoading]  = useState(false);
+  const [matError,    setMatError]    = useState(false);
   const [sending,     setSending]     = useState<string | null>(null); // materialId being sent
 
   const hasSubmitted = !!hw.submission;
@@ -185,10 +186,13 @@ function HomeworkCard({
   async function loadMaterials() {
     if (materials !== null) return; // already fetched
     setMatLoading(true);
+    setMatError(false);
     try {
       const res = await fetch(`/api/homeworks/${hw.id}/materials`);
       if (res.ok) setMaterials(await res.json());
-      else setMaterials([]);
+      else { setMaterials([]); setMatError(true); }
+    } catch {
+      setMaterials([]); setMatError(true);
     } finally {
       setMatLoading(false);
     }
@@ -355,6 +359,12 @@ function HomeworkCard({
             <div className="flex justify-center py-2">
               <Loader2 size={14} className="animate-spin text-gray-400" />
             </div>
+          )}
+          {!matLoading && matError && (
+            <p className="text-xs text-red-400 px-1">Materiallarni yuklashda xatolik</p>
+          )}
+          {!matLoading && !matError && materials && materials.length === 0 && (
+            <p className="text-xs text-gray-400 italic px-1">Materiallar qo&apos;shilmagan</p>
           )}
           {!matLoading && materials && materials.length > 0 && (
             <div className="space-y-1.5">

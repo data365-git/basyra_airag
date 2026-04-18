@@ -109,25 +109,37 @@ export async function POST(
     const key        = `materials/${homeworkId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const buffer     = await file.arrayBuffer();
 
-    const storageUrl = await uploadBufferToLocal(buffer, key, mime);
-    if (!storageUrl) {
-      return NextResponse.json({ error: "Upload failed — could not write file to storage" }, { status: 500 });
-    }
-
+    // Save DB record immediately — decoupled from upload so the record always
+    // exists even if the file write fails. storageUrl is backfilled async.
     const mat = await prisma.homeworkMaterial.create({
       data: {
         homeworkId,
         kind,
         title,
-        description:  desc?.trim() || null,
-        storageUrl,
-        fileName:     file.name,
+        description:   desc?.trim() || null,
+        storageUrl:    null,          // filled once upload succeeds
+        fileName:      file.name,
         fileSizeBytes: file.size,
-        mimeType:     mime,
-        sortOrder:    sortStr ? Number(sortStr) : 0,
-        createdById:  user.sub,
+        mimeType:      mime,
+        sortOrder:     sortStr ? Number(sortStr) : 0,
+        createdById:   user.sub,
       },
     });
+
+    // Upload in the background — non-blocking
+    void uploadBufferToLocal(buffer, key, mime)
+      .then(async (url) => {
+        if (url) {
+          await prisma.homeworkMaterial.update({
+            where: { id: mat.id },
+            data:  { storageUrl: url },
+          });
+        } else {
+          console.error("[materials] upload returned null for key:", key);
+        }
+      })
+      .catch((err) => console.error("[materials] background upload failed:", err));
+
     return NextResponse.json(serializeMaterial(mat), { status: 201 });
   }
 
