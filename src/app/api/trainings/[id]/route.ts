@@ -5,6 +5,7 @@ import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
 import { generateSessionDates } from "@/lib/utils";
 import { handlePrismaError } from "@/lib/prismaError";
+import { getTodayInTashkent } from "@/lib/sessionWindow";
 
 const PatchTrainingSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -34,7 +35,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params;
 
-    const training = await prisma.training.findUnique({
+    let training = await prisma.training.findUnique({
       where: { id },
       include: {
         sessions: { orderBy: { sessionNumber: "asc" } },
@@ -47,6 +48,56 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     });
 
     if (!training) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const expectedDates = generateSessionDates(
+      training.startDate.toISOString().slice(0, 10),
+      training.endDate.toISOString().slice(0, 10),
+      training.scheduleDays
+    );
+    const existingByDate = new Map(training.sessions.map((session) => [session.sessionDate, session]));
+    const missingDates = expectedDates.filter((date) => !existingByDate.has(date));
+
+    if (missingDates.length > 0) {
+      const todayStr = getTodayInTashkent();
+
+      await prisma.session.createMany({
+        data: missingDates.map((dateStr) => ({
+          trainingId: training!.id,
+          sessionNumber: 0, // renumbered immediately below
+          sessionDate: dateStr,
+          sessionTime: training!.scheduleTime,
+          status: dateStr < todayStr ? "closed" : "upcoming",
+        })),
+      });
+
+      const resequenced = await prisma.session.findMany({
+        where: { trainingId: id },
+        orderBy: [{ sessionDate: "asc" }, { createdAt: "asc" }],
+        select: { id: true },
+      });
+
+      await prisma.$transaction(
+        resequenced.map((session, index) =>
+          prisma.session.update({
+            where: { id: session.id },
+            data: { sessionNumber: index + 1 },
+          })
+        )
+      );
+
+      training = await prisma.training.findUnique({
+        where: { id },
+        include: {
+          sessions: { orderBy: { sessionNumber: "asc" } },
+          trainingParticipants: {
+            include: {
+              participant: { select: { id: true, fullName: true, phone: true, email: true, qrToken: true } },
+            },
+          },
+        },
+      });
+      if (!training) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     return NextResponse.json({
       id: training.id,
