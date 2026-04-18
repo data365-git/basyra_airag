@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
 import { cookies } from "next/headers";
-import { deleteR2ObjectByPublicUrl } from "@/lib/r2Upload";
+import { deleteLocalFile } from "@/lib/localUpload";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +59,7 @@ export async function DELETE(
   if (!mat) return new NextResponse(null, { status: 204 });
 
   await prisma.homeworkMaterial.delete({ where: { id: mid } });
-  if (mat.storageUrl) void deleteR2ObjectByPublicUrl(mat.storageUrl);
+  if (mat.storageUrl) void deleteLocalFile(mat.storageUrl);
 
   return new NextResponse(null, { status: 204 });
 }

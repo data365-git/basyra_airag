@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma";
 import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { getPortalUser } from "@/lib/portalAuth";
-import { uploadBufferToR2 } from "@/lib/r2Upload";
+import { uploadBufferToLocal } from "@/lib/localUpload";
 import { HomeworkMaterialKind } from "@prisma/client";
 
 export const dynamic    = "force-dynamic";
@@ -109,16 +109,9 @@ export async function POST(
     const key        = `materials/${homeworkId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const buffer     = await file.arrayBuffer();
 
-    const storageUrl = await uploadBufferToR2(buffer, key, mime);
+    const storageUrl = await uploadBufferToLocal(buffer, key, mime);
     if (!storageUrl) {
-      const missing = [
-        "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
-        "R2_BUCKET_NAME", "R2_PUBLIC_URL",
-      ].filter((k) => !process.env[k]);
-      return NextResponse.json(
-        { error: missing.length ? `R2 not configured — missing: ${missing.join(", ")}` : "R2 upload failed" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "Upload failed — could not write file to storage" }, { status: 500 });
     }
 
     const mat = await prisma.homeworkMaterial.create({

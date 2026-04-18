@@ -65,7 +65,7 @@ export function validateEnv(): void {
   }
 
   if (missing.length === R2_KEYS.length) {
-    console.warn("[env] ⚠  R2 not configured — file uploads will be disabled");
+    console.log("[env] ℹ  R2 not configured — using local volume storage");
   } else {
     console.log(`[env] ✓  R2 OK  bucket=${process.env.R2_BUCKET_NAME}`);
   }
