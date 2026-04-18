@@ -302,14 +302,25 @@ export function MaterialsPanel({ hwId, materials, canManage, onUpdate }: Props) 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
         };
-        xhr.onload  = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(xhr.responseText));
-        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) { resolve(); return; }
+          // Try to pull the `error` field out of a JSON response body
+          try {
+            const body = JSON.parse(xhr.responseText);
+            reject(new Error(body.error ?? xhr.responseText ?? `HTTP ${xhr.status}`));
+          } catch {
+            reject(new Error(xhr.responseText || `HTTP ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Network error — check file size / proxy limits"));
         xhr.send(fd);
       });
       toast.success("Material qo'shildi");
       onUpdate();
-    } catch {
-      toast.error("Xato yuz berdi");
+    } catch (err) {
+      const msg = (err as Error).message || "noma'lum xato";
+      console.error("[materials] upload failed:", msg);
+      toast.error(`Yuklash xatosi: ${msg}`);
     } finally {
       setSaving(false);
       setAdding(false);

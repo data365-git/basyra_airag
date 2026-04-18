@@ -6,7 +6,9 @@ import { getPortalUser } from "@/lib/portalAuth";
 import { uploadBufferToR2 } from "@/lib/r2Upload";
 import { HomeworkMaterialKind } from "@prisma/client";
 
-export const dynamic = "force-dynamic";
+export const dynamic    = "force-dynamic";
+export const runtime    = "nodejs";   // multipart body > 4 MB fails on edge runtime
+export const maxDuration = 60;        // allow slow uploads on Railway
 
 async function getStaffUser() {
   const jar   = await cookies();
@@ -108,7 +110,16 @@ export async function POST(
     const buffer     = await file.arrayBuffer();
 
     const storageUrl = await uploadBufferToR2(buffer, key, mime);
-    if (!storageUrl) return NextResponse.json({ error: "R2 upload failed" }, { status: 500 });
+    if (!storageUrl) {
+      const missing = [
+        "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+        "R2_BUCKET_NAME", "R2_PUBLIC_URL",
+      ].filter((k) => !process.env[k]);
+      return NextResponse.json(
+        { error: missing.length ? `R2 not configured — missing: ${missing.join(", ")}` : "R2 upload failed" },
+        { status: 500 },
+      );
+    }
 
     const mat = await prisma.homeworkMaterial.create({
       data: {
