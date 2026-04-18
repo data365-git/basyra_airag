@@ -34,17 +34,19 @@ export async function GET(
 
   return NextResponse.json(
     subs.map((s) => ({
-      id:            s.id,
-      participant:   { id: s.participant.id, full_name: s.participant.fullName },
-      text:          s.text,
-      submitted_at:  s.submittedAt,
+      id:           s.id,
+      participant:  { id: s.participant.id, full_name: s.participant.fullName },
+      text:         s.text,
+      submitted_at: s.submittedAt,
+      is_late:      s.isLate,
+      late_by_days: s.lateByDays,
       grade: s.grade ? { score: s.grade.score, feedback: s.grade.feedback, graded_at: s.grade.gradedAt } : null,
       files: s.files.map((f) => ({
-        id:             f.id,
-        file_name:      f.fileName,
-        file_type:      f.fileType,
-        file_size_bytes: f.fileSizeBytes,
-        storage_url:    f.storageUrl,
+        id:               f.id,
+        file_name:        f.fileName,
+        file_type:        f.fileType,
+        file_size_bytes:  f.fileSizeBytes,
+        storage_url:      f.storageUrl,
         telegram_file_id: f.telegramFileId,
       })),
     }))

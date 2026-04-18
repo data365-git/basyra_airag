@@ -69,6 +69,34 @@ export async function uploadTelegramFileToR2(homeworkFileId: string): Promise<vo
 }
 
 /**
+ * Upload a raw buffer directly to R2 under the given key.
+ * Returns the public URL or null on failure.
+ */
+export async function uploadBufferToR2(
+  buffer:      ArrayBuffer | Uint8Array,
+  key:         string,
+  contentType: string,
+): Promise<string | null> {
+  try {
+    if (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID ||
+        !process.env.R2_SECRET_ACCESS_KEY || !process.env.R2_BUCKET_NAME ||
+        !process.env.R2_PUBLIC_URL) return null;
+
+    const client = getR2Client();
+    await client.send(new PutObjectCommand({
+      Bucket:      R2_BUCKET(),
+      Key:         key,
+      Body:        buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer),
+      ContentType: contentType,
+    }));
+    return `${R2_PUBLIC_URL()}/${key}`;
+  } catch (err) {
+    console.error("[r2Upload] uploadBufferToR2 failed:", err);
+    return null;
+  }
+}
+
+/**
  * Delete an R2 object by its public URL. Used when cleaning up orphaned files
  * after a submission is deleted.
  */

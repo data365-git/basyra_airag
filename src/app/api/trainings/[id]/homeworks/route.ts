@@ -27,7 +27,7 @@ export async function GET(
     include: {
       _count: { select: { submissions: true } },
       submissions: {
-        select: { grade: { select: { score: true } } },
+        select: { grade: { select: { score: true } }, isLate: true },
       },
     },
   });
@@ -38,16 +38,21 @@ export async function GET(
       const avgRaw = graded > 0
         ? hw.submissions.reduce((s, sub) => s + (sub.grade?.score ?? 0), 0) / graded
         : null;
+      const lateCount = hw.submissions.filter((s) => (s as { isLate?: boolean }).isLate).length;
       return {
-        id:          hw.id,
-        title:       hw.title,
-        description: hw.description,
-        due_date:    hw.dueDate,
-        max_score:   hw.maxScore,
-        created_at:  hw.createdAt,
-        submission_count: hw._count.submissions,
-        graded_count: graded,
-        avg_score:   avgRaw !== null ? Math.round(avgRaw) : null,
+        id:                   hw.id,
+        title:                hw.title,
+        description:          hw.description,
+        due_date:             hw.dueDate,
+        hard_close_at:        hw.hardCloseAt,
+        allow_late_submission: hw.allowLateSubmission,
+        late_penalty_percent: hw.latePenaltyPercent,
+        max_score:            hw.maxScore,
+        created_at:           hw.createdAt,
+        submission_count:     hw._count.submissions,
+        late_count:           lateCount,
+        graded_count:         graded,
+        avg_score:            avgRaw !== null ? Math.round(avgRaw) : null,
       };
     })
   );
@@ -63,17 +68,20 @@ export async function POST(
 
   const { id: trainingId } = await params;
   const body = await req.json().catch(() => ({}));
-  const { title, description, due_date } = body;
+  const { title, description, due_date, hard_close_at, allow_late_submission, late_penalty_percent } = body;
 
   if (!title?.trim()) return NextResponse.json({ error: "Title required" }, { status: 400 });
 
   const hw = await prisma.homework.create({
     data: {
       trainingId,
-      title:       title.trim(),
-      description: description?.trim() || null,
-      dueDate:     due_date || null,
-      createdById: user.sub,
+      title:               title.trim(),
+      description:         description?.trim() || null,
+      dueDate:             due_date || null,
+      hardCloseAt:         hard_close_at || null,
+      allowLateSubmission: allow_late_submission !== false, // default true
+      latePenaltyPercent:  late_penalty_percent != null ? Number(late_penalty_percent) : null,
+      createdById:         user.sub,
     },
   });
 

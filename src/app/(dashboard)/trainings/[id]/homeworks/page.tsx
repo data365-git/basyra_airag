@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Trash2, BookOpen, Users, Star, ChevronRight } from "lucide-react";
+import { Plus, Trash2, BookOpen, Users, Star, ChevronRight, Clock } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -12,15 +12,19 @@ import { usePermission } from "@/hooks/usePermission";
 import toast from "react-hot-toast";
 
 interface Homework {
-  id:               string;
-  title:            string;
-  description:      string | null;
-  due_date:         string | null;
-  max_score:        number;
-  created_at:       string;
-  submission_count: number;
-  graded_count:     number;
-  avg_score:        number | null;
+  id:                   string;
+  title:                string;
+  description:          string | null;
+  due_date:             string | null;
+  hard_close_at:        string | null;
+  allow_late_submission: boolean;
+  late_penalty_percent: number | null;
+  max_score:            number;
+  created_at:           string;
+  submission_count:     number;
+  graded_count:         number;
+  late_count:           number;
+  avg_score:            number | null;
 }
 
 export default function HomeworksPage() {
@@ -34,7 +38,10 @@ export default function HomeworksPage() {
 
   // Add modal
   const [addOpen,    setAddOpen]    = useState(false);
-  const [addForm,    setAddForm]    = useState({ title: "", description: "", start_date: "", due_date: "" });
+  const [addForm,    setAddForm]    = useState({
+    title: "", description: "", start_date: "", due_date: "",
+    hard_close_at: "", allow_late_submission: true, late_penalty_percent: "",
+  });
   const [addSaving,  setAddSaving]  = useState(false);
 
   // Delete
@@ -62,17 +69,20 @@ export default function HomeworksPage() {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
-        title:       addForm.title.trim(),
-        description: addForm.description.trim() || null,
-        start_date:  addForm.start_date || null,
-        due_date:    addForm.due_date || null,
+        title:                addForm.title.trim(),
+        description:          addForm.description.trim() || null,
+        start_date:           addForm.start_date || null,
+        due_date:             addForm.due_date || null,
+        hard_close_at:        addForm.hard_close_at || null,
+        allow_late_submission: addForm.allow_late_submission,
+        late_penalty_percent: addForm.late_penalty_percent !== "" ? Number(addForm.late_penalty_percent) : null,
       }),
     });
     setAddSaving(false);
     if (res.ok) {
       toast.success("Vazifa yaratildi");
       setAddOpen(false);
-      setAddForm({ title: "", description: "", start_date: "", due_date: "" });
+      setAddForm({ title: "", description: "", start_date: "", due_date: "", hard_close_at: "", allow_late_submission: true, late_penalty_percent: "" });
       await load();
     } else {
       toast.error("Xato yuz berdi");
@@ -138,14 +148,19 @@ export default function HomeworksPage() {
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 truncate">{hw.title}</p>
-                  <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
+                  <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 flex-wrap">
                     {hw.due_date && <span>Muddat: {hw.due_date}</span>}
                     <span className="flex items-center gap-1">
                       <Users size={11} /> {hw.submission_count} topshirildi
                     </span>
-                    {hw.graded_count > 0 && (
+                    {hw.late_count > 0 && (
                       <span className="flex items-center gap-1 text-amber-600">
-                        <Star size={11} /> avg {hw.avg_score}%
+                        <Clock size={11} /> {hw.late_count} kechikkan
+                      </span>
+                    )}
+                    {hw.graded_count > 0 && (
+                      <span className="flex items-center gap-1 text-green-600">
+                        <Star size={11} /> avg {hw.avg_score}
                       </span>
                     )}
                   </div>
@@ -227,6 +242,45 @@ export default function HomeworksPage() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+
+          {/* Late submission settings */}
+          <div className="space-y-3 border-t border-gray-100 pt-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addForm.allow_late_submission}
+                onChange={(e) => setAddForm((f) => ({ ...f, allow_late_submission: e.target.checked }))}
+                className="rounded border-gray-300 text-blue-600"
+              />
+              <span className="text-sm font-medium text-gray-700">Kechikkan topshiriqqa ruxsat</span>
+            </label>
+            {addForm.allow_late_submission && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-600">Qat'iy yopilish sanasi</label>
+                  <input
+                    type="date"
+                    value={addForm.hard_close_at}
+                    onChange={(e) => setAddForm((f) => ({ ...f, hard_close_at: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-600">Jarima (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={addForm.late_penalty_percent}
+                    onChange={(e) => setAddForm((f) => ({ ...f, late_penalty_percent: e.target.value }))}
+                    placeholder="0"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </form>
       </Modal>

@@ -139,3 +139,9 @@ export function attendanceStatusColor(status: string): string {
     default: return "text-gray-500 bg-gray-100";
   }
 }
+
+/** Days between two "YYYY-MM-DD" strings (positive = d2 is later). */
+export function daysBetween(d1: string, d2: string): number {
+  const ms = new Date(d2 + "T00:00:00Z").getTime() - new Date(d1 + "T00:00:00Z").getTime();
+  return Math.round(ms / (1000 * 60 * 60 * 24));
+}

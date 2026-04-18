@@ -80,6 +80,8 @@ export async function GET(
           id:           sub.id,
           text:         sub.text,
           submitted_at: sub.submittedAt,
+          is_late:      sub.isLate,
+          late_by_days: sub.lateByDays,
           file_count:   sub.files.length,
           grade: sub.grade ? { score: sub.grade.score, feedback: sub.grade.feedback } : null,
         } : null,

@@ -320,13 +320,23 @@ function registerHandlers(b: Bot) {
     });
     if (!link) return;
 
-    const today       = new Date().toISOString().slice(0, 10); // UTC date is fine for display filter
+    const today       = new Date().toISOString().slice(0, 10);
     const trainingIds = link.participant.trainingParticipants.map((tp) => tp.trainingId);
     const homeworks   = await prisma.homework.findMany({
       where: {
         trainingId: { in: trainingIds },
-        // Filter: show only homeworks with no dueDate, or dueDate >= today
-        OR: [{ dueDate: null }, { dueDate: { gte: today } }],
+        // Show: no dueDate, not yet due, OR past-due but late still allowed + not hard-closed
+        OR: [
+          { dueDate: null },
+          { dueDate: { gte: today } },
+          {
+            AND: [
+              { dueDate: { lt: today } },
+              { allowLateSubmission: true },
+              { OR: [{ hardCloseAt: null }, { hardCloseAt: { gte: today } }] },
+            ],
+          },
+        ],
       },
       include: {
         training:    { select: { name: true } },
@@ -349,10 +359,12 @@ function registerHandlers(b: Bot) {
     homeworks.forEach((hw, i) => {
       const sub    = hw.submissions[0];
       const graded = sub?.grade;
-      const icon   = graded ? "✅" : sub ? "📤" : "⏳";
+      const isOverdue = hw.dueDate && hw.dueDate < today;
+      const icon   = graded ? "✅" : sub ? "📤" : (isOverdue ? "⏰" : "⏳");
 
       text +=
-        `${i + 1}. ${icon} <b>${hw.title}</b>\n` +
+        `${i + 1}. ${icon} <b>${hw.title}</b>` +
+        (isOverdue && !sub ? " <i>(kechikkan)</i>" : "") + "\n" +
         `   📚 ${hw.training.name}\n` +
         (hw.dueDate ? `   📅 Muddat: ${fmtUzDate(hw.dueDate)}\n`    : "") +
         (graded     ? `   ⭐ Baho: ${graded.score}/${hw.maxScore}\n` : "") +
@@ -647,12 +659,28 @@ function registerHandlers(b: Bot) {
         return;
       }
 
-      // Create or reuse submission
+      // Late-submission guards
+      const todayStr  = new Date().toISOString().slice(0, 10);
+      const isOverdue = !!(hw.dueDate && hw.dueDate < todayStr);
+      const lateByDays = isOverdue && hw.dueDate ? Math.round(
+        (new Date(todayStr + "T00:00:00Z").getTime() - new Date(hw.dueDate + "T00:00:00Z").getTime()) / 86400000
+      ) : 0;
+
+      if (isOverdue && !hw.allowLateSubmission) {
+        await reply(ctx, `⏰ <b>${hw.title}</b>\n\nBu vazifa muddati tugagan va kech topshirish ruxsat etilmaydi.`);
+        return;
+      }
+      if (isOverdue && hw.hardCloseAt && hw.hardCloseAt < todayStr) {
+        await reply(ctx, `⏰ <b>${hw.title}</b>\n\nBu vazifaning qabul qilish muddati ham o'tdi (${fmtUzDate(hw.hardCloseAt)}).`);
+        return;
+      }
+
+      // Create or reuse submission (set isLate flag)
       const isNewSub = !existingSub;
       const sub = await prisma.homeworkSubmission.upsert({
         where:  { homeworkId_participantId: { homeworkId: hwId, participantId: link.participantId } },
-        update: {},
-        create: { homeworkId: hwId, participantId: link.participantId },
+        update: isOverdue ? { isLate: true, lateByDays } : {},
+        create: { homeworkId: hwId, participantId: link.participantId, isLate: isOverdue, lateByDays: isOverdue ? lateByDays : null },
       });
 
       if (isNewSub) {
@@ -661,26 +689,29 @@ function registerHandlers(b: Bot) {
           actorId:      link.participantId,
           actorRole:    "participant",
           actorName:    link.participant?.fullName ?? "Noma'lum",
-          eventType:    SubmissionEventType.SUBMITTED,
+          eventType:    isOverdue ? SubmissionEventType.SUBMITTED_LATE : SubmissionEventType.SUBMITTED,
+          meta:         isOverdue ? { lateByDays } : undefined,
         });
       }
 
       pendingSubmissions.set(chatKey, { homeworkId: hwId, submissionId: sub.id });
 
-    const fileCount  = existingSub?.files.length ?? 0;
-    const doneKb     = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
+      const fileCount = existingSub?.files.length ?? 0;
+      const doneKb    = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
 
-    let prompt = `📎 <b>${hw.title}</b>\n\n`;
-    if (existingSub && fileCount > 0) {
-      prompt += `Allaqachon ${fileCount} ta fayl yuborilgan.\n\n`;
-      prompt += `Qo'shimcha fayl yuborishingiz yoki ✅ Yakunlash tugmasini bosing.`;
-    } else {
-      prompt += `Fayl yuboring (hujjat, audio, video, rasm) yoki matn yozing.\n\n` +
-                `Tugatgach ✅ <b>Yakunlash</b> tugmasini bosing.\n` +
-                `Bekor qilish: /cancel`;
-    }
+      let prompt = `📎 <b>${hw.title}</b>`;
+      if (isOverdue) prompt += `\n\n⏰ <i>Bu vazifa muddati ${lateByDays} kun oldin o'tdi — kechikkan holda topshiriladi.</i>`;
+      prompt += "\n\n";
+      if (existingSub && fileCount > 0) {
+        prompt += `Allaqachon ${fileCount} ta fayl yuborilgan.\n\n`;
+        prompt += `Qo'shimcha fayl yuborishingiz yoki ✅ Yakunlash tugmasini bosing.`;
+      } else {
+        prompt += `Fayl yuboring (hujjat, audio, video, rasm) yoki matn yozing.\n\n` +
+                  `Tugatgach ✅ <b>Yakunlash</b> tugmasini bosing.\n` +
+                  `Bekor qilish: /cancel`;
+      }
 
-    await reply(ctx, prompt, { reply_markup: doneKb });
+      await reply(ctx, prompt, { reply_markup: doneKb });
     } catch (err) {
       console.error("[BOT] hw_select callback error:", err);
       await reply(ctx, "⚠️ Xato yuz berdi. Qayta urinib ko'ring.");

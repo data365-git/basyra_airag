@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   LogOut, User, Loader2, BookOpen, CheckCircle2, Clock,
   ChevronDown, ChevronUp, AlertCircle, Star, Send, Calendar,
-  Trash2, FileText,
+  Trash2, FileText, AlertTriangle, Link2, Video, Mic, Image, File,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { fmtUzDateShort } from "@/lib/dateFormat";
@@ -35,9 +35,21 @@ interface HomeworkItem {
     id:           string;
     text:         string | null;
     submitted_at: string;
+    is_late:      boolean;
+    late_by_days: number | null;
     file_count:   number;
     grade: { score: number; feedback: string | null } | null;
   } | null;
+}
+
+interface PortalMaterial {
+  id:          string;
+  kind:        "PDF" | "VIDEO" | "AUDIO" | "IMAGE" | "DOCUMENT" | "LINK";
+  title:       string;
+  description: string | null;
+  storage_url: string | null;
+  url:         string | null;
+  file_size_bytes: number | null;
 }
 
 interface ScorecardData {
@@ -145,17 +157,46 @@ function FifaCard({
 
 // ─── Homework card ────────────────────────────────────────────────────────────
 
+function MatKindIcon({ kind }: { kind: PortalMaterial["kind"] }) {
+  if (kind === "LINK")     return <Link2    size={13} className="text-blue-500 shrink-0" />;
+  if (kind === "VIDEO")    return <Video    size={13} className="text-purple-500 shrink-0" />;
+  if (kind === "AUDIO")    return <Mic      size={13} className="text-green-500 shrink-0" />;
+  if (kind === "IMAGE")    return <Image    size={13} className="text-pink-500 shrink-0" />;
+  if (kind === "PDF")      return <FileText size={13} className="text-red-500 shrink-0" />;
+  return <File size={13} className="text-gray-400 shrink-0" />;
+}
+
 function HomeworkCard({
   hw, onUpdate,
 }: {
   hw:       HomeworkItem;
   onUpdate: () => void;
 }) {
-  const [open,      setOpen]      = useState(false);
-  const [cancelling, setCancelling] = useState(false);
+  const [open,        setOpen]        = useState(false);
+  const [cancelling,  setCancelling]  = useState(false);
+  const [materials,   setMaterials]   = useState<PortalMaterial[] | null>(null);
+  const [matLoading,  setMatLoading]  = useState(false);
 
   const hasSubmitted = !!hw.submission;
   const hasGrade     = !!hw.submission?.grade;
+  const isLate       = !!hw.submission?.is_late;
+
+  async function loadMaterials() {
+    if (materials !== null) return; // already fetched
+    setMatLoading(true);
+    try {
+      const res = await fetch(`/api/homeworks/${hw.id}/materials`);
+      if (res.ok) setMaterials(await res.json());
+      else setMaterials([]);
+    } finally {
+      setMatLoading(false);
+    }
+  }
+
+  function toggle() {
+    if (!open) loadMaterials();
+    setOpen((o) => !o);
+  }
 
   async function cancelSubmission() {
     if (!confirm("Topshiriqni bekor qilishni xohlaysizmi?")) return;
@@ -177,14 +218,16 @@ function HomeworkCard({
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       {/* Header row */}
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50 transition-colors"
       >
         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-          hasGrade ? "bg-green-100" : hasSubmitted ? "bg-blue-100" : "bg-gray-100"
+          hasGrade ? "bg-green-100" : isLate ? "bg-amber-100" : hasSubmitted ? "bg-blue-100" : "bg-gray-100"
         }`}>
           {hasGrade
             ? <Star size={15} className="text-green-600" />
+            : isLate
+            ? <AlertTriangle size={15} className="text-amber-500" />
             : hasSubmitted
             ? <CheckCircle2 size={15} className="text-blue-600" />
             : <Clock size={15} className="text-gray-400" />
@@ -192,7 +235,7 @@ function HomeworkCard({
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 text-sm leading-snug truncate">{hw.title}</p>
-          <div className="flex items-center gap-2 mt-0.5">
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             {hw.due_date && (
               <p className="text-xs text-gray-400">Muddat: {fmtUzDateShort(hw.due_date)}</p>
             )}
@@ -201,7 +244,13 @@ function HomeworkCard({
                 ✓ {hw.submission!.grade!.score}/{hw.max_score}
               </span>
             )}
-            {hasSubmitted && !hasGrade && (
+            {isLate && (
+              <span className="text-xs text-amber-600 font-medium flex items-center gap-0.5">
+                <AlertTriangle size={10} />
+                {hw.submission!.late_by_days != null ? `${hw.submission!.late_by_days} kun kech` : "Kechikkan"}
+              </span>
+            )}
+            {hasSubmitted && !hasGrade && !isLate && (
               <span className="text-xs text-blue-500 font-medium">Topshirildi</span>
             )}
           </div>
@@ -270,6 +319,41 @@ function HomeworkCard({
                 Vazifani topshirish uchun Telegram botga fayl yuboring.
                 Bot menyusidan <b>/homework</b> ni tanlang.
               </p>
+            </div>
+          )}
+
+          {/* Materials */}
+          {matLoading && (
+            <div className="flex justify-center py-2">
+              <Loader2 size={14} className="animate-spin text-gray-400" />
+            </div>
+          )}
+          {!matLoading && materials && materials.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500">O&apos;quv materiallari</p>
+              {materials.map((m) => {
+                const href = m.kind === "LINK" ? m.url : m.storage_url;
+                return href ? (
+                  <a
+                    key={m.id}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-blue-50 rounded-xl transition-colors"
+                  >
+                    <MatKindIcon kind={m.kind} />
+                    <span className="text-xs text-gray-700 font-medium truncate flex-1">{m.title}</span>
+                    {m.file_size_bytes && (
+                      <span className="text-xs text-gray-400 shrink-0">{Math.round(m.file_size_bytes / 1024)}KB</span>
+                    )}
+                  </a>
+                ) : (
+                  <div key={m.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl opacity-60">
+                    <MatKindIcon kind={m.kind} />
+                    <span className="text-xs text-gray-700 truncate flex-1">{m.title}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
