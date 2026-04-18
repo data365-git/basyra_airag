@@ -1,2 +1,2 @@
-[deploy]
-startCommand = "npx prisma migrate deploy && npx next start -p $PORT"
+[build]
+builder = "nixpacks"
