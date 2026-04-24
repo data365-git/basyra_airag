@@ -12,17 +12,17 @@ import { getR2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2";
 export async function uploadTelegramFileToR2(homeworkFileId: string): Promise<void> {
   try {
     const hf = await prisma.homeworkFile.findUnique({ where: { id: homeworkFileId } });
-    if (!hf) return;
-    if (hf.storageUrl) return;                 // already uploaded
-    if (!hf.telegramFileId) return;            // nothing to fetch
+    if (!hf) { console.warn("[r2Upload] skipped: HomeworkFile not found", homeworkFileId); return; }
+    if (hf.storageUrl) { console.log("[r2Upload] skipped: already has storageUrl", homeworkFileId); return; } // already uploaded
+    if (!hf.telegramFileId) { console.warn("[r2Upload] skipped: no telegramFileId", homeworkFileId); return; } // nothing to fetch
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (!botToken) return;
+    if (!botToken) { console.warn("[r2Upload] skipped: TELEGRAM_BOT_TOKEN not set"); return; }
 
     // R2 env sanity — bail silently if not configured
     if (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID ||
         !process.env.R2_SECRET_ACCESS_KEY || !process.env.R2_BUCKET_NAME ||
-        !process.env.R2_PUBLIC_URL) return;
+        !process.env.R2_PUBLIC_URL) { console.warn("[r2Upload] skipped: R2 env vars not configured"); return; }
 
     // 1. Resolve Telegram file path
     const metaRes = await fetch(
@@ -31,14 +31,14 @@ export async function uploadTelegramFileToR2(homeworkFileId: string): Promise<vo
     );
     const meta = await metaRes.json().catch(() => null) as
       { ok?: boolean; result?: { file_path?: string } } | null;
-    if (!meta?.ok || !meta.result?.file_path) return;
+    if (!meta?.ok || !meta.result?.file_path) { console.warn("[r2Upload] skipped: Telegram getFile failed", { ok: meta?.ok, hasPath: !!meta?.result?.file_path }); return; }
 
     // 2. Download bytes
     const fileRes = await fetch(
       `https://api.telegram.org/file/bot${botToken}/${meta.result.file_path}`,
       { cache: "no-store" }
     );
-    if (!fileRes.ok) return;
+    if (!fileRes.ok) { console.warn("[r2Upload] skipped: Telegram file download failed", fileRes.status, fileRes.statusText); return; }
     const arrayBuf = await fileRes.arrayBuffer();
     const contentType = fileRes.headers.get("content-type") ?? "application/octet-stream";
 
@@ -80,7 +80,7 @@ export async function uploadBufferToR2(
   try {
     if (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID ||
         !process.env.R2_SECRET_ACCESS_KEY || !process.env.R2_BUCKET_NAME ||
-        !process.env.R2_PUBLIC_URL) return null;
+        !process.env.R2_PUBLIC_URL) { console.warn("[r2Upload] uploadBufferToR2 skipped: R2 env vars not configured"); return null; }
 
     const client = getR2Client();
     await client.send(new PutObjectCommand({

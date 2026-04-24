@@ -26,6 +26,10 @@ export function normalizePhone(raw: string): string {
     } else if (d.startsWith("7") && d.length === 11) {
       d = "+" + d;
     } else {
+      // Step 5: unknown format — prepend "+" and let the regex below validate.
+      // If the number is truly invalid, the validation throw below will surface it.
+      // Log so we know when unexpected formats arrive.
+      console.warn(`[phone] unrecognized format, prepending +: "${raw}" → "${d}"`);
       d = "+" + d;
     }
   }

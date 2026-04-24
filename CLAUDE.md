@@ -33,6 +33,19 @@ no_active_training | override`). `renderSelectorBar()` is a `switch` on this
 state — exactly one UI path renders. Do not add conditional rendering outside
 this switch.
 
+## API serialization boundary
+All HTTP responses use **`snake_case`** JSON keys. Prisma models use `camelCase` internally.
+The conversion happens in per-route serializer functions (e.g., `mapUser`, `serializeMaterial`,
+`mapHw`) — **never** return a raw Prisma object directly from a route. When adding a new field,
+add it to the serializer explicitly. This prevents accidental leaking of internal fields.
+
+## Dead schema fields (documented, not removed)
+- `Training.scanWindowBefore` / `scanWindowAfter` — serialized in `GET /api/trainings/:id`
+  but **not enforced** — per CLAUDE.md there is no time-based scan window. Do not add logic
+  that reads these for scan gating.
+- `Homework.latePenaltyPercent` — display-only hint shown in the homework detail UI.
+  Does **not** affect any grade calculation. Do not wire it into scoring without a product decision.
+
 # CLAUDE.md
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
