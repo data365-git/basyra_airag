@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/layout/Header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { usePermission } from "@/hooks/usePermission";
 import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image as ImageIcon, File, Pencil, AlertTriangle, Trash2 } from "lucide-react";
@@ -11,6 +12,7 @@ import toast from "react-hot-toast";
 import { fmtUzDate, fmtUzDateTime } from "@/lib/dateFormat";
 import { SubmissionTimeline } from "@/components/homework/SubmissionTimeline";
 import { MaterialsPanel, type Material } from "@/components/homework/MaterialsPanel";
+import { useTranslation } from "@/providers/LanguageProvider";
 
 interface SubmissionFile {
   id:               string;
@@ -32,6 +34,33 @@ interface Submission {
   files:        SubmissionFile[];
 }
 
+
+function TimelinesssBadge({ isLate, lateByDays }: { isLate: boolean; lateByDays: number | null }) {
+  const { t } = useTranslation();
+
+  if (isLate) {
+    const days = lateByDays ?? 1;
+    return (
+      <Badge variant="orange">
+        {t("homework.timeliness.late").replace("{n}", String(days))}
+      </Badge>
+    );
+  }
+
+  if (lateByDays === 0) {
+    return <Badge variant="yellow">{t("homework.timeliness.same_day")}</Badge>;
+  }
+
+  if (lateByDays != null && lateByDays < 0) {
+    return (
+      <Badge variant="green">
+        {t("homework.timeliness.early").replace("{n}", String(Math.abs(lateByDays)))}
+      </Badge>
+    );
+  }
+
+  return <Badge variant="green">{t("homework.timeliness.on_time")}</Badge>;
+}
 
 function FileIcon({ type }: { type: string }) {
   if (type === "photo")    return <ImageIcon size={13} className="text-blue-400 shrink-0" />;
@@ -434,19 +463,14 @@ export default function HomeworkDetailPage() {
                   )}
                 </Td>
                 <Td className="text-xs text-gray-400 whitespace-nowrap">
-                  <span className="flex flex-col gap-0.5">
+                  <span className="flex flex-col gap-1">
                     <span className="flex items-center gap-1">
                       {sub.grade
                         ? <CheckCircle2 size={12} className="text-green-500" />
                         : <Clock size={12} className="text-gray-300" />}
                       {fmtUzDateTime(sub.submitted_at)}
                     </span>
-                    {sub.is_late && (
-                      <span className="flex items-center gap-1 text-amber-600">
-                        <AlertTriangle size={11} />
-                        {sub.late_by_days != null ? `${sub.late_by_days} kun kech` : "Kechikkan"}
-                      </span>
-                    )}
+                    <TimelinesssBadge isLate={sub.is_late} lateByDays={sub.late_by_days} />
                   </span>
                 </Td>
                 <Td>

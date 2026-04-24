@@ -420,3 +420,17 @@ model PhoneLoginToken {
 
   @@map("phone_login_tokens")
 }
+
+model GradingPolicy {
+  id                   String   @id @default(cuid())
+  onTimePct            Int      @default(100) @map("on_time_pct")
+  sameDayPct           Int      @default(90)  @map("same_day_pct")
+  perDayLatePenaltyPct Int      @default(20)  @map("per_day_late_penalty_pct")
+  lateFloorPct         Int      @default(10)  @map("late_floor_pct")
+  earlyBonusPct        Int      @default(0)   @map("early_bonus_pct")
+  earlyBonusDays       Int      @default(2)   @map("early_bonus_days")
+  updatedAt            DateTime @updatedAt    @map("updated_at")
+  updatedById          String?  @map("updated_by_id")
+
+  @@map("grading_policy")
+}

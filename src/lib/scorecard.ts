@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { getTodayInTashkent } from "@/lib/sessionWindow";
+import { getGradingPolicy, computeTimelinessPct, computeFinalPct } from "@/lib/gradingPolicy";
 
 export interface AttendanceStat {
   total:   number;
@@ -14,7 +15,7 @@ export interface HomeworkStat {
   total:      number;
   submitted:  number;
   graded:     number;
-  avgScore:   number | null; // 0-100 normalised; null if no grades yet
+  avgScore:   number | null; // 0-100 timeliness-adjusted; null if no grades yet
   submitRate: number;        // 0-100
 }
 
@@ -39,6 +40,7 @@ export async function getParticipantScorecard(
   trainingId:    string,
 ): Promise<Scorecard> {
   const today = getTodayInTashkent(); // "YYYY-MM-DD" in Asia/Tashkent
+  const policy = await getGradingPolicy();
 
   const [sessions, attendanceRecords, homeworks, activityScores] = await Promise.all([
     // Only sessions that have already happened (today or earlier)
@@ -58,11 +60,16 @@ export async function getParticipantScorecard(
     prisma.homework.findMany({
       where:  { trainingId },
       select: {
-        id:       true,
-        maxScore: true,
+        id:         true,
+        maxScore:   true,
+        dueDate:    true,
         submissions: {
           where:  { participantId },
-          select: { id: true, grade: { select: { score: true } } },
+          select: {
+            id:          true,
+            submittedAt: true,
+            grade: { select: { score: true } },
+          },
         },
       },
     }),
@@ -92,16 +99,18 @@ export async function getParticipantScorecard(
       hwSubmitted++;
       if (sub.grade) {
         hwGraded++;
-        const normalised = hw.maxScore > 0
-          ? Math.round((sub.grade.score / hw.maxScore) * 100)
+        const rawPct = hw.maxScore > 0
+          ? (sub.grade.score / hw.maxScore) * 100
           : sub.grade.score;
-        hwScoreSum += normalised;
+        const timeliness = computeTimelinessPct(sub.submittedAt, hw.dueDate, policy);
+        const finalPct = computeFinalPct(rawPct, timeliness);
+        hwScoreSum += finalPct;
       }
     }
   }
   const hwTotal      = homeworks.length;
-  const hwAvg        = hwGraded   > 0 ? Math.round(hwScoreSum / hwGraded) : null;
-  const hwSubmitRate = hwTotal    === 0 ? 0 : Math.round((hwSubmitted / hwTotal) * 100);
+  const hwAvg        = hwGraded > 0 ? Math.round(hwScoreSum / hwGraded) : null;
+  const hwSubmitRate = hwTotal === 0 ? 0 : Math.round((hwSubmitted / hwTotal) * 100);
 
   // ── Activity ──────────────────────────────────────────────────────────────
   const actCount = activityScores.length;
@@ -109,13 +118,11 @@ export async function getParticipantScorecard(
     ? Math.round(activityScores.reduce((s, r) => s + r.score, 0) / actCount)
     : null;
 
-  // ── Overall — always (attendance + homework + activity) / 3 ─────────────
-  // Missing metrics contribute 0, not a smaller denominator. A shrinking
-  // denominator would make a student with no homework look the same as one
-  // with 100% homework, which is wrong.
-  const hwComponent  = hwAvg  ?? 0;
-  const actComponent = actAvg ?? 0;
-  const overall = Math.round((attRate + hwComponent + actComponent) / 3);
+  // ── Overall — attendance + timeliness-adjusted homework, each weighted equally ──
+  const hwComponent = hwAvg ?? 0;
+  // Activity is shown as a standalone stat but excluded from the overall score.
+  // Overall = attendance + timeliness-adjusted homework, each weighted equally.
+  const overall = Math.round((attRate + hwComponent) / 2);
 
   return {
     participantId,
