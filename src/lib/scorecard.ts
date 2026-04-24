@@ -1,6 +1,5 @@
 import prisma from "@/lib/prisma";
-import { getTodayInTashkent } from "@/lib/sessionWindow";
-import { getGradingPolicy, computeTimelinessPct, computeFinalPct } from "@/lib/gradingPolicy";
+import { getTodayInTashkent, toTashkentDateStr } from "@/lib/sessionWindow";
 
 export interface AttendanceStat {
   total:   number;
@@ -12,11 +11,14 @@ export interface AttendanceStat {
 }
 
 export interface HomeworkStat {
-  total:      number;
-  submitted:  number;
-  graded:     number;
-  avgScore:   number | null; // 0-100 timeliness-adjusted; null if no grades yet
-  submitRate: number;        // 0-100
+  total:                   number;
+  submitted:               number;
+  graded:                  number;
+  avgScore:                number | null; // 0-100 curator-graded; null if no grades yet
+  submitRate:              number;        // 0-100
+  deadlineComplianceRate:  number | null; // 0-100; null if no homeworks have a due date
+  onTimeCount:             number;
+  deadlineEligibleCount:   number;
 }
 
 export interface ActivityStat {
@@ -40,7 +42,6 @@ export async function getParticipantScorecard(
   trainingId:    string,
 ): Promise<Scorecard> {
   const today = getTodayInTashkent(); // "YYYY-MM-DD" in Asia/Tashkent
-  const policy = await getGradingPolicy();
 
   const [sessions, attendanceRecords, homeworks, activityScores] = await Promise.all([
     // Only sessions that have already happened (today or earlier)
@@ -93,24 +94,52 @@ export async function getParticipantScorecard(
 
   // ── Homework ──────────────────────────────────────────────────────────────
   let hwSubmitted = 0, hwGraded = 0, hwScoreSum = 0;
+  let deadlineEligible = 0;
+  let onTimeCount = 0;
+
   for (const hw of homeworks) {
     const sub = hw.submissions[0];
+
+    // Task score (curator-graded raw percentage)
     if (sub) {
       hwSubmitted++;
       if (sub.grade) {
         hwGraded++;
-        const rawPct = hw.maxScore > 0
-          ? (sub.grade.score / hw.maxScore) * 100
+        const normalised = hw.maxScore > 0
+          ? Math.round((sub.grade.score / hw.maxScore) * 100)
           : sub.grade.score;
-        const timeliness = computeTimelinessPct(sub.submittedAt, hw.dueDate, policy);
-        const finalPct = computeFinalPct(rawPct, timeliness);
-        hwScoreSum += finalPct;
+        hwScoreSum += normalised;
+      }
+    }
+
+    // Deadline compliance — binary, only for homeworks that have a dueDate
+    if (hw.dueDate) {
+      if (hw.dueDate >= today) {
+        // Deadline hasn't passed yet — don't penalize unsubmitted, don't count early ones either
+        // Only count if already submitted
+        if (sub) {
+          deadlineEligible++;
+          const submittedDate = toTashkentDateStr(sub.submittedAt);
+          if (submittedDate <= hw.dueDate) onTimeCount++;
+        }
+        // else: not yet due and not submitted → skip (defer)
+      } else {
+        // Deadline has passed
+        deadlineEligible++;
+        if (sub) {
+          const submittedDate = toTashkentDateStr(sub.submittedAt);
+          if (submittedDate <= hw.dueDate) onTimeCount++;
+          // else: submitted late → 0 (don't increment onTimeCount)
+        }
+        // else: past due, not submitted → counts as 0
       }
     }
   }
-  const hwTotal      = homeworks.length;
-  const hwAvg        = hwGraded > 0 ? Math.round(hwScoreSum / hwGraded) : null;
-  const hwSubmitRate = hwTotal === 0 ? 0 : Math.round((hwSubmitted / hwTotal) * 100);
+
+  const hwTotal                = homeworks.length;
+  const hwAvg                  = hwGraded          > 0 ? Math.round(hwScoreSum / hwGraded)         : null;
+  const hwSubmitRate           = hwTotal            === 0 ? 0 : Math.round((hwSubmitted / hwTotal) * 100);
+  const deadlineComplianceRate = deadlineEligible   > 0 ? Math.round((onTimeCount / deadlineEligible) * 100) : null;
 
   // ── Activity ──────────────────────────────────────────────────────────────
   const actCount = activityScores.length;
@@ -118,17 +147,27 @@ export async function getParticipantScorecard(
     ? Math.round(activityScores.reduce((s, r) => s + r.score, 0) / actCount)
     : null;
 
-  // ── Overall — attendance + timeliness-adjusted homework, each weighted equally ──
-  const hwComponent = hwAvg ?? 0;
-  // Activity is shown as a standalone stat but excluded from the overall score.
-  // Overall = attendance + timeliness-adjusted homework, each weighted equally.
-  const overall = Math.round((attRate + hwComponent) / 2);
+  // ── Overall — equal thirds: attendance + task score + deadline compliance ──
+  const taskComponent     = hwAvg                  ?? 0;
+  const deadlineComponent = deadlineComplianceRate ?? 0;
+  // Overall = equal thirds: attendance + task score + deadline compliance.
+  // Activity (actAvg) is retained in the payload for curator display, not in overall.
+  const overall = Math.round((attRate + taskComponent + deadlineComponent) / 3);
 
   return {
     participantId,
     trainingId,
     attendance: { total, present, late, excused, absent, rate: attRate },
-    homework:   { total: hwTotal, submitted: hwSubmitted, graded: hwGraded, avgScore: hwAvg, submitRate: hwSubmitRate },
+    homework: {
+      total:                  hwTotal,
+      submitted:              hwSubmitted,
+      graded:                 hwGraded,
+      avgScore:               hwAvg,
+      submitRate:             hwSubmitRate,
+      deadlineComplianceRate,
+      onTimeCount,
+      deadlineEligibleCount:  deadlineEligible,
+    },
     activity:   { count: actCount, avgScore: actAvg },
     overallScore: overall,
   };

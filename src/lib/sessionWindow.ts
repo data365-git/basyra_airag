@@ -84,5 +84,14 @@ export function formatCountdown(totalSeconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/**
+ * Convert a UTC DateTime to a "YYYY-MM-DD" date string in Asia/Tashkent (UTC+5, no DST).
+ * Use this instead of d.toISOString().slice(0,10) which gives the UTC date, not local.
+ */
+export function toTashkentDateStr(d: Date): string {
+  const shifted = new Date(d.getTime() + 5 * 60 * 60 * 1000);
+  return shifted.toISOString().slice(0, 10);
+}
+
 // NOTE: loadSystemWindowSettings() lives in sessionWindow.server.ts (server-only).
 // Do NOT import Prisma from this file — it is used by client components.

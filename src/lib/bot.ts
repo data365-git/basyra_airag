@@ -246,12 +246,8 @@ function registerHandlers(b: Bot) {
       if (sc.homework.total > 0) {
         text += `📝 Vazifalar: ${sc.homework.submitted}/${sc.homework.total} topshirildi`;
         if (sc.homework.avgScore !== null) text += ` · o'rtacha ${bar(sc.homework.avgScore)}`;
+        if (sc.homework.deadlineComplianceRate !== null) text += ` · ⏰ O'z vaqtida: ${sc.homework.deadlineComplianceRate}%`;
         text += "\n\n";
-      }
-
-      // Activity
-      if (sc.activity.count > 0 && sc.activity.avgScore !== null) {
-        text += `⚡ Faollik: ${bar(sc.activity.avgScore)} (${sc.activity.count} sessiya)\n\n`;
       }
 
       text += `🏆 <b>Umumiy ball: ${sc.overallScore}%</b>\n`;

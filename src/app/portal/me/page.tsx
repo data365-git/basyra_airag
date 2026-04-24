@@ -60,6 +60,9 @@ interface ScorecardData {
   homework: {
     total: number; submitted: number; graded: number;
     avgScore: number | null; submitRate: number;
+    deadlineComplianceRate: number | null;
+    onTimeCount: number;
+    deadlineEligibleCount: number;
   };
   activity: {
     count: number; avgScore: number | null;
@@ -164,8 +167,8 @@ function FifaCard({
           <p className="text-xs opacity-60 mt-0.5">📝 Vazifa</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-bold">{sc.activity.avgScore ?? 0}%</p>
-          <p className="text-xs opacity-60 mt-0.5">⚡ Faollik</p>
+          <p className="text-2xl font-bold">{sc.homework.deadlineComplianceRate ?? 0}%</p>
+          <p className="text-xs opacity-60 mt-0.5">⏰ Muddatga rioya</p>
         </div>
       </div>
     </div>
@@ -587,8 +590,9 @@ function TrainingScorecard({
   }
   if (!sc) return null;
 
-  const attColor = scoreColor(sc.attendance.rate);
-  const hwPct    = sc.homework.avgScore ?? 0;
+  const attColor   = scoreColor(sc.attendance.rate);
+  const hwPct      = sc.homework.avgScore ?? 0;
+  const deadlinePct = sc.homework.deadlineComplianceRate;
 
   return (
     <div className="space-y-4">
@@ -623,6 +627,23 @@ function TrainingScorecard({
                 O&apos;rtacha baho:{" "}
                 <span className="font-semibold text-gray-800">{hwPct}%</span>
               </p>
+            )}
+            {deadlinePct !== null && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 text-xs">Muddatga rioya</span>
+                <span className="font-semibold text-gray-800 text-xs">
+                  {deadlinePct}%
+                  <span className="text-gray-400 text-xs ml-1">
+                    ({sc.homework.onTimeCount}/{sc.homework.deadlineEligibleCount})
+                  </span>
+                </span>
+              </div>
+            )}
+            {sc.activity.avgScore !== null && (
+              <div className="opacity-60 flex justify-between text-xs">
+                <span className="text-gray-400">Faollik</span>
+                <span className="text-gray-500">{sc.activity.avgScore}%</span>
+              </div>
             )}
           </>
         ) : (
