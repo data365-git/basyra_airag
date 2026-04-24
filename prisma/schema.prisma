@@ -62,9 +62,10 @@ model Training {
   createdById          String?               @map("created_by")
   createdBy            StaffUser?            @relation(fields: [createdById], references: [id])
   createdAt            DateTime              @default(now()) @map("created_at")
-  sessions             Session[]
-  trainingParticipants TrainingParticipant[]
-  homeworks            Homework[]
+  sessions              Session[]
+  trainingParticipants  TrainingParticipant[]
+  homeworks             Homework[]
+  supervisorAssignments SupervisorAssignment[]
 
   @@map("trainings")
 }
@@ -140,6 +141,7 @@ model Participant {
   activityScores       ActivityScore[]
   telegramMessages     TelegramMessage[]
   phoneLoginTokens     PhoneLoginToken[]
+  supervisorAssignments SupervisorAssignment[]
 
   @@map("participants")
 }
@@ -419,6 +421,46 @@ model PhoneLoginToken {
   createdAt     DateTime    @default(now()) @map("created_at")
 
   @@map("phone_login_tokens")
+}
+
+model Supervisor {
+  id           String                @id @default(uuid())
+  name         String
+  email        String                @unique
+  passwordHash String                @map("password_hash")
+  isActive     Boolean               @default(true) @map("is_active")
+  lastLoginAt  DateTime?             @map("last_login_at")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  assignments  SupervisorAssignment[]
+  invites      SupervisorInvite[]
+
+  @@map("supervisors")
+}
+
+model SupervisorAssignment {
+  id            String      @id @default(uuid())
+  supervisorId  String      @map("supervisor_id")
+  supervisor    Supervisor  @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+  participantId String      @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  trainingId    String?     @map("training_id")
+  training      Training?   @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@unique([supervisorId, participantId, trainingId])
+  @@map("supervisor_assignments")
+}
+
+model SupervisorInvite {
+  id           String     @id @default(uuid())
+  supervisorId String     @map("supervisor_id")
+  supervisor   Supervisor @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+  token        String     @unique
+  expiresAt    DateTime   @map("expires_at")
+  usedAt       DateTime?  @map("used_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@map("supervisor_invites")
 }
 
 model GradingPolicy {
