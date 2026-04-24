@@ -29,7 +29,7 @@ export default function ParticipantProfilePage() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "activity">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "activity" | "supervisors">("overview");
   const [activityData, setActivityData] = useState<{
     count: number;
     avg_score: number | null;
@@ -54,6 +54,22 @@ export default function ParticipantProfilePage() {
   const [loginModal, setLoginModal]   = useState<"create" | "reset" | null>(null);
   const [loginForm, setLoginForm]     = useState({ username: "", password: "" });
   const [loginSaving, setLoginSaving] = useState(false);
+
+  // Supervisor state
+  interface SupervisorAssignmentRow {
+    supervisor_id:    string;
+    supervisor_name:  string;
+    supervisor_email: string;
+    is_active:        boolean;
+    training_id:      string | null;
+    training_name:    string | null;
+    training_color:   string | null;
+  }
+  const [supervisorAssignments, setSupervisorAssignments] = useState<SupervisorAssignmentRow[]>([]);
+  const [svLoading, setSvLoading] = useState(false);
+  const [allSupervisors, setAllSupervisors] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [addSvForm, setAddSvForm] = useState<{ supervisorId: string; trainingId: string }>({ supervisorId: "", trainingId: "" });
+  const [addSvSaving, setAddSvSaving] = useState(false);
 
   // Telegram state
   interface TelegramInfo {
@@ -86,6 +102,55 @@ export default function ParticipantProfilePage() {
       setLoading(false);
     });
   }, [id]);
+
+  async function loadSupervisors() {
+    setSvLoading(true);
+    const [svRes, allRes] = await Promise.all([
+      fetch(`/api/participants/${id}/supervisors`),
+      fetch(`/api/supervisors`),
+    ]);
+    if (svRes.ok) setSupervisorAssignments(await svRes.json());
+    if (allRes.ok) setAllSupervisors(await allRes.json());
+    setSvLoading(false);
+  }
+
+  useEffect(() => {
+    if (activeTab === "supervisors") loadSupervisors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  async function handleRemoveSupervisor(supervisorId: string, trainingId: string | null) {
+    await fetch(`/api/participants/${id}/supervisors`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ supervisorId, trainingId }),
+    });
+    await loadSupervisors();
+    toast.success("Supervisor removed");
+  }
+
+  async function handleAddSupervisor(e: React.FormEvent) {
+    e.preventDefault();
+    if (!addSvForm.supervisorId) return;
+    setAddSvSaving(true);
+    const res = await fetch(`/api/supervisors/${addSvForm.supervisorId}/assignments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        participantId: id,
+        trainingId: addSvForm.trainingId || null,
+      }),
+    });
+    setAddSvSaving(false);
+    if (res.ok) {
+      setAddSvForm({ supervisorId: "", trainingId: "" });
+      await loadSupervisors();
+      toast.success("Supervisor added");
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Error");
+    }
+  }
 
   async function handleGenerateTgCode() {
     setTgCodeLoading(true);
@@ -209,7 +274,7 @@ export default function ParticipantProfilePage() {
       />
 
       <div className="flex gap-1 border-b border-gray-100 mb-6">
-        {(["overview", "activity"] as const).map((tab) => (
+        {(["overview", "activity", "supervisors"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -219,7 +284,7 @@ export default function ParticipantProfilePage() {
                 : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
-            {tab === "overview" ? t("common.overview") ?? "Overview" : "Activity"}
+            {tab === "overview" ? t("common.overview") ?? "Overview" : tab === "activity" ? "Activity" : "Supervisors"}
           </button>
         ))}
       </div>
@@ -532,6 +597,111 @@ export default function ParticipantProfilePage() {
               )}
             </Tbody>
           </Table>
+        </div>
+      )}
+
+      {activeTab === "supervisors" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-3">
+            <span>👥</span>
+            <span>
+              <strong>{supervisorAssignments.length}</strong> supervisor(s) watching this participant
+            </span>
+          </div>
+
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Supervisor</Th>
+                <Th>Scope</Th>
+                <Th>Status</Th>
+                <Th></Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {svLoading ? (
+                <EmptyRow cols={4} message="Loading..." />
+              ) : supervisorAssignments.length === 0 ? (
+                <EmptyRow cols={4} message="No supervisors assigned" />
+              ) : (
+                supervisorAssignments.map((row, i) => (
+                  <Tr key={i}>
+                    <Td>
+                      <div className="font-medium text-gray-900">{row.supervisor_name}</div>
+                      <div className="text-xs text-gray-500">{row.supervisor_email}</div>
+                    </Td>
+                    <Td>
+                      {row.training_id ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          {row.training_color && (
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: row.training_color }} />
+                          )}
+                          {row.training_name}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">All trainings</span>
+                      )}
+                    </Td>
+                    <Td>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${row.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        {row.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </Td>
+                    <Td>
+                      <button
+                        onClick={() => handleRemoveSupervisor(row.supervisor_id, row.training_id)}
+                        className="text-xs text-red-500 hover:text-red-700 underline"
+                      >
+                        Remove
+                      </button>
+                    </Td>
+                  </Tr>
+                ))
+              )}
+            </Tbody>
+          </Table>
+
+          {canManage && (
+            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-medium text-gray-700">Add supervisor</p>
+              <form onSubmit={handleAddSupervisor} className="flex flex-wrap gap-3 items-end">
+                <div className="flex-1 min-w-[180px]">
+                  <label className="block text-xs text-gray-500 mb-1">Supervisor</label>
+                  <select
+                    required
+                    value={addSvForm.supervisorId}
+                    onChange={(e) => setAddSvForm((f) => ({ ...f, supervisorId: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">— select —</option>
+                    {allSupervisors.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1 min-w-[180px]">
+                  <label className="block text-xs text-gray-500 mb-1">Training scope (optional)</label>
+                  <select
+                    value={addSvForm.trainingId}
+                    onChange={(e) => setAddSvForm((f) => ({ ...f, trainingId: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">All trainings</option>
+                    {((participant as any).training_participants ?? []).map((tp: any) => (
+                      <option key={tp.training.id} value={tp.training.id}>{tp.training.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={addSvSaving}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+                >
+                  {addSvSaving ? "..." : "Add"}
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       )}
 
