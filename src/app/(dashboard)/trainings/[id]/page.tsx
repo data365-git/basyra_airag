@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Edit, Download, Plus, Trash2, UserMinus, Search, CalendarPlus, Clock, CheckCircle, XCircle, AlertTriangle, Zap, BookOpen } from "lucide-react";
+import { Edit, Download, Plus, Trash2, UserMinus, Search, CalendarPlus, Clock, CheckCircle, XCircle, AlertTriangle, Zap, BookOpen, Trophy, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { TrainingStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -88,6 +88,20 @@ function SessionStateBadge({
   }
 }
 
+interface LeaderboardEntry {
+  rank:            number;
+  participant_id:  string;
+  name:            string;
+  overall_score:   number;
+  attendance_rate: number;
+  hw_avg:          number | null;
+  deadline_rate:   number | null;
+  activity_avg:    number | null;
+  sessions_total:  number;
+  hw_submitted:    number;
+  hw_total:        number;
+}
+
 export default function TrainingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -111,6 +125,12 @@ export default function TrainingDetailPage() {
   const [addSessionForm, setAddSessionForm] = useState({ session_date: "", session_time: training?.schedule_time || "09:00" });
   const [addingSession, setAddingSession] = useState(false);
 
+  // Leaderboard state
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [leaderboard,     setLeaderboard]     = useState<LeaderboardEntry[] | null>(null);
+  const [lbLoading,       setLbLoading]       = useState(false);
+  const [showActivity,    setShowActivity]    = useState(false);
+
   // Enrollment modal state
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollTab, setEnrollTab] = useState<"existing" | "new">("existing");
@@ -121,6 +141,15 @@ export default function TrainingDetailPage() {
   const [unenrollConfirm, setUnenrollConfirm] = useState<{ participantId: string; name: string; attendanceCount: number } | null>(null);
   const [newParticipantForm, setNewParticipantForm] = useState({ full_name: "", phone: "", email: "" });
   const [creatingAndEnrolling, setCreatingAndEnrolling] = useState(false);
+
+  async function openLeaderboard() {
+    setLeaderboardOpen(true);
+    if (leaderboard) return; // already loaded
+    setLbLoading(true);
+    const res = await fetch(`/api/trainings/${id}/leaderboard`);
+    if (res.ok) setLeaderboard(await res.json());
+    setLbLoading(false);
+  }
 
   useEffect(() => { if (id) load(); }, [id]);
 
@@ -492,6 +521,79 @@ export default function TrainingDetailPage() {
             })}
           </Tbody>
         </Table>
+      </Card>
+
+      {/* Leaderboard */}
+      <Card className="mt-6">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Trophy size={16} className="text-amber-500" />
+            Leaderboard
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {leaderboardOpen && (
+              <button
+                onClick={() => setShowActivity(!showActivity)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                  showActivity ? "bg-indigo-50 border-indigo-200 text-indigo-600" : "border-gray-200 text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                ⚡ Activity
+              </button>
+            )}
+            <Button variant="secondary" size="sm" onClick={leaderboardOpen ? () => setLeaderboardOpen(false) : openLeaderboard}>
+              {leaderboardOpen ? "Hide" : "Show leaderboard"}
+            </Button>
+          </div>
+        </CardHeader>
+
+        {leaderboardOpen && (
+          <div className="px-6 pb-6">
+            {lbLoading || !leaderboard ? (
+              <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>
+            ) : leaderboard.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">No participants yet</p>
+            ) : (
+              <Table>
+                <Thead>
+                  <tr>
+                    <Th>#</Th>
+                    <Th>Name</Th>
+                    <Th>Overall</Th>
+                    <Th>Attendance</Th>
+                    <Th>Tasks</Th>
+                    <Th>Deadline</Th>
+                    {showActivity && <Th>⚡ Activity</Th>}
+                  </tr>
+                </Thead>
+                <Tbody>
+                  {leaderboard.map((entry) => (
+                    <Tr key={entry.participant_id}>
+                      <Td className="text-gray-400 font-mono text-xs">{entry.rank}</Td>
+                      <Td>
+                        <Link href={`/participants/${entry.participant_id}`} className="hover:underline font-medium text-gray-900">
+                          {entry.name}
+                        </Link>
+                      </Td>
+                      <Td>
+                        <span className={`font-bold text-sm ${
+                          entry.overall_score >= 80 ? "text-green-600" :
+                          entry.overall_score >= 60 ? "text-amber-600" : "text-red-600"
+                        }`}>{entry.overall_score}%</span>
+                      </Td>
+                      <Td className="text-gray-600">{entry.attendance_rate}%</Td>
+                      <Td className="text-gray-600">{entry.hw_avg !== null ? `${entry.hw_avg}%` : "—"}</Td>
+                      <Td className="text-gray-600">{entry.deadline_rate !== null ? `${entry.deadline_rate}%` : "—"}</Td>
+                      {showActivity && (
+                        <Td className="text-gray-600">{entry.activity_avg !== null ? `${entry.activity_avg}%` : "—"}</Td>
+                      )}
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* Delete session modal */}

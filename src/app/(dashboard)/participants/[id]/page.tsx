@@ -29,6 +29,20 @@ export default function ParticipantProfilePage() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"overview" | "activity">("overview");
+  const [activityData, setActivityData] = useState<{
+    count: number;
+    avg_score: number | null;
+    scores: Array<{
+      session_date: string;
+      session_number: number;
+      training_name: string;
+      training_color: string;
+      score: number;
+      note: string | null;
+      entered_by: string | null;
+    }>;
+  } | null>(null);
   const [deleteOpen,      setDeleteOpen]      = useState(false);
   const [deleting,        setDeleting]        = useState(false);
   const [unlinkTgOpen,    setUnlinkTgOpen]    = useState(false);
@@ -62,11 +76,13 @@ export default function ParticipantProfilePage() {
       fetch(`/api/participants/${id}/history`).then((r) => r.json()),
       fetch(`/api/participants/${id}/auth`).then((r) => r.json()),
       fetch(`/api/participants/${id}/telegram`).then((r) => r.ok ? r.json() : null),
-    ]).then(([p, h, a, tg]) => {
+      fetch(`/api/participants/${id}/activity`).then((r) => r.json()).catch(() => null),
+    ]).then(([p, h, a, tg, act]) => {
       setParticipant(p);
       setHistory(Array.isArray(h) ? h : []);
       setAuthInfo(a ?? null);
       setTgInfo(tg ?? null);
+      setActivityData(act ?? null);
       setLoading(false);
     });
   }, [id]);
@@ -192,6 +208,23 @@ export default function ParticipantProfilePage() {
         }
       />
 
+      <div className="flex gap-1 border-b border-gray-100 mb-6">
+        {(["overview", "activity"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === tab
+                ? "border-indigo-500 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {tab === "overview" ? t("common.overview") ?? "Overview" : "Activity"}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "overview" && (
       <div className="grid lg:grid-cols-3 gap-6">
         {/* QR Code */}
         <Card>
@@ -447,6 +480,60 @@ export default function ParticipantProfilePage() {
           })}
         </div>
       </div>
+      )}
+
+      {activeTab === "activity" && (
+        <div className="space-y-4">
+          {activityData && (
+            <div className="flex items-center gap-3 text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-3">
+              <span>⚡</span>
+              <span>
+                <strong>{activityData.count}</strong> sessions scored
+                {activityData.avg_score !== null && (
+                  <> · Avg: <strong>{activityData.avg_score}%</strong></>
+                )}
+              </span>
+            </div>
+          )}
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Date</Th>
+                <Th>Training</Th>
+                <Th>Score</Th>
+                <Th>Notes</Th>
+                <Th>Entered by</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {!activityData ? (
+                <EmptyRow cols={5} message="Loading..." />
+              ) : activityData.scores.length === 0 ? (
+                <EmptyRow cols={5} message="No activity scores recorded" />
+              ) : (
+                activityData.scores.map((s, i) => (
+                  <Tr key={i}>
+                    <Td>{s.session_date}</Td>
+                    <Td>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.training_color }} />
+                        {s.training_name}
+                      </span>
+                    </Td>
+                    <Td>
+                      <span className={`font-semibold ${s.score >= 80 ? "text-green-600" : s.score >= 60 ? "text-amber-600" : "text-red-600"}`}>
+                        {s.score}%
+                      </span>
+                    </Td>
+                    <Td className="text-gray-500">{s.note ?? "—"}</Td>
+                    <Td className="text-gray-500">{s.entered_by ?? "—"}</Td>
+                  </Tr>
+                ))
+              )}
+            </Tbody>
+          </Table>
+        </div>
+      )}
 
       <ConfirmModal
         open={deleteOpen}

@@ -57,6 +57,8 @@ function scoreBg(n: number): string {
   return "#EF4444";
 }
 
+// Note: the dashboard routes directly here when there is only 1 assigned person (single-person shortcut).
+
 // ─── Inner component (uses useSearchParams) ───────────────────────────────────
 
 function ScorecardDetail({ participantId }: { participantId: string }) {
@@ -106,7 +108,7 @@ function ScorecardDetail({ participantId }: { participantId: string }) {
   if (loading) {
     return (
       <div className="flex justify-center py-16">
-        <Loader2 size={32} className="animate-spin text-indigo-500" />
+        <Loader2 size={32} className="animate-spin text-teal-600" />
       </div>
     );
   }
@@ -149,7 +151,7 @@ function ScorecardDetail({ participantId }: { participantId: string }) {
               className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                 selectedTrainingId === t.id
                   ? "text-white border-transparent"
-                  : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-teal-300"
               }`}
               style={selectedTrainingId === t.id ? { backgroundColor: t.color, borderColor: t.color } : undefined}
             >
@@ -311,7 +313,7 @@ export default function SupervisorPersonPage() {
         <Suspense
           fallback={
             <div className="flex justify-center py-16">
-              <Loader2 size={32} className="animate-spin text-indigo-500" />
+              <Loader2 size={32} className="animate-spin text-teal-600" />
             </div>
           }
         >

@@ -600,6 +600,25 @@ function TrainingScorecard({
       {/* ── FIFA card ─────────────────────────────────────────────────────── */}
       <FifaCard name={name} training={training} sc={sc} />
 
+      {/* ── Coach's feedback — secondary, muted, non-competitive ──────────── */}
+      {sc.activity.count > 0 && (
+        <div className="mt-4 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-base">⚡</span>
+            <div>
+              <p className="text-xs font-semibold text-gray-600">Murabbiy bahosi</p>
+              <p className="text-xs text-gray-400 mt-0.5">Bu baho umumiy ballingizga ta&apos;sir qilmaydi</p>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-sm font-bold text-gray-700">
+              {sc.activity.avgScore !== null ? `${sc.activity.avgScore}%` : "—"}
+            </p>
+            <p className="text-xs text-gray-400">{sc.activity.count} dars</p>
+          </div>
+        </div>
+      )}
+
       {/* ── Attendance detail (always shown) ──────────────────────────────── */}
       <AttendanceCard sc={sc} attColor={attColor} />
 
@@ -639,12 +658,7 @@ function TrainingScorecard({
                 </span>
               </div>
             )}
-            {sc.activity.avgScore !== null && (
-              <div className="opacity-60 flex justify-between text-xs">
-                <span className="text-gray-400">Faollik</span>
-                <span className="text-gray-500">{sc.activity.avgScore}%</span>
-              </div>
-            )}
+
           </>
         ) : (
           <p className="text-xs text-gray-400 italic">Hali vazifa berilmagan</p>

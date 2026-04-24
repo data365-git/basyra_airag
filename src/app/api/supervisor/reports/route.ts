@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSupervisorUser } from "@/lib/supervisorAuth";
+import { getParticipantScorecard } from "@/lib/scorecard";
 
 export const dynamic = "force-dynamic";
 
@@ -130,5 +131,18 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ people });
+  // Fetch overall score for each person (use their first training)
+  const peopleWithScores = await Promise.all(
+    people.map(async (person) => {
+      if (person.trainings.length === 0) return { ...person, overall_score: undefined };
+      try {
+        const sc = await getParticipantScorecard(person.id, person.trainings[0].id);
+        return { ...person, overall_score: sc.overallScore };
+      } catch {
+        return { ...person, overall_score: undefined };
+      }
+    }),
+  );
+
+  return NextResponse.json({ people: peopleWithScores });
 }
