@@ -11,7 +11,7 @@
  *  - File messages (document, audio, video, voice, photo)
  */
 
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard, InputFile } from "grammy";
 import prisma from "@/lib/prisma";
 import { getParticipantScorecard } from "@/lib/scorecard";
 import { uploadTelegramFileToR2 } from "@/lib/r2Upload";
@@ -725,6 +725,54 @@ export function registerCommandHandlers(b: Bot) {
       `📎 <b>${fileName}</b>${sizeLabel}\n\nBu faylni topshiriqqa qo'shaylikmi?`,
       { reply_markup: confirmKb }
     );
+  });
+
+  // ── TTS — voice playback of AI answer ─────────────────────────────────────
+
+  b.callbackQuery(/^tts_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "🔊 Tayyorlanmoqda..." });
+    const [, msgId] = ctx.match;
+
+    // Fetch stored answer text
+    let text = "";
+    try {
+      const stored = await prisma.botMessage.findUnique({ where: { id: msgId } });
+      if (stored?.content) text = stored.content.slice(0, 2000);
+    } catch {}
+
+    if (!text) {
+      await ctx.answerCallbackQuery({ text: "Matn topilmadi" });
+      return;
+    }
+
+    const ragUrl  = process.env.RAG_SERVICE_URL ?? "";
+    const ragToken = process.env.RAG_INTERNAL_TOKEN ?? "";
+
+    let audioBuffer: Buffer | null = null;
+    try {
+      const res = await fetch(`${ragUrl}/tts`, {
+        method:  "POST",
+        headers: {
+          "Content-Type":    "application/json",
+          "X-Internal-Token": ragToken,
+        },
+        body: JSON.stringify({ text, chat_id: Number(ctx.chat!.id) }),
+      });
+      if (res.ok) {
+        audioBuffer = Buffer.from(await res.arrayBuffer());
+      }
+    } catch {}
+
+    if (!audioBuffer) {
+      await ctx.reply("❌ Ovoz yaratishda xatolik yuz berdi");
+      return;
+    }
+
+    try {
+      await ctx.replyWithVoice(new InputFile(audioBuffer, "voice.wav"));
+    } catch {
+      await ctx.reply("❌ Ovoz yuborishda xatolik");
+    }
   });
 
   // ── 5-star ratings ────────────────────────────────────────────────────────
