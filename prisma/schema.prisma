@@ -143,6 +143,7 @@ model Participant {
   phoneLoginTokens     PhoneLoginToken[]
   supervisorAssignments SupervisorAssignment[]
   botMessageRatings     BotMessageRating[]
+  studentFeedback       StudentFeedback[]
 
   @@map("participants")
 }
@@ -498,6 +499,23 @@ model BotMessageRating {
   @@index([reason])
   @@index([status])
   @@map("bot_message_ratings")
+}
+
+model StudentFeedback {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  chatId        BigInt
+  participantId String?
+  category      String   // "COMPLAINT" | "SUGGESTION" | "PRAISE"
+  severity      String?  // "HIGH" | "MEDIUM" | "LOW" | null
+  tags          String[] // e.g. ["homework", "teacher", "schedule"]
+  messageText   String
+  status        String   @default("new") // "new" | "in_review" | "resolved"
+  curatorNote   String?
+
+  participant   Participant? @relation(fields: [participantId], references: [id])
+
+  @@map("student_feedback")
 }
 
 model GradingPolicy {

@@ -40,8 +40,7 @@ export function registerContactAuthHandlers(b: Bot) {
         const homeMenu = new InlineKeyboard()
           .text("📊 Mening progressim", "menu_status").row()
           .text("📝 Uy vazifam",        "menu_homework").row()
-          .text("💡 Savol berish",      "menu_ai").row()
-          .text("📅 Jadvalim",          "menu_schedule");
+          .text("💡 Savol berish",      "menu_ai");
         await reply(ctx,
           `Salom, <b>${existing.participant.fullName}</b>! 👋\n\nBugun nima qilamiz?\n\n<i>Yoki shunchaki yozing — men tushunaman</i> 🤖`,
           { reply_markup: homeMenu }

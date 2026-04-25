@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, BookOpen, Users, QrCode, BarChart3,
-  Settings, ChevronRight, ChevronLeft, Send, ClipboardList, Star,
+  Settings, ChevronRight, ChevronLeft, Send, ClipboardList, Star, MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,6 +30,7 @@ const mainNavItems: NavItem[] = [
   { label: "nav.reports",      href: "/reports",      icon: BarChart3,       page: "reports",      action: "view" },
   { label: "nav.telegram",     href: "/telegram",     icon: Send,            page: "participants", action: "edit" },
   { label: "nav.ai_reviews",   href: "/ai-reviews",   icon: Star,            page: null,           action: "view" },
+  { label: "nav.feedback",     href: "/feedback",     icon: MessageSquare,   page: null,           action: "view" },
 ];
 
 function SidebarSkeleton() {

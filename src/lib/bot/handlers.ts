@@ -19,7 +19,7 @@ import { logSubmissionEvent, SubmissionEventType } from "@/lib/submissionEvents"
 import { requireParticipant } from "@/lib/botAuth";
 import { linkedKeyboard, logMessage, reply } from "./ui";
 import { pendingSubmissions, pendingFiles, pendingRatingComment } from "./state";
-import { classifyMessage } from "@/lib/intentRouter";
+import { classifyMessage, extractFeedbackMeta } from "@/lib/intentRouter";
 import { askRag, logBotMessage } from "@/lib/aiClient";
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
@@ -34,8 +34,7 @@ function buildHomeMenu() {
   return new InlineKeyboard()
     .text("📊 Mening progressim", "menu_status").row()
     .text("📝 Uy vazifam",        "menu_homework").row()
-    .text("💡 Savol berish",      "menu_ai").row()
-    .text("📅 Jadvalim",          "menu_schedule");
+    .text("💡 Savol berish",      "menu_ai");
 }
 
 function reasonKeyboard(msgId: string): InlineKeyboard {
@@ -85,7 +84,6 @@ export function registerCommandHandlers(b: Bot) {
       "📊 Progressim — baholar va davomat",
       "📝 Vazifalarim — uy vazifalari",
       "💡 Savol berish — kurs bo'yicha savol",
-      "📅 Jadvalim — dars jadvali",
       "",
       "/cancel — jarayonni bekor qilish",
       "/menu — asosiy menyuni ochish",
@@ -440,14 +438,6 @@ export function registerCommandHandlers(b: Bot) {
     await reply(ctx, "💡 Savolingizni yozing — kurs mavzulari bo'yicha javob beraman:");
   });
 
-  b.callbackQuery("menu_schedule", async (ctx) => {
-    await ctx.answerCallbackQuery();
-    const base = await requireParticipant(ctx);
-    if (!base) return;
-    // TODO: implement schedule lookup
-    await reply(ctx, "📅 Jadvalingiz yuklanmoqda...");
-  });
-
   b.callbackQuery("auth_login", async (ctx) => {
     await ctx.answerCallbackQuery();
     // Show contact-share keyboard so user can authenticate by phone
@@ -504,11 +494,6 @@ export function registerCommandHandlers(b: Bot) {
       await reply(ctx, "📝 Vazifalaringizni ko'rish uchun tugmani bosing:", { reply_markup: kb });
       return;
     }
-    if (text === "📅 Jadvalim") {
-      const kb = new InlineKeyboard().text("📅 Jadvalimni ko'rish", "menu_schedule");
-      await reply(ctx, "📅 Jadvalingizni ko'rish uchun tugmani bosing:", { reply_markup: kb });
-      return;
-    }
     if (text === "💡 Savol berish") {
       await reply(ctx, "💡 Savolingizni yozing:");
       return;
@@ -540,6 +525,35 @@ export function registerCommandHandlers(b: Bot) {
       intent = "UNCLEAR";
     }
 
+    // ── Feedback capture (complaint / suggestion / praise) ────────────────
+    if (intent === "COMPLAINT" || intent === "SUGGESTION" || intent === "PRAISE") {
+      const { severity, tags } = extractFeedbackMeta(text, intent as "COMPLAINT" | "SUGGESTION" | "PRAISE");
+      const linkRow = await prisma.telegramLink.findFirst({ where: { chatId }, select: { participantId: true } });
+      try {
+        await prisma.studentFeedback.create({
+          data: {
+            chatId,
+            participantId: linkRow?.participantId ?? null,
+            category:      intent,
+            severity:      severity ?? null,
+            tags,
+            messageText:   text.slice(0, 1000),
+          },
+        });
+      } catch (err) {
+        console.error("[BOT] feedback save error:", err);
+      }
+
+      if (intent === "COMPLAINT") {
+        await reply(ctx, "Muammongizni bildirganingiz uchun rahmat. Tez orada ko'rib chiqamiz! 🙏");
+      } else if (intent === "SUGGESTION") {
+        await reply(ctx, "Taklifingiz uchun rahmat! Jamoamizga yetkazamiz 💡");
+      } else {
+        await reply(ctx, "Maqtovingiz uchun katta rahmat! 😊🙏");
+      }
+      return;
+    }
+
     if (intent === "AI_COURSE_QUESTION" || intent === "UNCLEAR") {
       await ctx.replyWithChatAction("typing");
       const linkRow = await prisma.telegramLink.findFirst({ where: { chatId }, select: { participantId: true } });
@@ -555,11 +569,11 @@ export function registerCommandHandlers(b: Bot) {
 
         const kb = new InlineKeyboard()
           .text("🔊 Tinglash", `tts_${msgId ?? "0"}`).row()
-          .text("⭐",     `rate_1_${msgId ?? "0"}`)
-          .text("⭐⭐",    `rate_2_${msgId ?? "0"}`)
-          .text("⭐⭐⭐",   `rate_3_${msgId ?? "0"}`)
-          .text("⭐⭐⭐⭐",  `rate_4_${msgId ?? "0"}`)
-          .text("⭐⭐⭐⭐⭐", `rate_5_${msgId ?? "0"}`);
+          .text("1️⃣", `rate_1_${msgId ?? "0"}`)
+          .text("2️⃣", `rate_2_${msgId ?? "0"}`)
+          .text("3️⃣", `rate_3_${msgId ?? "0"}`)
+          .text("4️⃣", `rate_4_${msgId ?? "0"}`)
+          .text("5️⃣", `rate_5_${msgId ?? "0"}`);
 
         await reply(ctx, `💡 ${answer}`, { reply_markup: kb });
 
@@ -584,8 +598,7 @@ export function registerCommandHandlers(b: Bot) {
     // LMS intents (SCHEDULE, HOMEWORK, GRADE, ATTENDANCE, OTHER) — show menu
     const lmsMenu = new InlineKeyboard()
       .text("📊 Progressim",  "menu_status")
-      .text("📝 Vazifalarim", "menu_homework").row()
-      .text("📅 Jadvalim",    "menu_schedule");
+      .text("📝 Vazifalarim", "menu_homework");
     await reply(ctx, "📊 Ma'lumotlaringizni ko'rish:", { reply_markup: lmsMenu });
   });
 

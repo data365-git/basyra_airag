@@ -26,6 +26,9 @@ export type Intent =
   | "LMS_OTHER"
   | "AI_COURSE_QUESTION"
   | "SMALL_TALK"
+  | "COMPLAINT"
+  | "SUGGESTION"
+  | "PRAISE"
   | "UNCLEAR";
 
 // ── Layer 2: keyword table ────────────────────────────────────────────────────
@@ -63,6 +66,26 @@ const KEYWORD_RULES: Array<{ intent: Intent; patterns: RegExp[] }> = [
       /^(😊|👍|🙏|❤️|✅)+$/,
     ],
   },
+  {
+    intent: "COMPLAINT",
+    patterns: [
+      /\b(shikoyat|nizo|muammo|yomon|qo'pol|xato|ishlamayapti|tushunmadim|yordami yo'q|g'azab|norozi)\b/i,
+      /\b(complaint|problem|issue|bad|rude|broken|doesn't work|not working|terrible|awful)\b/i,
+    ],
+  },
+  {
+    intent: "SUGGESTION",
+    patterns: [
+      /\b(taklif|tavsiya|yaxshilash|o'zgartirish|qo'shish|bo'lsa yaxshi|nima desangiz)\b/i,
+      /\b(suggestion|idea|improve|add|feature|would be nice|consider)\b/i,
+    ],
+  },
+  {
+    intent: "PRAISE",
+    patterns: [
+      /\b(zo'r|ajoyib|yaxshi|rahmat|maqtov|barakalla|super|perfect|great|excellent|thank)\b/i,
+    ],
+  },
 ];
 
 // ── Layer 3: Gemini Flash classifier + in-memory cache ────────────────────────
@@ -82,7 +105,9 @@ function _hash(text: string): string {
 
 const VALID_INTENTS = new Set<Intent>([
   "LMS_SCHEDULE", "LMS_HOMEWORK", "LMS_GRADE", "LMS_ATTENDANCE",
-  "LMS_OTHER", "AI_COURSE_QUESTION", "SMALL_TALK", "UNCLEAR",
+  "LMS_OTHER", "AI_COURSE_QUESTION", "SMALL_TALK",
+  "COMPLAINT", "SUGGESTION", "PRAISE",
+  "UNCLEAR",
 ]);
 
 async function classifyWithGemini(text: string): Promise<Intent> {
@@ -99,7 +124,7 @@ async function classifyWithGemini(text: string): Promise<Intent> {
           contents: [{
             parts: [{
               text: `Classify this Telegram message into exactly ONE label.
-Labels: LMS_SCHEDULE | LMS_HOMEWORK | LMS_GRADE | LMS_ATTENDANCE | LMS_OTHER | AI_COURSE_QUESTION | SMALL_TALK | UNCLEAR
+Labels: LMS_SCHEDULE | LMS_HOMEWORK | LMS_GRADE | LMS_ATTENDANCE | LMS_OTHER | AI_COURSE_QUESTION | SMALL_TALK | COMPLAINT | SUGGESTION | PRAISE | UNCLEAR
 
 LMS_SCHEDULE = asking about class times, schedule, next session
 LMS_HOMEWORK = asking about homework tasks, submission, deadlines
@@ -108,6 +133,9 @@ LMS_ATTENDANCE = asking about attendance records
 LMS_OTHER = other LMS/admin questions (login, account, etc.)
 AI_COURSE_QUESTION = course content question (concepts, lessons, explanations)
 SMALL_TALK = greetings, thanks, off-topic chitchat
+COMPLAINT = user expressing dissatisfaction, problem, or complaint
+SUGGESTION = user suggesting improvement or new feature
+PRAISE = user expressing satisfaction or compliment
 UNCLEAR = cannot determine intent
 
 Message: "${text.slice(0, 300)}"
@@ -165,4 +193,37 @@ export async function classifyMessage(text: string): Promise<{
   const intent = await classifyWithGemini(text);
   _cache.set(key, { intent, expiresAt: Date.now() + CACHE_TTL_MS });
   return { intent, source: "layer3_api" };
+}
+
+/**
+ * For COMPLAINT/SUGGESTION/PRAISE intents, extract severity and tags.
+ * Lightweight — no LLM call.
+ */
+export function extractFeedbackMeta(text: string, intent: Intent): {
+  severity: "HIGH" | "MEDIUM" | "LOW" | null;
+  tags: string[];
+} {
+  if (!["COMPLAINT", "SUGGESTION", "PRAISE"].includes(intent)) {
+    return { severity: null, tags: [] };
+  }
+
+  const lower = text.toLowerCase();
+  let severity: "HIGH" | "MEDIUM" | "LOW" | null = null;
+
+  if (["yomon", "dahshatli", "terrible", "awful", "juda muammo", "very bad"].some(w => lower.includes(w))) {
+    severity = "HIGH";
+  } else if (["muammo", "ishlamayapti", "xato", "problem", "broken"].some(w => lower.includes(w))) {
+    severity = "MEDIUM";
+  } else if (intent === "COMPLAINT") {
+    severity = "LOW";
+  }
+
+  const tags: string[] = [];
+  if (/vazifa|homework/i.test(text)) tags.push("homework");
+  if (/dars|o'qituvchi|teacher|ustoz/i.test(text)) tags.push("teacher");
+  if (/jadval|schedule/i.test(text)) tags.push("schedule");
+  if (/baho|ball|grade|score/i.test(text)) tags.push("grades");
+  if (/platforma|sayt|website|tizim|system/i.test(text)) tags.push("platform");
+
+  return { severity, tags };
 }

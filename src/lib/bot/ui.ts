@@ -12,7 +12,7 @@ export { APP_URL };
 /** Persistent 2×2 reply keyboard — always visible at the bottom */
 export const mainKeyboard = new Keyboard()
   .text("📊 Progressim").text("📝 Vazifalarim").row()
-  .text("💡 Savol berish").text("📅 Jadvalim")
+  .text("💡 Savol berish")
   .resized()
   .persistent();
 
