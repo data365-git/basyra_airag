@@ -3,10 +3,11 @@ import prisma from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const body = await req.json();
   const item = await prisma.studentFeedback.update({
-    where: { id: params.id },
+    where: { id },
     data: {
       ...(body.status      ? { status: body.status }           : {}),
       ...(body.curatorNote !== undefined ? { curatorNote: body.curatorNote } : {}),
