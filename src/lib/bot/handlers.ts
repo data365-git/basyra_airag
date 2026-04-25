@@ -17,8 +17,10 @@ import { getParticipantScorecard } from "@/lib/scorecard";
 import { uploadTelegramFileToR2 } from "@/lib/r2Upload";
 import { logSubmissionEvent, SubmissionEventType } from "@/lib/submissionEvents";
 import { requireParticipant } from "@/lib/botAuth";
-import { linkedKeyboard, loginKeyboard, logMessage, reply } from "./ui";
+import { linkedKeyboard, logMessage, reply } from "./ui";
 import { pendingSubmissions, pendingFiles } from "./state";
+import { classifyMessage } from "@/lib/intentRouter";
+import { askRag, logBotMessage } from "@/lib/aiClient";
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
 
@@ -28,65 +30,15 @@ function fmtUzDate(d: string | Date | null | undefined): string {
   return `${dt.getDate()} ${UZ_MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
 }
 
+function buildHomeMenu() {
+  return new InlineKeyboard()
+    .text("📊 Mening progressim", "menu_status").row()
+    .text("📝 Uy vazifam",        "menu_homework").row()
+    .text("💡 Savol berish",      "menu_ai").row()
+    .text("📅 Jadvalim",          "menu_schedule");
+}
+
 export function registerCommandHandlers(b: Bot) {
-
-  // ── /mystatus ─────────────────────────────────────────────────────────────
-  b.command("mystatus", async (ctx) => {
-    await logMessage(ctx, "in", ctx.message?.text);
-    const base = await requireParticipant(ctx);
-    if (!base) return;
-
-    // Re-fetch with full training relations
-    const chatId = BigInt(ctx.chat!.id);
-    const link   = await prisma.telegramLink.findFirst({
-      where:   { chatId },
-      include: {
-        participant: {
-          include: { trainingParticipants: { include: { training: true } } },
-        },
-      },
-    });
-    if (!link) return;
-
-    const trainings = link.participant.trainingParticipants.map((tp) => tp.training);
-    if (trainings.length === 0) {
-      await reply(ctx, "📭 Siz hali hech qanday kursga yozilmagansiz.");
-      return;
-    }
-
-    let text = `👤 <b>${link.participant.fullName}</b>\n`;
-    text += "─".repeat(28) + "\n\n";
-
-    for (const tr of trainings) {
-      const sc  = await getParticipantScorecard(link.participantId, tr.id);
-      const bar = (v: number) => {
-        const filled = Math.round(v / 10);
-        return "▓".repeat(filled) + "░".repeat(10 - filled) + ` <b>${v}%</b>`;
-      };
-
-      text += `📚 <b>${tr.name}</b>\n\n`;
-
-      // Attendance
-      text +=
-        `📅 Davomat: ${bar(sc.attendance.rate)}\n` +
-        `   ✅ ${sc.attendance.present}  ⏰ ${sc.attendance.late}  💙 ${sc.attendance.excused}  ❌ ${sc.attendance.absent}`;
-      if (sc.attendance.total > 0) text += `  (jami ${sc.attendance.total})`;
-      text += "\n\n";
-
-      // Homework
-      if (sc.homework.total > 0) {
-        text += `📝 Vazifalar: ${sc.homework.submitted}/${sc.homework.total} topshirildi`;
-        if (sc.homework.avgScore !== null) text += ` · o'rtacha ${bar(sc.homework.avgScore)}`;
-        if (sc.homework.deadlineComplianceRate !== null) text += ` · ⏰ O'z vaqtida: ${sc.homework.deadlineComplianceRate}%`;
-        text += "\n\n";
-      }
-
-      text += `🏆 <b>Umumiy ball: ${sc.overallScore}%</b>\n`;
-      text += "─".repeat(28) + "\n\n";
-    }
-
-    await reply(ctx, text.trim(), { reply_markup: linkedKeyboard() });
-  });
 
   // ── /debug — diagnostic: confirms link, env, and that callbacks reach the bot ─
   b.command("debug", async (ctx) => {
@@ -110,6 +62,42 @@ export function registerCommandHandlers(b: Bot) {
     }
   });
 
+  // ── /menu ─────────────────────────────────────────────────────────────────
+  b.command("menu", async (ctx) => {
+    await logMessage(ctx, "in", ctx.message?.text);
+    await reply(ctx, "Asosiy menyu:", { reply_markup: buildHomeMenu() });
+  });
+
+  // ── /help ─────────────────────────────────────────────────────────────────
+  b.command("help", async (ctx) => {
+    await logMessage(ctx, "in", ctx.message?.text);
+    await reply(ctx, [
+      "📚 <b>Yordam</b>",
+      "",
+      "📊 Progressim — baholar va davomat",
+      "📝 Vazifalarim — uy vazifalari",
+      "💡 Savol berish — kurs bo'yicha savol",
+      "📅 Jadvalim — dars jadvali",
+      "",
+      "/cancel — jarayonni bekor qilish",
+      "/menu — asosiy menyuni ochish",
+    ].join("\n"));
+  });
+
+  // ── Deprecated migration: /mystatus ───────────────────────────────────────
+  b.command("mystatus", async (ctx) => {
+    await logMessage(ctx, "in", ctx.message?.text);
+    const kb = new InlineKeyboard().text("📊 Progressimni ko'rish", "menu_status");
+    await reply(ctx, "📊 Progressingizni ko'rish uchun tugmani bosing:", { reply_markup: kb });
+  });
+
+  // ── Deprecated migration: /homework ───────────────────────────────────────
+  b.command("homework", async (ctx) => {
+    await logMessage(ctx, "in", ctx.message?.text);
+    const kb = new InlineKeyboard().text("📝 Vazifalarimni ko'rish", "menu_homework");
+    await reply(ctx, "📝 Vazifalaringizni ko'rish uchun tugmani bosing:", { reply_markup: kb });
+  });
+
   // ── Catch-all callback_query log — proves callbacks are arriving at all ─────
   // Registered BEFORE the typed handlers so it logs every incoming callback even
   // when the typed handler later answers and short-circuits.
@@ -127,98 +115,10 @@ export function registerCommandHandlers(b: Bot) {
     pendingSubmissions.delete(chatKey);
     pendingFiles.delete(chatKey);
     if (hadPending) {
-      await reply(ctx, "❌ Topshiriq jarayoni bekor qilindi.\n\n/homework — qaytadan boshlash");
+      await reply(ctx, "❌ Topshiriq jarayoni bekor qilindi.");
     } else {
-      await reply(ctx, "Hozirda faol jarayon yo'q.\n\n/homework — vazifalarni ko'rish");
+      await reply(ctx, "Hozirda faol jarayon yo'q.");
     }
-  });
-
-  // ── /homework ─────────────────────────────────────────────────────────────
-  b.command("homework", async (ctx) => {
-    await logMessage(ctx, "in", ctx.message?.text);
-    const base = await requireParticipant(ctx);
-    if (!base) return;
-
-    // Re-fetch with training relations
-    const chatId = BigInt(ctx.chat!.id);
-    const link   = await prisma.telegramLink.findFirst({
-      where:   { chatId },
-      include: { participant: { include: { trainingParticipants: true } } },
-    });
-    if (!link) return;
-
-    const today       = new Date().toISOString().slice(0, 10);
-    const trainingIds = link.participant.trainingParticipants.map((tp) => tp.trainingId);
-    const homeworks   = await prisma.homework.findMany({
-      where: {
-        trainingId: { in: trainingIds },
-        // Show: no dueDate, not yet due, OR past-due but late still allowed + not hard-closed
-        OR: [
-          { dueDate: null },
-          { dueDate: { gte: today } },
-          {
-            AND: [
-              { dueDate: { lt: today } },
-              { allowLateSubmission: true },
-              { OR: [{ hardCloseAt: null }, { hardCloseAt: { gte: today } }] },
-            ],
-          },
-        ],
-      },
-      include: {
-        training:    { select: { name: true } },
-        submissions: {
-          where:   { participantId: link.participantId },
-          include: { grade: true, files: { select: { id: true } } },
-        },
-      },
-      orderBy: { createdAt: "asc" },
-    });
-
-    if (homeworks.length === 0) {
-      await reply(ctx, "📭 Hozircha ochiq vazifa yo'q.");
-      return;
-    }
-
-    let text = "📝 <b>Vazifalar:</b>\n\n";
-    const ungradedBtns: { label: string; data: string }[] = [];
-
-    homeworks.forEach((hw, i) => {
-      const sub    = hw.submissions[0];
-      const graded = sub?.grade;
-      const isOverdue = hw.dueDate && hw.dueDate < today;
-      const icon   = graded ? "✅" : sub ? "📤" : (isOverdue ? "⏰" : "⏳");
-
-      text +=
-        `${i + 1}. ${icon} <b>${hw.title}</b>` +
-        (isOverdue && !sub ? " <i>(kechikkan)</i>" : "") + "\n" +
-        `   📚 ${hw.training.name}\n` +
-        (hw.dueDate ? `   📅 Muddat: ${fmtUzDate(hw.dueDate)}\n`    : "") +
-        (graded     ? `   ⭐ Baho: ${graded.score}/${hw.maxScore}\n` : "") +
-        (sub && !graded && sub.files.length > 0
-          ? `   📎 ${sub.files.length} ta fayl topshirilgan\n`       : "") +
-        "\n";
-
-      if (!graded) {
-        ungradedBtns.push({ label: `${i + 1}`, data: `hw_select:${hw.id}` });
-      }
-    });
-
-    if (ungradedBtns.length === 0) {
-      text += "\n✅ Barcha vazifalar baholangan!";
-      await reply(ctx, text, { reply_markup: linkedKeyboard() });
-      return;
-    }
-
-    // Build keyboard: numbered buttons grouped 3 per row
-    const kb = new InlineKeyboard();
-    ungradedBtns.forEach((btn, j) => {
-      if (j > 0 && j % 3 === 0) kb.row();
-      kb.text(btn.label, btn.data);
-    });
-
-    text += "👇 Topshirmoqchi bo'lgan vazifa raqamini tanlang:";
-    await reply(ctx, text, { reply_markup: kb });
   });
 
   // ── Callback: homework selected from inline keyboard ──────────────────────
@@ -388,6 +288,165 @@ export function registerCommandHandlers(b: Bot) {
     );
   });
 
+  // ── Menu callbacks ────────────────────────────────────────────────────────
+  b.callbackQuery("menu_status", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const base = await requireParticipant(ctx);
+    if (!base) return;
+
+    const chatId = BigInt(ctx.chat!.id);
+    const link   = await prisma.telegramLink.findFirst({
+      where:   { chatId },
+      include: {
+        participant: {
+          include: { trainingParticipants: { include: { training: true } } },
+        },
+      },
+    });
+    if (!link) return;
+
+    const trainings = link.participant.trainingParticipants.map((tp) => tp.training);
+    if (trainings.length === 0) {
+      await reply(ctx, "📭 Siz hali hech qanday kursga yozilmagansiz.");
+      return;
+    }
+
+    let text = `👤 <b>${link.participant.fullName}</b>\n`;
+    text += "─".repeat(28) + "\n\n";
+
+    for (const tr of trainings) {
+      const sc  = await getParticipantScorecard(link.participantId, tr.id);
+      const bar = (v: number) => {
+        const filled = Math.round(v / 10);
+        return "▓".repeat(filled) + "░".repeat(10 - filled) + ` <b>${v}%</b>`;
+      };
+
+      text += `📚 <b>${tr.name}</b>\n\n`;
+      text +=
+        `📅 Davomat: ${bar(sc.attendance.rate)}\n` +
+        `   ✅ ${sc.attendance.present}  ⏰ ${sc.attendance.late}  💙 ${sc.attendance.excused}  ❌ ${sc.attendance.absent}`;
+      if (sc.attendance.total > 0) text += `  (jami ${sc.attendance.total})`;
+      text += "\n\n";
+
+      if (sc.homework.total > 0) {
+        text += `📝 Vazifalar: ${sc.homework.submitted}/${sc.homework.total} topshirildi`;
+        if (sc.homework.avgScore !== null) text += ` · o'rtacha ${bar(sc.homework.avgScore)}`;
+        if (sc.homework.deadlineComplianceRate !== null) text += ` · ⏰ O'z vaqtida: ${sc.homework.deadlineComplianceRate}%`;
+        text += "\n\n";
+      }
+
+      text += `🏆 <b>Umumiy ball: ${sc.overallScore}%</b>\n`;
+      text += "─".repeat(28) + "\n\n";
+    }
+
+    await reply(ctx, text.trim(), { reply_markup: linkedKeyboard() });
+  });
+
+  b.callbackQuery("menu_homework", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const base = await requireParticipant(ctx);
+    if (!base) return;
+
+    const chatId = BigInt(ctx.chat!.id);
+    const link   = await prisma.telegramLink.findFirst({
+      where:   { chatId },
+      include: { participant: { include: { trainingParticipants: true } } },
+    });
+    if (!link) return;
+
+    const today       = new Date().toISOString().slice(0, 10);
+    const trainingIds = link.participant.trainingParticipants.map((tp) => tp.trainingId);
+    const homeworks   = await prisma.homework.findMany({
+      where: {
+        trainingId: { in: trainingIds },
+        OR: [
+          { dueDate: null },
+          { dueDate: { gte: today } },
+          {
+            AND: [
+              { dueDate: { lt: today } },
+              { allowLateSubmission: true },
+              { OR: [{ hardCloseAt: null }, { hardCloseAt: { gte: today } }] },
+            ],
+          },
+        ],
+      },
+      include: {
+        training:    { select: { name: true } },
+        submissions: {
+          where:   { participantId: link.participantId },
+          include: { grade: true, files: { select: { id: true } } },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (homeworks.length === 0) {
+      await reply(ctx, "📭 Hozircha ochiq vazifa yo'q.");
+      return;
+    }
+
+    let text = "📝 <b>Vazifalar:</b>\n\n";
+    const ungradedBtns: { label: string; data: string }[] = [];
+
+    homeworks.forEach((hw, i) => {
+      const sub    = hw.submissions[0];
+      const graded = sub?.grade;
+      const isOverdue = hw.dueDate && hw.dueDate < today;
+      const icon   = graded ? "✅" : sub ? "📤" : (isOverdue ? "⏰" : "⏳");
+
+      text +=
+        `${i + 1}. ${icon} <b>${hw.title}</b>` +
+        (isOverdue && !sub ? " <i>(kechikkan)</i>" : "") + "\n" +
+        `   📚 ${hw.training.name}\n` +
+        (hw.dueDate ? `   📅 Muddat: ${fmtUzDate(hw.dueDate)}\n`    : "") +
+        (graded     ? `   ⭐ Baho: ${graded.score}/${hw.maxScore}\n` : "") +
+        (sub && !graded && sub.files.length > 0
+          ? `   📎 ${sub.files.length} ta fayl topshirilgan\n`       : "") +
+        "\n";
+
+      if (!graded) {
+        ungradedBtns.push({ label: `${i + 1}`, data: `hw_select:${hw.id}` });
+      }
+    });
+
+    if (ungradedBtns.length === 0) {
+      text += "\n✅ Barcha vazifalar baholangan!";
+      await reply(ctx, text, { reply_markup: linkedKeyboard() });
+      return;
+    }
+
+    const kb = new InlineKeyboard();
+    ungradedBtns.forEach((btn, j) => {
+      if (j > 0 && j % 3 === 0) kb.row();
+      kb.text(btn.label, btn.data);
+    });
+
+    text += "👇 Topshirmoqchi bo'lgan vazifa raqamini tanlang:";
+    await reply(ctx, text, { reply_markup: kb });
+  });
+
+  b.callbackQuery("menu_ai", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await reply(ctx, "💡 Savolingizni yozing — kurs mavzulari bo'yicha javob beraman:");
+  });
+
+  b.callbackQuery("menu_schedule", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const base = await requireParticipant(ctx);
+    if (!base) return;
+    // TODO: implement schedule lookup
+    await reply(ctx, "📅 Jadvalingiz yuklanmoqda...");
+  });
+
+  b.callbackQuery("auth_login", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    // Show contact-share keyboard so user can authenticate by phone
+    const { Keyboard: K } = await import("grammy");
+    const kb = new K().requestContact("📱 Telefon raqamimi ulashish").resized().oneTime();
+    await reply(ctx, "📱 Telefon raqamingizni ulash uchun tugmani bosing:", { reply_markup: kb });
+  });
+
   // ── Text messages (plain text submission + "done" fallback) ───────────────
   b.on("message:text", async (ctx) => {
     await logMessage(ctx, "in", ctx.message.text);
@@ -425,11 +484,82 @@ export function registerCommandHandlers(b: Bot) {
       return;
     }
 
-    // Unrecognised
-    await reply(ctx,
-      "Buyruqlar:\n/login — kabinetga kirish\n/mystatus — statistikam\n/homework — vazifalar",
-      { reply_markup: loginKeyboard() }
-    );
+    // ── Persistent keyboard button taps ───────────────────────────────────
+    if (text === "📊 Progressim") {
+      const kb = new InlineKeyboard().text("📊 Progressimni ko'rish", "menu_status");
+      await reply(ctx, "📊 Progressingizni ko'rish uchun tugmani bosing:", { reply_markup: kb });
+      return;
+    }
+    if (text === "📝 Vazifalarim") {
+      const kb = new InlineKeyboard().text("📝 Vazifalarimni ko'rish", "menu_homework");
+      await reply(ctx, "📝 Vazifalaringizni ko'rish uchun tugmani bosing:", { reply_markup: kb });
+      return;
+    }
+    if (text === "📅 Jadvalim") {
+      const kb = new InlineKeyboard().text("📅 Jadvalimni ko'rish", "menu_schedule");
+      await reply(ctx, "📅 Jadvalingizni ko'rish uchun tugmani bosing:", { reply_markup: kb });
+      return;
+    }
+    if (text === "💡 Savol berish") {
+      await reply(ctx, "💡 Savolingizni yozing:");
+      return;
+    }
+
+    // ── Intent routing ─────────────────────────────────────────────────────
+    const chatId = BigInt(ctx.chat!.id);
+    await logBotMessage({ chatId, role: "user", content: text });
+
+    let intent: string;
+    try {
+      const result = await classifyMessage(text);
+      intent = result.intent;
+    } catch {
+      intent = "UNCLEAR";
+    }
+
+    if (intent === "AI_COURSE_QUESTION" || intent === "UNCLEAR") {
+      await ctx.replyWithChatAction("typing");
+      const linkRow = await prisma.telegramLink.findFirst({ where: { chatId }, select: { participantId: true } });
+      const participantId = linkRow?.participantId ?? undefined;
+      try {
+        const { text: answer, raw } = await askRag({
+          chat_id:        ctx.chat!.id,
+          participant_id: participantId,
+          question:       text,
+        });
+
+        const kb = new InlineKeyboard()
+          .text("👍 Foydali", `fb_1_${raw?.tokens_out ?? 0}`)
+          .text("👎 Emas",    `fb_0_${raw?.tokens_out ?? 0}`)
+          .text("🔊 Tinglash", "tts_0");
+
+        await reply(ctx, `💡 ${answer}`, { reply_markup: kb });
+        await logBotMessage({ chatId, role: "assistant", content: answer, intent, routedTo: "ai" });
+
+        if (!participantId) {
+          const cta = new InlineKeyboard().text("📲 Kursga yozilish", "auth_login");
+          await reply(ctx, "<i>Jadval, baholar va vazifalaringizni ko'rish uchun ro'yxatdan o'ting</i>", {
+            reply_markup: cta,
+          });
+        }
+      } catch (err) {
+        console.error("[BOT] askRag error:", err);
+        await reply(ctx, "⚠️ AI javob bera olmadi. Keyinroq urinib ko'ring.");
+      }
+      return;
+    }
+
+    if (intent === "SMALL_TALK") {
+      await reply(ctx, "Salom! 😊 Kurs haqida savollaringiz bormi?");
+      return;
+    }
+
+    // LMS intents (SCHEDULE, HOMEWORK, GRADE, ATTENDANCE, OTHER) — show menu
+    const lmsMenu = new InlineKeyboard()
+      .text("📊 Progressim",  "menu_status")
+      .text("📝 Vazifalarim", "menu_homework").row()
+      .text("📅 Jadvalim",    "menu_schedule");
+    await reply(ctx, "📊 Ma'lumotlaringizni ko'rish:", { reply_markup: lmsMenu });
   });
 
   // ── File messages (document, audio, video, voice, photo) ──────────────────

@@ -16,7 +16,7 @@ import { Bot, Keyboard, InlineKeyboard } from "grammy";
 import prisma from "@/lib/prisma";
 import { requireParticipant, logAuth, checkRateLimit, promptLogin } from "@/lib/botAuth";
 import { normalizePhone } from "@/lib/phone";
-import { APP_URL, linkedKeyboard, logMessage, reply } from "./ui";
+import { APP_URL, linkedKeyboard, mainKeyboard, logMessage, reply } from "./ui";
 
 export function registerContactAuthHandlers(b: Bot) {
 
@@ -31,30 +31,32 @@ export function registerContactAuthHandlers(b: Bot) {
       const rlKey = `login:${ctx.chat!.id}`;
       if (!(await checkRateLimit(ctx, rlKey, "login"))) return;
 
-      // If already linked, greet and show menu
-      const existing = await prisma.telegramLink.findFirst({ where: { chatId } });
+      // If already linked, show home menu with inline buttons + persistent keyboard
+      const existing = await prisma.telegramLink.findFirst({
+        where:   { chatId },
+        include: { participant: { select: { fullName: true } } },
+      });
       if (existing) {
+        const homeMenu = new InlineKeyboard()
+          .text("📊 Mening progressim", "menu_status").row()
+          .text("📝 Uy vazifam",        "menu_homework").row()
+          .text("💡 Savol berish",      "menu_ai").row()
+          .text("📅 Jadvalim",          "menu_schedule");
         await reply(ctx,
-          "✅ Hisobingiz ulangan!\n\n" +
-          "📊 /mystatus — davomat va baholar\n" +
-          "📝 /homework — vazifalar\n" +
-          "🚪 /logout — akkauntni uzish",
-          { reply_markup: linkedKeyboard() }
+          `Salom, <b>${existing.participant.fullName}</b>! 👋\n\nBugun nima qilamiz?\n\n<i>Yoki shunchaki yozing — men tushunaman</i> 🤖`,
+          { reply_markup: homeMenu }
         );
+        // Send the persistent keyboard as a separate message so it attaches correctly
+        await ctx.reply("👇", { reply_markup: mainKeyboard });
         return;
       }
 
-      // Not linked — show contact-share keyboard directly
-      const kb = new Keyboard()
-        .requestContact("📱 Telefon raqamimi ulashish")
-        .resized()
-        .oneTime();
+      // Not linked — show login button
+      const loginMenu = new InlineKeyboard()
+        .text("📲 Hisobga kirish", "auth_login");
       await reply(ctx,
-        "👋 <b>Assalomu alaykum!</b>\n\n" +
-        "Bu Basyra o'quv markazi botidir.\n\n" +
-        "Davom etish uchun telefon raqamingizni ulashing — " +
-        "Telegram profilida saqlangan raqamingiz avtomatik yuboriladi:",
-        { reply_markup: kb }
+        "Salom! Men <b>Basyra</b> AI yordamchisiman.\n\nKurslaringiz va vazifalaringizni ko'rish uchun telefon raqamingizni ulang.\n\n<i>Savol berishingiz mumkin — ro'yxatdan o'tmagan holda ham!</i>",
+        { reply_markup: loginMenu }
       );
       return;
     }

@@ -463,6 +463,21 @@ model SupervisorInvite {
   @@map("supervisor_invites")
 }
 
+model BotMessage {
+  id            String   @id @default(cuid())
+  chatId        BigInt   @map("chat_id")
+  participantId String?  @map("participant_id")
+  role          String   // "user" | "assistant"
+  content       String
+  intent        String?  // "AI_COURSE_QUESTION" | "LMS_SCHEDULE" etc.
+  routedTo      String?  @map("routed_to") // "lms" | "ai" | "templated"
+  tokenCount    Int?     @map("token_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([chatId, createdAt])
+  @@map("bot_messages")
+}
+
 model GradingPolicy {
   id                   String   @id @default(cuid())
   onTimePct            Int      @default(100) @map("on_time_pct")

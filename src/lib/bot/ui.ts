@@ -2,12 +2,19 @@
  * Shared UI helpers: keyboard builders, reply wrapper, and message logger.
  */
 
-import { Context, InlineKeyboard } from "grammy";
+import { Context, InlineKeyboard, Keyboard } from "grammy";
 import prisma from "@/lib/prisma";
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://basyra-lmss.up.railway.app").replace(/\/$/, "");
 
 export { APP_URL };
+
+/** Persistent 2×2 reply keyboard — always visible at the bottom */
+export const mainKeyboard = new Keyboard()
+  .text("📊 Progressim").text("📝 Vazifalarim").row()
+  .text("💡 Savol berish").text("📅 Jadvalim")
+  .resized()
+  .persistent();
 
 /** Keyboard shown AFTER successful linking — opens portal dashboard directly */
 export function linkedKeyboard() {

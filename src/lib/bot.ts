@@ -41,15 +41,10 @@ export function getBot(): Bot {
 
   // Register slash-command autocomplete list shown when user types "/".
   bot.api.setMyCommands([
-    { command: "start",    description: "Botni boshlash" },
-    { command: "login",    description: "Kabinetga kirish" },
-    { command: "mystatus", description: "Mening statistikam" },
-    { command: "homework", description: "Vazifalar ro'yxati" },
-    { command: "cancel",   description: "Amalni bekor qilish" },
-    { command: "logout",   description: "Akkauntni uzish" },
-    { command: "privacy",  description: "Maxfiylik siyosati" },
-    { command: "delete",   description: "Akkauntni o'chirish" },
-    { command: "debug",    description: "Diagnostika ma'lumoti" },
+    { command: "start",  description: "Botni boshlash" },
+    { command: "menu",   description: "Asosiy menyu" },
+    { command: "cancel", description: "Amalni bekor qilish" },
+    { command: "help",   description: "Yordam" },
   ]).catch((e: unknown) => console.error("[BOT] setMyCommands failed:", e));
 
   return bot;
