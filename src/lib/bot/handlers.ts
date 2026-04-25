@@ -51,10 +51,13 @@ function buildHomeMenu() {
 
 function reasonKeyboard(msgId: string): InlineKeyboard {
   return new InlineKeyboard()
-    .text("Noto'g'ri",         `reason_wrong_${msgId}`)
-    .text("Tushunarsiz",       `reason_unclear_${msgId}`).row()
-    .text("Mavzudan tashqari", `reason_offtopic_${msgId}`)
-    .text("Boshqa",            `reason_other_${msgId}`);
+    .text("❌ Noto'g'ri javob",   `reason_wrong_${msgId}`)
+    .text("🤔 Tushunarsiz",       `reason_unclear_${msgId}`).row()
+    .text("⏳ Sekin",              `reason_slow_${msgId}`)
+    .text("🎯 Mavzudan tashqari", `reason_offtopic_${msgId}`).row()
+    .text("📏 Juda qisqa",        `reason_tooshort_${msgId}`)
+    .text("📜 Juda uzun",         `reason_toolong_${msgId}`).row()
+    .text("✏️ Boshqa (yozish)",   `reason_other_${msgId}`);
 }
 
 export function registerCommandHandlers(b: Bot) {
@@ -522,7 +525,11 @@ export function registerCommandHandlers(b: Bot) {
           data:  { comment: text.slice(0, 500) },
         });
       } catch {}
-      await reply(ctx, "Fikr-mulohazangiz uchun rahmat! 🙏");
+      let n = 0;
+      try {
+        n = await prisma.botMessageRating.count({ where: { comment: { not: null } } });
+      } catch {}
+      await reply(ctx, `✅ Rahmat! Bu fikringiz ${n}-chi qayd — buni o'qib AI'ni yaxshilashga harakat qilaman 🙏`);
       return;
     }
 
@@ -740,13 +747,16 @@ export function registerCommandHandlers(b: Bot) {
       await ctx.editMessageText(`✅ Rahmat! Sizning bahoyingiz: ${stars}⭐`);
     } catch { /* message too old or already edited — ignore */ }
 
-    if (stars <= 2) {
-      // Send reason chips only on low ratings
-      await ctx.reply("Nima yaxshi bo'lmadi?", { reply_markup: reasonKeyboard(msgId) });
+    if (stars <= 3) {
+      // Ask for reason on 1–3⭐ only — 4–5⭐ users are happy, leave them alone
+      await ctx.reply(
+        "Yordam bering — nima xato edi? Buni o'qib, AI'ni yaxshilashga harakat qilaman 🙏",
+        { reply_markup: reasonKeyboard(msgId) },
+      );
     }
   });
 
-  b.callbackQuery(/^reason_(wrong|unclear|offtopic|other)_(.+)$/, async (ctx) => {
+  b.callbackQuery(/^reason_(wrong|unclear|slow|offtopic|tooshort|toolong|other)_(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const [, reason, msgId] = ctx.match;
     const chatId = BigInt(ctx.chat!.id);
@@ -760,9 +770,24 @@ export function registerCommandHandlers(b: Bot) {
 
     if (reason === "other") {
       pendingRatingComment.set(chatId.toString(), msgId);
-      try { await ctx.editMessageText("✍️ Iltimos, nima kamchilik bo'lganini yozing (yoki /cancel):"); } catch {}
+      try {
+        await ctx.editMessageText(
+          "✍️ Nima xato edi? Yozing:\n\n" +
+          "_Misol: \"noto'g'ri ism aytdi\", \"savolimni tushunmadi\", \"juda umumiy javob\"_",
+          { parse_mode: "Markdown" },
+        );
+      } catch {}
     } else {
-      try { await ctx.editMessageText("✅ Rahmat! Javobni yaxshilashga harakat qilamiz 🛠"); } catch {}
+      // Count total rated+commented ratings for the dopamine number
+      let n = 0;
+      try {
+        n = await prisma.botMessageRating.count({ where: { reason: { not: null } } });
+      } catch {}
+      try {
+        await ctx.editMessageText(
+          `✅ Rahmat! Fikringiz qayd etildi — bu yaxshilanish uchun ${n}-chi signal 🛠`,
+        );
+      } catch {}
     }
   });
 }
