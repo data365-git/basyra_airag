@@ -24,6 +24,18 @@ import { askRag, logBotMessage } from "@/lib/aiClient";
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
 
+/** Repair unbalanced Markdown delimiters that cause Telegram to silently drop formatting */
+function sanitizeMarkdown(text: string): string {
+  let result = text;
+  for (const delim of ["*", "_", "`"]) {
+    const matches = result.match(new RegExp(`\\${delim}`, "g")) ?? [];
+    if (matches.length % 2 === 1) {
+      result = result.replace(new RegExp(`\\${delim}`, "g"), `\\${delim}`);
+    }
+  }
+  return result;
+}
+
 function fmtUzDate(d: string | Date | null | undefined): string {
   if (!d) return "";
   const dt = typeof d === "string" ? new Date(d + "T00:00:00") : d;
@@ -575,7 +587,16 @@ export function registerCommandHandlers(b: Bot) {
           .text("4️⃣", `rate_4_${msgId ?? "0"}`)
           .text("5️⃣", `rate_5_${msgId ?? "0"}`);
 
-        await reply(ctx, `💡 ${answer}`, { reply_markup: kb });
+        const sanitized = sanitizeMarkdown(`💡 ${answer}`);
+        try {
+          await reply(ctx, sanitized, { parse_mode: "Markdown", reply_markup: kb });
+        } catch (mdErr) {
+          if (String(mdErr).includes("can't parse")) {
+            await reply(ctx, `💡 ${answer}`, { reply_markup: kb });
+          } else {
+            throw mdErr;
+          }
+        }
 
         if (!participantId) {
           const cta = new InlineKeyboard().text("📲 Kursga yozilish", "auth_login");
