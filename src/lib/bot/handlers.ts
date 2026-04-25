@@ -579,23 +579,33 @@ export function registerCommandHandlers(b: Bot) {
 
         const msgId = await logBotMessage({ chatId, role: "assistant", content: answer, intent, routedTo: "ai" });
 
-        const kb = new InlineKeyboard()
-          .text("🔊 Tinglash", `tts_${msgId ?? "0"}`).row()
-          .text("1️⃣", `rate_1_${msgId ?? "0"}`)
-          .text("2️⃣", `rate_2_${msgId ?? "0"}`)
-          .text("3️⃣", `rate_3_${msgId ?? "0"}`)
-          .text("4️⃣", `rate_4_${msgId ?? "0"}`)
-          .text("5️⃣", `rate_5_${msgId ?? "0"}`);
-
+        // Message 1: AI answer + TTS only
+        const ttsKb = new InlineKeyboard().text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
         const sanitized = sanitizeMarkdown(`💡 ${answer}`);
         try {
-          await reply(ctx, sanitized, { parse_mode: "Markdown", reply_markup: kb });
+          await reply(ctx, sanitized, { parse_mode: "Markdown", reply_markup: ttsKb });
         } catch (mdErr) {
           if (String(mdErr).includes("can't parse")) {
-            await reply(ctx, `💡 ${answer}`, { reply_markup: kb });
+            await reply(ctx, `💡 ${answer}`, { reply_markup: ttsKb });
           } else {
             throw mdErr;
           }
+        }
+
+        // Message 2: rating prompt — separate message so it has context
+        const ratingKb = new InlineKeyboard()
+          .text("1", `rate_${msgId ?? "0"}_1`)
+          .text("2", `rate_${msgId ?? "0"}_2`)
+          .text("3", `rate_${msgId ?? "0"}_3`)
+          .text("4", `rate_${msgId ?? "0"}_4`)
+          .text("5", `rate_${msgId ?? "0"}_5`);
+        try {
+          await ctx.reply(
+            "⭐ *Iltimos AI\\-yordamchi javobini baholang*\n\n_Bu bizga AI\\-yordamchi ustida ishlashga yordam beradi_ 🙏",
+            { parse_mode: "MarkdownV2", reply_markup: ratingKb }
+          );
+        } catch {
+          // Non-critical — answer already delivered
         }
 
         if (!participantId) {
@@ -712,9 +722,9 @@ export function registerCommandHandlers(b: Bot) {
 
   // ── 5-star ratings ────────────────────────────────────────────────────────
 
-  b.callbackQuery(/^rate_(\d)_(.+)$/, async (ctx) => {
+  b.callbackQuery(/^rate_(.+)_(\d)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const [, starsStr, msgId] = ctx.match;
+    const [, msgId, starsStr] = ctx.match;
     const stars = parseInt(starsStr, 10);
 
     try {
@@ -725,12 +735,14 @@ export function registerCommandHandlers(b: Bot) {
       });
     } catch { /* msgId "0" fallback — no BotMessage exists */ }
 
+    // Edit the rating message in place — buttons disappear, confirmation appears
+    try {
+      await ctx.editMessageText(`✅ Rahmat! Sizning bahoyingiz: ${stars}⭐`);
+    } catch { /* message too old or already edited — ignore */ }
+
     if (stars <= 2) {
-      await ctx.editMessageReplyMarkup({ reply_markup: reasonKeyboard(msgId) });
-      await reply(ctx, `${"⭐".repeat(stars)} — Nima yaxshi bo'lmadi?`);
-    } else {
-      await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() });
-      await reply(ctx, `${"⭐".repeat(stars)} Rahmat! 🙏`);
+      // Send reason chips only on low ratings
+      await ctx.reply("Nima yaxshi bo'lmadi?", { reply_markup: reasonKeyboard(msgId) });
     }
   });
 
@@ -748,11 +760,9 @@ export function registerCommandHandlers(b: Bot) {
 
     if (reason === "other") {
       pendingRatingComment.set(chatId.toString(), msgId);
-      await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() });
-      await reply(ctx, "Iltimos, nima kamchilik bo'lganini yozing (yoki /cancel):");
+      try { await ctx.editMessageText("✍️ Iltimos, nima kamchilik bo'lganini yozing (yoki /cancel):"); } catch {}
     } else {
-      await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() });
-      await reply(ctx, "Rahmat! Javobni yaxshilashga harakat qilamiz 🛠");
+      try { await ctx.editMessageText("✅ Rahmat! Javobni yaxshilashga harakat qilamiz 🛠"); } catch {}
     }
   });
 }
