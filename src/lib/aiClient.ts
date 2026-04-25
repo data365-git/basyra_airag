@@ -77,10 +77,10 @@ export async function logBotMessage(params: {
   intent?:       string;
   routedTo?:     string;
   tokenCount?:   number;
-}): Promise<void> {
+}): Promise<string | null> {
   try {
     const { default: prisma } = await import("@/lib/prisma");
-    await prisma.botMessage.create({ data: {
+    const msg = await prisma.botMessage.create({ data: {
       chatId:        params.chatId,
       participantId: params.participantId ?? null,
       role:          params.role,
@@ -89,7 +89,9 @@ export async function logBotMessage(params: {
       routedTo:      params.routedTo ?? null,
       tokenCount:    params.tokenCount ?? null,
     }});
+    return msg.id;
   } catch (err) {
     console.error("[aiClient] logBotMessage failed:", err);
+    return null;
   }
 }

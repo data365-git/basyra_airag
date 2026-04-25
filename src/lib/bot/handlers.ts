@@ -18,7 +18,7 @@ import { uploadTelegramFileToR2 } from "@/lib/r2Upload";
 import { logSubmissionEvent, SubmissionEventType } from "@/lib/submissionEvents";
 import { requireParticipant } from "@/lib/botAuth";
 import { linkedKeyboard, logMessage, reply } from "./ui";
-import { pendingSubmissions, pendingFiles } from "./state";
+import { pendingSubmissions, pendingFiles, pendingRatingComment } from "./state";
 import { classifyMessage } from "@/lib/intentRouter";
 import { askRag, logBotMessage } from "@/lib/aiClient";
 
@@ -36,6 +36,14 @@ function buildHomeMenu() {
     .text("📝 Uy vazifam",        "menu_homework").row()
     .text("💡 Savol berish",      "menu_ai").row()
     .text("📅 Jadvalim",          "menu_schedule");
+}
+
+function reasonKeyboard(msgId: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("Noto'g'ri",         `reason_wrong_${msgId}`)
+    .text("Tushunarsiz",       `reason_unclear_${msgId}`).row()
+    .text("Mavzudan tashqari", `reason_offtopic_${msgId}`)
+    .text("Boshqa",            `reason_other_${msgId}`);
 }
 
 export function registerCommandHandlers(b: Bot) {
@@ -111,9 +119,10 @@ export function registerCommandHandlers(b: Bot) {
   b.command("cancel", async (ctx) => {
     await logMessage(ctx, "in", ctx.message?.text);
     const chatKey = String(ctx.chat!.id);
-    const hadPending = pendingSubmissions.has(chatKey) || pendingFiles.has(chatKey);
+    const hadPending = pendingSubmissions.has(chatKey) || pendingFiles.has(chatKey) || pendingRatingComment.has(chatKey);
     pendingSubmissions.delete(chatKey);
     pendingFiles.delete(chatKey);
+    pendingRatingComment.delete(chatKey);
     if (hadPending) {
       await reply(ctx, "❌ Topshiriq jarayoni bekor qilindi.");
     } else {
@@ -505,8 +514,22 @@ export function registerCommandHandlers(b: Bot) {
       return;
     }
 
-    // ── Intent routing ─────────────────────────────────────────────────────
+    // ── Check if awaiting a rating comment ────────────────────────────────
     const chatId = BigInt(ctx.chat!.id);
+    const pendingRatingMsgId = pendingRatingComment.get(chatId.toString());
+    if (pendingRatingMsgId) {
+      pendingRatingComment.delete(chatId.toString());
+      try {
+        await prisma.botMessageRating.update({
+          where: { messageId: pendingRatingMsgId },
+          data:  { comment: text.slice(0, 500) },
+        });
+      } catch {}
+      await reply(ctx, "Fikr-mulohazangiz uchun rahmat! 🙏");
+      return;
+    }
+
+    // ── Intent routing ─────────────────────────────────────────────────────
     await logBotMessage({ chatId, role: "user", content: text });
 
     let intent: string;
@@ -528,13 +551,17 @@ export function registerCommandHandlers(b: Bot) {
           question:       text,
         });
 
+        const msgId = await logBotMessage({ chatId, role: "assistant", content: answer, intent, routedTo: "ai" });
+
         const kb = new InlineKeyboard()
-          .text("👍 Foydali", `fb_1_${raw?.tokens_out ?? 0}`)
-          .text("👎 Emas",    `fb_0_${raw?.tokens_out ?? 0}`)
-          .text("🔊 Tinglash", "tts_0");
+          .text("🔊 Tinglash", `tts_${msgId ?? "0"}`).row()
+          .text("⭐",     `rate_1_${msgId ?? "0"}`)
+          .text("⭐⭐",    `rate_2_${msgId ?? "0"}`)
+          .text("⭐⭐⭐",   `rate_3_${msgId ?? "0"}`)
+          .text("⭐⭐⭐⭐",  `rate_4_${msgId ?? "0"}`)
+          .text("⭐⭐⭐⭐⭐", `rate_5_${msgId ?? "0"}`);
 
         await reply(ctx, `💡 ${answer}`, { reply_markup: kb });
-        await logBotMessage({ chatId, role: "assistant", content: answer, intent, routedTo: "ai" });
 
         if (!participantId) {
           const cta = new InlineKeyboard().text("📲 Kursga yozilish", "auth_login");
@@ -647,5 +674,51 @@ export function registerCommandHandlers(b: Bot) {
       `📎 <b>${fileName}</b>${sizeLabel}\n\nBu faylni topshiriqqa qo'shaylikmi?`,
       { reply_markup: confirmKb }
     );
+  });
+
+  // ── 5-star ratings ────────────────────────────────────────────────────────
+
+  b.callbackQuery(/^rate_(\d)_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const [, starsStr, msgId] = ctx.match;
+    const stars = parseInt(starsStr, 10);
+
+    try {
+      await prisma.botMessageRating.upsert({
+        where:  { messageId: msgId },
+        create: { messageId: msgId, stars, participantId: null },
+        update: { stars },
+      });
+    } catch { /* msgId "0" fallback — no BotMessage exists */ }
+
+    if (stars <= 2) {
+      await ctx.editMessageReplyMarkup({ reply_markup: reasonKeyboard(msgId) });
+      await reply(ctx, `${"⭐".repeat(stars)} — Nima yaxshi bo'lmadi?`);
+    } else {
+      await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() });
+      await reply(ctx, `${"⭐".repeat(stars)} Rahmat! 🙏`);
+    }
+  });
+
+  b.callbackQuery(/^reason_(wrong|unclear|offtopic|other)_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const [, reason, msgId] = ctx.match;
+    const chatId = BigInt(ctx.chat!.id);
+
+    try {
+      await prisma.botMessageRating.update({
+        where: { messageId: msgId },
+        data:  { reason },
+      });
+    } catch {}
+
+    if (reason === "other") {
+      pendingRatingComment.set(chatId.toString(), msgId);
+      await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() });
+      await reply(ctx, "Iltimos, nima kamchilik bo'lganini yozing (yoki /cancel):");
+    } else {
+      await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() });
+      await reply(ctx, "Rahmat! Javobni yaxshilashga harakat qilamiz 🛠");
+    }
   });
 }

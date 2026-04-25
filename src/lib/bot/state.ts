@@ -16,3 +16,7 @@ export interface PendingFile {
   telegramFileId: string | null;
 }
 export const pendingFiles = new Map<string, PendingFile>();
+
+// ─── Pending rating comment (waiting for "Boshqa" free-text) ─────────────────
+// Key: chatId string. Value: botMessageId waiting for comment.
+export const pendingRatingComment = new Map<string, string>();

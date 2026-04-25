@@ -142,6 +142,7 @@ model Participant {
   telegramMessages     TelegramMessage[]
   phoneLoginTokens     PhoneLoginToken[]
   supervisorAssignments SupervisorAssignment[]
+  botMessageRatings     BotMessageRating[]
 
   @@map("participants")
 }
@@ -473,9 +474,30 @@ model BotMessage {
   routedTo      String?  @map("routed_to") // "lms" | "ai" | "templated"
   tokenCount    Int?     @map("token_count")
   createdAt     DateTime @default(now()) @map("created_at")
+  rating        BotMessageRating?
 
   @@index([chatId, createdAt])
   @@map("bot_messages")
+}
+
+model BotMessageRating {
+  id            String       @id @default(cuid())
+  messageId     String       @unique @map("message_id")
+  message       BotMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  stars         Int
+  reason        String?      // "wrong" | "unclear" | "slow" | "off_topic" | "other"
+  comment       String?
+  participantId String?      @map("participant_id")
+  participant   Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  ratedAt       DateTime     @default(now()) @map("rated_at")
+  status        String       @default("new") // "new" | "triaging" | "fixed" | "wont_fix"
+  curatedById   String?      @map("curated_by")
+  curatedAt     DateTime?    @map("curated_at")
+
+  @@index([stars])
+  @@index([reason])
+  @@index([status])
+  @@map("bot_message_ratings")
 }
 
 model GradingPolicy {
