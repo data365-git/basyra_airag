@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   LogOut, User, Loader2, BookOpen, CheckCircle2, Clock,
   ChevronDown, ChevronUp, AlertCircle, Star, Send, Calendar,
-  Trash2, FileText, AlertTriangle, Link2, Video, Mic, Image, File,
+  Trash2, FileText, AlertTriangle, Link2, Video, Mic, Image, File, Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { fmtUzDateShort } from "@/lib/dateFormat";
@@ -689,6 +689,7 @@ export default function PortalMePage() {
   const [me,              setMe]              = useState<PortalMe | null>(null);
   const [loading,         setLoading]         = useState(true);
   const [selectedTraining, setSelectedTraining] = useState<string>("");
+  const [hasTeam,         setHasTeam]         = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -749,6 +750,12 @@ export default function PortalMePage() {
           } catch { /* non-fatal — cookie will still work for this session */ }
         }
 
+        // Check if user has a team (non-blocking)
+        portalFetch("/api/portal/team")
+          .then((r) => r.ok ? r.json() : [])
+          .then((data: unknown[]) => setHasTeam(data.length > 0))
+          .catch(() => {});
+
         setLoading(false);
         return;
       }
@@ -776,6 +783,10 @@ export default function PortalMePage() {
             if (data) {
               setMe(data);
               if (data.trainings?.length > 0) setSelectedTraining(data.trainings[0].id);
+              portalFetch("/api/portal/team")
+                .then((r) => r.ok ? r.json() : [])
+                .then((td: unknown[]) => setHasTeam(td.length > 0))
+                .catch(() => {});
               setLoading(false);
               return;
             }
@@ -857,6 +868,19 @@ export default function PortalMePage() {
             training={activeTraining}
             participantId={me.id}
           />
+        )}
+
+        {/* My team button — only shown if the user is a boss */}
+        {hasTeam && (
+          <div className="pt-2">
+            <a
+              href="/portal/team"
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-blue-50 border border-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+            >
+              <Users size={16} />
+              Mening jamoam
+            </a>
+          </div>
         )}
 
         {/* Logout — placed at bottom to avoid accidental taps */}

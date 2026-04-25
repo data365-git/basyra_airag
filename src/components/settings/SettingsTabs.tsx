@@ -28,7 +28,7 @@ export function SettingsTabs() {
     { href: "/settings/translations", label: t("settings.tab_translations"), show: superadmin || canTranslationsView },
     { href: "/settings/system",       label: t("settings.tab_system"),       show: superadmin },
     { href: "/settings/grading",      label: t("settings.tab_grading"),      show: superadmin },
-    { href: "/settings/supervisors",  label: "Nazoratchilar",                show: !!user },
+    { href: "/settings/supervisor-links",  label: "Nazoratchilar",                show: !!user },
   ];
 
   const visibleTabs = tabs.filter((tab) => tab.show);

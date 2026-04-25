@@ -38,6 +38,7 @@ model StaffUser {
   homeworkGrades     HomeworkGrade[]
   homeworkMaterials  HomeworkMaterial[]
   activityScores     ActivityScore[]
+  supervisorLinks    SupervisorLink[]
 
   @@map("staff_users")
 }
@@ -65,7 +66,7 @@ model Training {
   sessions              Session[]
   trainingParticipants  TrainingParticipant[]
   homeworks             Homework[]
-  supervisorAssignments SupervisorAssignment[]
+  supervisorLinks  SupervisorLink[]
 
   @@map("trainings")
 }
@@ -141,7 +142,8 @@ model Participant {
   activityScores       ActivityScore[]
   telegramMessages     TelegramMessage[]
   phoneLoginTokens     PhoneLoginToken[]
-  supervisorAssignments SupervisorAssignment[]
+  supervisedLinks  SupervisorLink[] @relation("BossLinks")
+  subordinateLinks SupervisorLink[] @relation("ReportLinks")
   botMessageRatings     BotMessageRating[]
   studentFeedback       StudentFeedback[]
 
@@ -425,44 +427,20 @@ model PhoneLoginToken {
   @@map("phone_login_tokens")
 }
 
-model Supervisor {
-  id           String                @id @default(uuid())
-  name         String
-  email        String                @unique
-  passwordHash String                @map("password_hash")
-  isActive     Boolean               @default(true) @map("is_active")
-  lastLoginAt  DateTime?             @map("last_login_at")
-  createdAt    DateTime              @default(now()) @map("created_at")
-  assignments  SupervisorAssignment[]
-  invites      SupervisorInvite[]
+model SupervisorLink {
+  id          String      @id @default(uuid())
+  bossId      String      @map("boss_id")
+  boss        Participant @relation("BossLinks", fields: [bossId], references: [id], onDelete: Cascade)
+  reportId    String      @map("report_id")
+  report      Participant @relation("ReportLinks", fields: [reportId], references: [id], onDelete: Cascade)
+  trainingId  String?     @map("training_id")
+  training    Training?   @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  createdById String?     @map("created_by")
+  createdBy   StaffUser?  @relation(fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now()) @map("created_at")
 
-  @@map("supervisors")
-}
-
-model SupervisorAssignment {
-  id            String      @id @default(uuid())
-  supervisorId  String      @map("supervisor_id")
-  supervisor    Supervisor  @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
-  participantId String      @map("participant_id")
-  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  trainingId    String?     @map("training_id")
-  training      Training?   @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  createdAt     DateTime    @default(now()) @map("created_at")
-
-  @@unique([supervisorId, participantId, trainingId])
-  @@map("supervisor_assignments")
-}
-
-model SupervisorInvite {
-  id           String     @id @default(uuid())
-  supervisorId String     @map("supervisor_id")
-  supervisor   Supervisor @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
-  token        String     @unique
-  expiresAt    DateTime   @map("expires_at")
-  usedAt       DateTime?  @map("used_at")
-  createdAt    DateTime   @default(now()) @map("created_at")
-
-  @@map("supervisor_invites")
+  @@unique([bossId, reportId, trainingId])
+  @@map("supervisor_links")
 }
 
 model BotMessage {
