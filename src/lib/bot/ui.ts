@@ -34,11 +34,13 @@ export async function logMessage(ctx: Context, direction: "in" | "out", text?: s
   fileName?: string;
   fileSizeBytes?: number;
   telegramMsgId?: number;
+  replyToTelegramMsgId?: number;
 }) {
   try {
     const chatId       = BigInt(ctx.chat!.id);
     const link         = await prisma.telegramLink.findFirst({ where: { chatId } });
     const msgId        = ctx.message?.message_id ?? extra?.telegramMsgId;
+    const replyToMsgId = ctx.message?.reply_to_message?.message_id ?? extra?.replyToTelegramMsgId;
 
     await prisma.telegramMessage.create({
       data: {
@@ -51,6 +53,7 @@ export async function logMessage(ctx: Context, direction: "in" | "out", text?: s
         fileName:      extra?.fileName ?? null,
         fileSizeBytes: extra?.fileSizeBytes ?? null,
         telegramMsgId: msgId ?? null,
+        replyToTelegramMsgId: replyToMsgId ?? null,
       },
     });
   } catch {
@@ -60,7 +63,8 @@ export async function logMessage(ctx: Context, direction: "in" | "out", text?: s
 
 // ─── Send + log a bot reply ───────────────────────────────────────────────────
 
-export async function reply(ctx: Context, text: string, options?: object): Promise<void> {
+export async function reply(ctx: Context, text: string, options?: object): Promise<number | null> {
   const msg = await ctx.reply(text, { parse_mode: "HTML", ...options });
   await logMessage(ctx, "out", text, { telegramMsgId: msg.message_id });
+  return msg.message_id ?? null;
 }

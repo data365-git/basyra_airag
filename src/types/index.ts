@@ -11,7 +11,16 @@ export type PermPage =
   | "settings.translations";
 
 /** Action used in hasPermission() */
-export type PermAction = "view" | "create" | "edit" | "delete" | "export";
+export type PermAction =
+  | "view"
+  | "create"
+  | "edit"
+  | "delete"
+  | "export"
+  | "conversations"
+  | "content"
+  | "broadcast"
+  | "settings";
 
 /** Granular permission object stored in DB */
 export interface RolePermissions {

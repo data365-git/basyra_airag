@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getUser } from "@/lib/getUser";
+import { getFullUser } from "@/lib/getUser";
+import { hasAnyPermission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const user = await getUser();
+  const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasAnyPermission(user, [
+    ["chatbot", "conversations"],
+    ["chatbot", "broadcast"],
+  ])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search")?.trim() ?? "";

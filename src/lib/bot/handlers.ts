@@ -12,6 +12,7 @@
  */
 
 import { Bot, InlineKeyboard, InputFile } from "grammy";
+import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { getParticipantScorecard } from "@/lib/scorecard";
 import { uploadTelegramFileToR2 } from "@/lib/r2Upload";
@@ -23,6 +24,38 @@ import { classifyMessage, extractFeedbackMeta } from "@/lib/intentRouter";
 import { askRag, logBotMessage, logUsage } from "@/lib/aiClient";
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
+const DEFAULT_TTS_CHUNK_CHARS = 400;
+const DEFAULT_TTS_FIRST_CHUNK_CHARS = 350;
+const DEFAULT_TTS_CONCURRENCY = 2;
+const TELEGRAM_TEXT_LIMIT = 3900;
+const MEDIUM_ANSWER_SPLIT_LIMIT = 9000;
+
+type LongAnswerDelegate = {
+  create(args: {
+    data: {
+      messageId?: string;
+      participantId?: string;
+      title: string;
+      summary: string;
+      bodyMd: string;
+    };
+  }): Promise<{ id: string }>;
+};
+
+type BotTtsChunkDelegate = {
+  findMany(args: {
+    where: { messageId: string };
+    orderBy: { idx: "asc" | "desc" };
+  }): Promise<Array<{ idx: number; fileId: string }>>;
+  create(args: {
+    data: { messageId: string; idx: number; fileId: string };
+  }): Promise<unknown>;
+};
+
+const prismaBotModels = prisma as typeof prisma & {
+  longAnswer: LongAnswerDelegate;
+  botTtsChunk: BotTtsChunkDelegate;
+};
 
 /** Repair unbalanced Markdown delimiters that cause Telegram to silently drop formatting */
 function sanitizeMarkdown(text: string): string {
@@ -54,13 +87,368 @@ function extractSummary(text: string): string {
   return sentences.slice(0, 3).join(" ").trim() || text.slice(0, 400).trim();
 }
 
+function makeLongAnswerPreview(summary: string): string {
+  const cleanSummary = summary.replace(/\s+/g, " ").trim();
+  const preview = cleanSummary.length > 650 ? `${cleanSummary.slice(0, 650).trim()}...` : cleanSummary;
+  return [
+    "💡 Javob biroz uzunroq chiqdi, shuning uchun uni o'qishga qulay maqola qilib tayyorladim.",
+    "",
+    preview,
+    "",
+    "Davomini havolada to'liq o'qishingiz mumkin.",
+  ].join("\n");
+}
+
+type ReplyContext = {
+  assistantMessageId: string;
+  assistantAnswer: string;
+  originalUserQuestion?: string | null;
+  articleSummary?: string | null;
+  articleBody?: string | null;
+};
+
+type ConversationMemory = {
+  shortTerm: Array<{ role: string; content: string }>;
+};
+
+function compactForReplyContext(value: string | null | undefined, maxChars: number): string {
+  const clean = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  return clean.length > maxChars ? `${clean.slice(0, maxChars).trim()}...` : clean;
+}
+
+function buildConversationAwareQuestion(
+  text: string,
+  context: ReplyContext | null,
+  memory: ConversationMemory
+): string {
+  const parts: string[] = [];
+
+  if (memory.shortTerm.length > 0) {
+    parts.push(
+      [
+        "Short-term conversation memory:",
+        ...memory.shortTerm.map((message) =>
+          `${message.role === "assistant" ? "Assistant" : "User"}: ${compactForReplyContext(message.content, 700)}`
+        ),
+        "",
+        "Use this memory only when clearly relevant. Do not invent missing context.",
+      ].join("\n")
+    );
+  }
+
+  if (context) {
+    const replyParts = [
+      "User is replying to a previous assistant answer.",
+      `Original user question: ${compactForReplyContext(context.originalUserQuestion, 1200) || "(not found)"}`,
+      `Assistant answer being replied to: ${compactForReplyContext(context.assistantAnswer, 1800) || "(not found)"}`,
+    ];
+
+    const articleBody = compactForReplyContext(context.articleBody, 2500);
+    const articleSummary = compactForReplyContext(context.articleSummary, 1000);
+    if (articleBody || articleSummary) {
+      replyParts.push(`Long-answer article: ${articleBody || articleSummary}`);
+    }
+
+    parts.push(replyParts.join("\n\n"));
+  }
+
+  parts.push(`New user message: ${text}`);
+  return parts.join("\n\n---\n\n");
+}
+
+async function loadConversationMemory(chatId: bigint, currentMessageId: string | null): Promise<ConversationMemory> {
+  try {
+    const messages = await prisma.botMessage.findMany({
+      where: {
+        chatId,
+        ...(currentMessageId ? { id: { not: currentMessageId } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 14,
+      select: { role: true, content: true },
+    });
+
+    return {
+      shortTerm: messages
+        .reverse()
+        .map((message) => ({
+          role: message.role,
+          content: compactForReplyContext(message.content, 900),
+        }))
+        .filter((message) => message.content.length > 0),
+    };
+  } catch (error) {
+    console.warn("[BOT] short-term memory lookup failed; continuing without it", error);
+    return { shortTerm: [] };
+  }
+}
+
+async function findOriginalQuestionForAssistant(chatId: bigint, assistant: {
+  id: string;
+  createdAt: Date;
+  replyToMessage?: { content: string } | null;
+}): Promise<string | null> {
+  if (assistant.replyToMessage?.content) return assistant.replyToMessage.content;
+
+  try {
+    const previousUserMessage = await prisma.botMessage.findFirst({
+      where: {
+        chatId,
+        role: "user",
+        createdAt: { lt: assistant.createdAt },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { content: true },
+    });
+    return previousUserMessage?.content ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveReplyContext(chatId: bigint, replyToTelegramMsgId?: number): Promise<ReplyContext | null> {
+  if (!replyToTelegramMsgId) return null;
+
+  try {
+    const assistant = await prisma.botMessage.findFirst({
+      where: {
+        chatId,
+        telegramMsgId: replyToTelegramMsgId,
+        role: "assistant",
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        content: true,
+        createdAt: true,
+        replyToMessage: { select: { content: true } },
+        longAnswer: { select: { summary: true, bodyMd: true } },
+      },
+    }) as {
+      id: string;
+      content: string;
+      createdAt: Date;
+      replyToMessage?: { content: string } | null;
+      longAnswer?: { summary: string | null; bodyMd: string | null } | null;
+    } | null;
+
+    if (!assistant) return null;
+
+    return {
+      assistantMessageId: assistant.id,
+      assistantAnswer: assistant.content,
+      originalUserQuestion: await findOriginalQuestionForAssistant(chatId, assistant),
+      articleSummary: assistant.longAnswer?.summary ?? null,
+      articleBody: assistant.longAnswer?.bodyMd ?? null,
+    };
+  } catch (error) {
+    console.warn("[BOT] reply context lookup failed; continuing without it", error);
+    return null;
+  }
+}
+
+async function setBotMessageTelegramMsgId(messageId: string | null, telegramMsgId: number | null): Promise<void> {
+  if (!messageId || !telegramMsgId) return;
+
+  try {
+    await prisma.botMessage.update({
+      where: { id: messageId },
+      data: { telegramMsgId },
+    });
+  } catch (error) {
+    console.warn("[BOT] bot message Telegram id update failed; continuing", error);
+  }
+}
+
+async function mergeBotMessageMetadata(
+  messageId: string | null,
+  metadata: Record<string, unknown>
+): Promise<void> {
+  if (!messageId) return;
+
+  try {
+    const current = await prisma.botMessage.findUnique({
+      where: { id: messageId },
+      select: { metadata: true },
+    });
+    const existing =
+      current?.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
+        ? current.metadata as Record<string, unknown>
+        : {};
+
+    const nextMetadata = { ...existing, ...metadata } as Prisma.InputJsonObject;
+    await prisma.botMessage.update({
+      where: { id: messageId },
+      data: { metadata: nextMetadata },
+    });
+  } catch (error) {
+    console.warn("[BOT] bot message metadata update failed; continuing", error);
+  }
+}
+
+type DeliveryType = "direct" | "split" | "article";
+
+function chooseDeliveryType(answer: string, articleThreshold: number): DeliveryType {
+  if (answer.length <= TELEGRAM_TEXT_LIMIT) return "direct";
+  if (answer.length <= Math.max(articleThreshold, MEDIUM_ANSWER_SPLIT_LIMIT)) return "split";
+  return "article";
+}
+
+function splitTelegramText(text: string, maxChars = 3600): string[] {
+  const paragraphs = text.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  const chunks: string[] = [];
+  let current = "";
+
+  const pushCurrent = () => {
+    if (current.trim()) chunks.push(current.trim());
+    current = "";
+  };
+
+  for (const paragraph of paragraphs.length ? paragraphs : [text]) {
+    if (paragraph.length > maxChars) {
+      pushCurrent();
+      const sentences = paragraph.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) ?? [paragraph];
+      for (const sentence of sentences) {
+        if (sentence.length > maxChars) {
+          pushCurrent();
+          for (let i = 0; i < sentence.length; i += maxChars) {
+            chunks.push(sentence.slice(i, i + maxChars).trim());
+          }
+        } else if (current && current.length + sentence.length + 1 > maxChars) {
+          pushCurrent();
+          current = sentence.trim();
+        } else {
+          current = current ? `${current} ${sentence.trim()}` : sentence.trim();
+        }
+      }
+      continue;
+    }
+
+    const next = current ? `${current}\n\n${paragraph}` : paragraph;
+    if (next.length > maxChars) {
+      pushCurrent();
+      current = paragraph;
+    } else {
+      current = next;
+    }
+  }
+
+  pushCurrent();
+  return chunks.length ? chunks : [text.slice(0, maxChars)];
+}
+
+function parseBoundedInt(raw: string | null | undefined, fallback: number, min: number, max: number): number {
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+async function resolveTtsConfig(): Promise<{ chunkChars: number; firstChunkChars: number; concurrency: number }> {
+  try {
+    const keys = [
+      "bot.tts.chunk_size_chars",
+      "bot.tts.first_chunk_size_chars",
+      "bot.tts.concurrency",
+      // Backwards-compatible aliases used by early internal builds.
+      "tts_chunk_chars",
+      "tts_first_chunk_chars",
+      "tts_concurrency",
+    ];
+    const rows = await prisma.systemSetting.findMany({
+      where: { key: { in: keys } },
+    });
+    const byKey = new Map(rows.map((row) => [row.key, row.value]));
+    const chunkChars = parseBoundedInt(
+      byKey.get("bot.tts.chunk_size_chars") ?? byKey.get("tts_chunk_chars"),
+      DEFAULT_TTS_CHUNK_CHARS,
+      200,
+      1000,
+    );
+    return {
+      chunkChars,
+      firstChunkChars: parseBoundedInt(
+        byKey.get("bot.tts.first_chunk_size_chars") ?? byKey.get("tts_first_chunk_chars"),
+        Math.min(DEFAULT_TTS_FIRST_CHUNK_CHARS, chunkChars),
+        120,
+        chunkChars,
+      ),
+      concurrency: parseBoundedInt(
+        byKey.get("bot.tts.concurrency") ?? byKey.get("tts_concurrency"),
+        DEFAULT_TTS_CONCURRENCY,
+        1,
+        5,
+      ),
+    };
+  } catch (error) {
+    console.warn("[TTS] config lookup failed; using defaults", error);
+    return {
+      chunkChars: DEFAULT_TTS_CHUNK_CHARS,
+      firstChunkChars: DEFAULT_TTS_FIRST_CHUNK_CHARS,
+      concurrency: DEFAULT_TTS_CONCURRENCY,
+    };
+  }
+}
+
+async function resolveLongAnswerLimit(): Promise<number> {
+  try {
+    const row = await prisma.systemSetting.findFirst({
+      where: {
+        key: {
+          in: [
+            "bot.long_answer.threshold_chars",
+            // Backwards-compatible key from an early settings UI draft.
+            "bot.tts.long_answer_threshold_chars",
+          ],
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    return parseBoundedInt(row?.value, 3900, 800, 3900);
+  } catch (error) {
+    console.warn("[Bot] long-answer config lookup failed; using default", error);
+      return 3900;
+  }
+}
+
 /** Split text into sentence-aligned chunks for parallel TTS */
-function splitIntoChunks(text: string, maxChars = 400): string[] {
-  const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [];
+function splitIntoChunks(text: string, maxChars = DEFAULT_TTS_CHUNK_CHARS, firstMaxChars = maxChars): string[] {
+  const pushLongSegment = (segment: string, limit: number, chunks: string[]) => {
+    let current = "";
+    const words = segment.match(/\S+\s*/g) ?? [segment];
+    for (const word of words) {
+      if (word.length > limit) {
+        if (current.trim()) {
+          chunks.push(current.trim());
+          current = "";
+        }
+        for (let i = 0; i < word.length; i += limit) {
+          chunks.push(word.slice(i, i + limit).trim());
+        }
+        continue;
+      }
+      if (current && current.length + word.length > limit) {
+        chunks.push(current.trim());
+        current = word;
+      } else {
+        current += word;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+  };
+
+  const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) ?? [];
   const result: string[] = [];
   let current = "";
   for (const s of sentences) {
-    if (current && current.length + s.length + 1 > maxChars) {
+    const limit = result.length === 0 ? firstMaxChars : maxChars;
+    if (s.length > limit) {
+      if (current.trim()) {
+        result.push(current.trim());
+        current = "";
+      }
+      pushLongSegment(s, limit, result);
+    } else if (current && current.length + s.length + 1 > limit) {
       result.push(current.trim());
       current = s;
     } else {
@@ -68,7 +456,7 @@ function splitIntoChunks(text: string, maxChars = 400): string[] {
     }
   }
   if (current.trim()) result.push(current.trim());
-  return result.length ? result : [text.slice(0, maxChars)];
+  return result.length ? result : [text.slice(0, firstMaxChars)];
 }
 
 function buildHomeMenu() {
@@ -563,7 +951,20 @@ export function registerCommandHandlers(b: Bot) {
     }
 
     // ── Intent routing ─────────────────────────────────────────────────────
-    await logBotMessage({ chatId, role: "user", content: text });
+    const telegramMsgId = ctx.message?.message_id;
+    const replyToTelegramMsgId = ctx.message?.reply_to_message?.message_id;
+    const linkRow = await prisma.telegramLink.findFirst({ where: { chatId }, select: { participantId: true } });
+    const participantId = linkRow?.participantId ?? undefined;
+    const replyContext = await resolveReplyContext(chatId, replyToTelegramMsgId);
+    const userMsgId = await logBotMessage({
+      chatId,
+      participantId,
+      role: "user",
+      content: text,
+      telegramMsgId,
+      replyToTelegramMsgId,
+      replyToMessageId: replyContext?.assistantMessageId ?? null,
+    });
 
     let intent: string;
     try {
@@ -576,7 +977,6 @@ export function registerCommandHandlers(b: Bot) {
     // ── Feedback capture (complaint / suggestion / praise) ────────────────
     if (intent === "COMPLAINT" || intent === "SUGGESTION" || intent === "PRAISE") {
       const { severity, tags } = extractFeedbackMeta(text, intent as "COMPLAINT" | "SUGGESTION" | "PRAISE");
-      const linkRow = await prisma.telegramLink.findFirst({ where: { chatId }, select: { participantId: true } });
       try {
         await prisma.studentFeedback.create({
           data: {
@@ -602,18 +1002,45 @@ export function registerCommandHandlers(b: Bot) {
       return;
     }
 
-    if (intent === "AI_COURSE_QUESTION" || intent === "UNCLEAR") {
+    if (intent === "AI_COURSE_QUESTION" || intent === "BUSINESS_CONSULTING" || intent === "UNCLEAR") {
       await ctx.replyWithChatAction("typing");
-      const linkRow = await prisma.telegramLink.findFirst({ where: { chatId }, select: { participantId: true } });
-      const participantId = linkRow?.participantId ?? undefined;
       try {
-        const { text: answer, raw } = await askRag({
+        const memory = await loadConversationMemory(chatId, userMsgId);
+        const { text: answer, raw, metadata } = await askRag({
           chat_id:        ctx.chat!.id,
           participant_id: participantId,
-          question:       text,
+          question:       buildConversationAwareQuestion(text, replyContext, memory),
         });
 
-        const msgId = await logBotMessage({ chatId, role: "assistant", content: answer, intent, routedTo: "ai" });
+        const DIRECT_ANSWER_LIMIT = await resolveLongAnswerLimit();
+        const deliveryType = chooseDeliveryType(answer, DIRECT_ANSWER_LIMIT);
+        const splitParts = deliveryType === "split" ? splitTelegramText(answer) : [];
+        const msgId = await logBotMessage({
+          chatId,
+          participantId,
+          role: "assistant",
+          content: answer,
+          intent,
+          routedTo: "ai",
+          metadata: {
+            reply_context_used: Boolean(replyContext),
+            memory_used: memory.shortTerm.length > 0,
+            short_term_memory_count: memory.shortTerm.length,
+            reply_to_message_id: userMsgId,
+            replied_assistant_message_id: replyContext?.assistantMessageId ?? null,
+            delivery_type: deliveryType,
+            telegram_message_count: deliveryType === "split" ? splitParts.length : 1,
+            answer_char_count: answer.length,
+            finish_reason: metadata.finishReason,
+            finish_reasons: metadata.finishReasons,
+            continuation_count: metadata.continuationCount,
+            completed_naturally: metadata.completedNaturally,
+            incomplete_ending_detected: metadata.incompleteEndingDetected,
+            completion_attempted: metadata.completionAttempted,
+          },
+          replyToTelegramMsgId: telegramMsgId,
+          replyToMessageId: userMsgId,
+        });
 
         if (raw) {
           void logUsage({
@@ -629,14 +1056,13 @@ export function registerCommandHandlers(b: Bot) {
           });
         }
 
-        const LONG_THRESHOLD = 4096;
-        if (answer.length > LONG_THRESHOLD) {
+        if (deliveryType === "article") {
           // Long answer: save to DB, show summary + buttons
           const title   = extractTitle(answer);
           const summary = extractSummary(answer);
           const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
-          const longAnswer = await (prisma as any).longAnswer.create({
+          const longAnswer = await prismaBotModels.longAnswer.create({
             data: {
               messageId:     msgId ?? undefined,
               participantId: participantId ?? undefined,
@@ -648,27 +1074,56 @@ export function registerCommandHandlers(b: Bot) {
 
           const kb = new InlineKeyboard()
             .url("📖 To'liq o'qish", `${appUrl}/article/${longAnswer.id}`)
-            .text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
+            .text("🔊 Ovozda tinglash", `tts_${msgId ?? "0"}`)
+            .url("📄 PDF yuklab olish", `${appUrl}/article/${longAnswer.id}?print=1`);
 
-          const summaryText = sanitizeMarkdown(`💡 ${summary}`);
+          const summaryText = sanitizeMarkdown(makeLongAnswerPreview(summary));
+          let sentTelegramMsgId: number | null = null;
           try {
-            await reply(ctx, summaryText, { parse_mode: "Markdown", reply_markup: kb });
+            sentTelegramMsgId = await reply(ctx, summaryText, { parse_mode: "Markdown", reply_markup: kb });
           } catch {
-            await reply(ctx, `💡 ${summary}`, { reply_markup: kb });
+            sentTelegramMsgId = await reply(ctx, makeLongAnswerPreview(summary), { reply_markup: kb });
           }
+          await setBotMessageTelegramMsgId(msgId, sentTelegramMsgId);
+        } else if (deliveryType === "split") {
+          let firstTelegramMsgId: number | null = null;
+          for (let index = 0; index < splitParts.length; index += 1) {
+            const part = splitParts[index];
+            const prefix = splitParts.length > 1 ? `💡 ${index + 1}/${splitParts.length}\n\n` : "💡 ";
+            const isLast = index === splitParts.length - 1;
+            const kb = isLast
+              ? new InlineKeyboard().text("🔊 Tinglash", `tts_${msgId ?? "0"}`)
+              : undefined;
+            const sanitized = sanitizeMarkdown(`${prefix}${part}`);
+            let sent: number | null = null;
+            try {
+              sent = await reply(ctx, sanitized, { parse_mode: "Markdown", ...(kb ? { reply_markup: kb } : {}) });
+            } catch (mdErr) {
+              if (String(mdErr).includes("can't parse")) {
+                sent = await reply(ctx, `${prefix}${part}`, kb ? { reply_markup: kb } : undefined);
+              } else {
+                throw mdErr;
+              }
+            }
+            firstTelegramMsgId ??= sent;
+          }
+          await setBotMessageTelegramMsgId(msgId, firstTelegramMsgId);
+          await mergeBotMessageMetadata(msgId, { telegram_message_count: splitParts.length });
         } else {
-          // Short answer: existing behavior
+          // Send direct answers when they fit Telegram's message limit.
           const ttsKb = new InlineKeyboard().text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
           const sanitized = sanitizeMarkdown(`💡 ${answer}`);
+          let sentTelegramMsgId: number | null = null;
           try {
-            await reply(ctx, sanitized, { parse_mode: "Markdown", reply_markup: ttsKb });
+            sentTelegramMsgId = await reply(ctx, sanitized, { parse_mode: "Markdown", reply_markup: ttsKb });
           } catch (mdErr) {
             if (String(mdErr).includes("can't parse")) {
-              await reply(ctx, `💡 ${answer}`, { reply_markup: ttsKb });
+              sentTelegramMsgId = await reply(ctx, `💡 ${answer}`, { reply_markup: ttsKb });
             } else {
               throw mdErr;
             }
           }
+          await setBotMessageTelegramMsgId(msgId, sentTelegramMsgId);
         }
 
         // Message 2: rating prompt — separate message so it has context
@@ -808,18 +1263,6 @@ export function registerCommandHandlers(b: Bot) {
     const api       = ctx.api;
 
     void (async () => {
-      // ── Cache hit: re-send stored file_ids instantly ──────────────────────
-      const cached = await (prisma as any).botTtsChunk.findMany({
-        where: { messageId: msgId },
-        orderBy: { idx: "asc" },
-      });
-      if (cached.length > 0) {
-        for (const c of cached) {
-          await api.sendVoice(chatId, c.fileId).catch(() => {});
-        }
-        return;
-      }
-
       // ── Fetch text ────────────────────────────────────────────────────────
       let text = "";
       try {
@@ -838,43 +1281,163 @@ export function registerCommandHandlers(b: Bot) {
         4000,
       );
 
-      // ── Fetch audio (sequential: send each chunk as soon as ready) ────────
-      try {
-        const textChunks = text.length > 400 ? splitIntoChunks(text, 400) : [text];
-        const total = textChunks.length;
-        let sent = false;
+      type TtsChunkResult = {
+        idx: number;
+        buf?: Buffer;
+        fileId?: string;
+        latencyMs?: number;
+        source: "cache" | "provider";
+        error?: unknown;
+      };
 
-        for (let i = 0; i < total; i++) {
+      // ── Fetch audio progressively: first chunk first, then bounded parallel ─
+      try {
+        const startedAt = Date.now();
+        const ttsConfig = await resolveTtsConfig();
+        const textChunks = splitIntoChunks(text, ttsConfig.chunkChars, ttsConfig.firstChunkChars);
+        const total = textChunks.length;
+        const cached = await prismaBotModels.botTtsChunk.findMany({
+          where: { messageId: msgId },
+          orderBy: { idx: "asc" },
+        });
+        const cachedByIdx = new Map(cached.map((c) => [c.idx, c.fileId]));
+        const completed = new Map<number, TtsChunkResult>();
+        const chunkTelemetry: Array<{
+          idx: number;
+          chars: number;
+          source: "cache" | "provider";
+          latency_ms: number | null;
+          ok: boolean;
+        }> = [];
+        let nextToSend = 0;
+        let nextToStart = 1;
+        let sentCount = 0;
+        let failedChunks = 0;
+        let firstAudioMs: number | null = null;
+        let flushChain = Promise.resolve();
+
+        console.log("[TTS] start", {
+          messageId: msgId,
+          chunkCount: total,
+          chunkChars: ttsConfig.chunkChars,
+          firstChunkChars: ttsConfig.firstChunkChars,
+          concurrency: ttsConfig.concurrency,
+          cachedChunks: cached.length,
+        });
+
+        const fetchChunk = async (idx: number): Promise<TtsChunkResult> => {
+          const cachedFileId = cachedByIdx.get(idx);
+          if (cachedFileId) {
+            chunkTelemetry.push({ idx, chars: textChunks[idx].length, source: "cache", latency_ms: null, ok: true });
+            return { idx, fileId: cachedFileId, source: "cache" };
+          }
+
+          const chunkStartedAt = Date.now();
           try {
             const res = await fetch(`${ragUrl}/tts`, {
               method:  "POST",
               headers: { "Content-Type": "application/json", "X-Internal-Token": ragToken },
-              body:    JSON.stringify({ text: textChunks[i], chat_id: Number(chatId) }),
+              body:    JSON.stringify({ text: textChunks[idx], chat_id: Number(chatId) }),
               signal:  AbortSignal.timeout(120_000),
             });
-            if (!res.ok) { console.error(`[TTS chunk ${i}] http ${res.status}`); continue; }
+            if (!res.ok) throw new Error(`http ${res.status}`);
             const buf = Buffer.from(await res.arrayBuffer());
-            const caption = total > 1 ? `🎙 ${i + 1}/${total}` : undefined;
-            const msg = await api.sendVoice(chatId, new InputFile(buf, "voice.ogg"), { caption });
-            sent = true;
-            const fileId = msg.voice?.file_id;
-            if (fileId && msgId) {
-              await (prisma as any).botTtsChunk.create({ data: { messageId: msgId, idx: i, fileId } }).catch(() => {});
-            }
-            void logUsage({
-              messageId:      msgId !== "0" ? msgId : undefined,
-              chatId:         BigInt(chatId),
-              model:          "gemini-2.5-flash-preview-tts",
-              kind:           "tts",
-              costUsd:        0,
-              responseTimeMs: 0,
+            const latencyMs = Date.now() - chunkStartedAt;
+            chunkTelemetry.push({ idx, chars: textChunks[idx].length, source: "provider", latency_ms: latencyMs, ok: true });
+            console.log("[TTS] chunk_generated", {
+              messageId: msgId,
+              idx,
+              chars: textChunks[idx].length,
+              provider_latency_ms: latencyMs,
             });
-          } catch (err) {
-            console.error(`[TTS chunk ${i}]`, err);
+            return { idx, buf, latencyMs, source: "provider" };
+          } catch (error) {
+            const latencyMs = Date.now() - chunkStartedAt;
+            chunkTelemetry.push({ idx, chars: textChunks[idx].length, source: "provider", latency_ms: latencyMs, ok: false });
+            console.error("[TTS] chunk_failed", {
+              messageId: msgId,
+              idx,
+              chars: textChunks[idx].length,
+              provider_latency_ms: latencyMs,
+              error,
+            });
+            return { idx, latencyMs, source: "provider", error };
           }
-        }
+        };
 
-        if (!sent) await api.sendMessage(chatId, "❌ Ovoz yaratib bo'lmadi");
+        const flushReadyChunks = async () => {
+          while (completed.has(nextToSend)) {
+            const result = completed.get(nextToSend)!;
+            completed.delete(nextToSend);
+
+            if (result.error || (!result.buf && !result.fileId)) {
+              failedChunks++;
+              nextToSend++;
+              continue;
+            }
+
+            const caption = total > 1 ? `🎙 ${result.idx + 1}/${total}` : undefined;
+            const voice = result.fileId ?? new InputFile(result.buf!, "voice.ogg");
+            const msg = await api.sendVoice(chatId, voice, { caption });
+            sentCount++;
+
+            if (firstAudioMs === null) {
+              firstAudioMs = Date.now() - startedAt;
+              console.log(`[TTS] time_to_first_audio_ms=${firstAudioMs} messageId=${msgId}`);
+            }
+
+            const fileId = msg.voice?.file_id;
+            if (!result.fileId && fileId && msgId) {
+              await prismaBotModels.botTtsChunk.create({ data: { messageId: msgId, idx: result.idx, fileId } }).catch(() => {});
+            }
+            nextToSend++;
+          }
+        };
+
+        const queueFlush = async () => {
+          flushChain = flushChain.then(flushReadyChunks, flushReadyChunks);
+          await flushChain;
+        };
+
+        completed.set(0, await fetchChunk(0));
+        await queueFlush();
+
+        const worker = async () => {
+          while (nextToStart < total) {
+            const idx = nextToStart++;
+            completed.set(idx, await fetchChunk(idx));
+            await queueFlush();
+          }
+        };
+
+        await Promise.all(Array.from({ length: Math.min(ttsConfig.concurrency, Math.max(0, total - 1)) }, () => worker()));
+        await queueFlush();
+
+        const totalMs = Date.now() - startedAt;
+        console.log("[TTS] complete", {
+          messageId: msgId,
+          chunkCount: total,
+          failedChunks,
+          sentCount,
+          config: ttsConfig,
+          time_to_first_audio_ms: firstAudioMs,
+          total_tts_time_ms: totalMs,
+          chunks: chunkTelemetry.sort((a, b) => a.idx - b.idx),
+        });
+        void logUsage({
+          messageId:      msgId !== "0" ? msgId : undefined,
+          chatId:         BigInt(chatId),
+          model:          "gemini-2.5-flash-preview-tts",
+          kind:           "tts",
+          costUsd:        0,
+          responseTimeMs: totalMs,
+        });
+
+        if (failedChunks > 0 && sentCount > 0) {
+          await api.sendMessage(chatId, `⚠️ ${failedChunks} ta audio bo'lagi tayyorlanmadi. Iltimos, qayta urinib ko'ring.`);
+        } else if (!sentCount) {
+          await api.sendMessage(chatId, "❌ Ovoz yaratib bo'lmadi");
+        }
       } finally {
         clearInterval(actionLoop);
       }

@@ -1,12 +1,43 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getUser } from "@/lib/getUser";
+import { getFullUser } from "@/lib/getUser";
+import { hasPermission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
+function toNumber(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Number(value) || 0;
+  if (typeof value === "object" && "toNumber" in value) {
+    const decimal = value as { toNumber?: () => number };
+    if (typeof decimal.toNumber === "function") return decimal.toNumber();
+  }
+  return Number(value) || 0;
+}
+
+type BotUsageByChatRow = {
+  chatId: bigint;
+  _sum: { tokensIn: number | null; tokensOut: number | null; costUsd: unknown };
+  _avg: { responseTimeMs: number | null };
+};
+
+const botUsageByChat = prisma.botUsageLog as unknown as {
+  groupBy(args: {
+    by: ["chatId"];
+    where: { chatId: { in: bigint[] } };
+    _sum: { tokensIn: true; tokensOut: true; costUsd: true };
+    _avg: { responseTimeMs: true };
+  }): Promise<BotUsageByChatRow[]>;
+};
+
 export async function GET(request: Request) {
-  const user = await getUser();
+  const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(user, "chatbot", "conversations")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search")?.trim() ?? "";
@@ -59,6 +90,54 @@ export async function GET(request: Request) {
 
   const total = filtered.length;
   const page = filtered.slice(offset, offset + limit);
+  const pageChatIds = page.map((g) => g.chatId);
+
+  const [latestMessages, tokenRows, usageRows] = pageChatIds.length > 0
+    ? await Promise.all([
+        prisma.botMessage.findMany({
+          where: { chatId: { in: pageChatIds } },
+          orderBy: { createdAt: "desc" },
+          select: {
+            chatId: true,
+            intent: true,
+            routedTo: true,
+            tokenCount: true,
+            rating: { select: { stars: true, status: true } },
+          },
+        }),
+        prisma.botMessage.groupBy({
+          by: ["chatId"],
+          where: { chatId: { in: pageChatIds } },
+          _sum: { tokenCount: true },
+        }),
+        botUsageByChat.groupBy({
+          by: ["chatId"],
+          where: { chatId: { in: pageChatIds } },
+          _sum: { tokensIn: true, tokensOut: true, costUsd: true },
+          _avg: { responseTimeMs: true },
+        }),
+      ])
+    : [[], [], []] as const;
+
+  const latestByChat = new Map<string, (typeof latestMessages)[number]>();
+  for (const msg of latestMessages) {
+    const key = msg.chatId.toString();
+    if (!latestByChat.has(key)) latestByChat.set(key, msg);
+  }
+
+  const messageTokensByChat = new Map(
+    tokenRows.map((row) => [row.chatId.toString(), row._sum.tokenCount ?? 0])
+  );
+  const usageByChat = new Map(
+    usageRows.map((row) => [row.chatId.toString(), {
+      tokensIn: row._sum.tokensIn ?? 0,
+      tokensOut: row._sum.tokensOut ?? 0,
+      costUsd: toNumber(row._sum.costUsd),
+      avgResponseTimeMs: row._avg.responseTimeMs != null
+        ? Math.round(row._avg.responseTimeMs)
+        : null,
+    }])
+  );
 
   const users = page.map((g) => ({
     chat_id: g.chatId.toString(),
@@ -67,6 +146,19 @@ export async function GET(request: Request) {
     phone: g.participantId ? (phoneById.get(g.participantId) ?? null) : null,
     message_count: g._count.id,
     last_message_at: g._max.createdAt?.toISOString() ?? null,
+    intent: latestByChat.get(g.chatId.toString())?.intent ?? null,
+    routed_to: latestByChat.get(g.chatId.toString())?.routedTo ?? null,
+    token_count: (messageTokensByChat.get(g.chatId.toString()) ?? 0) +
+      (usageByChat.get(g.chatId.toString())?.tokensIn ?? 0) +
+      (usageByChat.get(g.chatId.toString())?.tokensOut ?? 0),
+    usage_cost_usd: usageByChat.get(g.chatId.toString())?.costUsd ?? 0,
+    avg_response_time_ms: usageByChat.get(g.chatId.toString())?.avgResponseTimeMs ?? null,
+    rating: latestByChat.get(g.chatId.toString())?.rating
+      ? {
+          stars: latestByChat.get(g.chatId.toString())!.rating!.stars,
+          status: latestByChat.get(g.chatId.toString())!.rating!.status,
+        }
+      : null,
   }));
 
   return NextResponse.json({ users, total });

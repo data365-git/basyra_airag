@@ -4,9 +4,27 @@ import { PAGE_DEFS, type PageDef } from "@/lib/permissions";
 import type { RolePermissions, PermAction } from "@/types";
 import { cn } from "@/lib/utils";
 
-const ALL_ACTIONS: PermAction[] = ["view", "create", "edit", "delete", "export"];
+const ALL_ACTIONS: PermAction[] = [
+  "view",
+  "create",
+  "edit",
+  "delete",
+  "export",
+  "conversations",
+  "content",
+  "broadcast",
+  "settings",
+];
 const ACTION_LABELS: Record<PermAction, string> = {
-  view: "View", create: "Create", edit: "Edit", delete: "Delete", export: "Export",
+  view: "View",
+  create: "Create",
+  edit: "Edit",
+  delete: "Delete",
+  export: "Export",
+  conversations: "Conversations",
+  content: "Content",
+  broadcast: "Broadcast",
+  settings: "Settings",
 };
 
 function getVal(perms: RolePermissions, def: PageDef, action: PermAction): boolean | null {
@@ -34,7 +52,6 @@ interface Props {
 export function PermissionsTable({ permissions, onChange, readOnly = false }: Props) {
   const settingsDefs = PAGE_DEFS.filter((d) => d.parent === "settings");
   const topDefs = PAGE_DEFS.filter((d) => !d.parent);
-  const showSettings = topDefs.every((d) => true); // always show settings rows
 
   const toggleCell = (def: PageDef, action: PermAction) => {
     if (readOnly || !onChange) return;

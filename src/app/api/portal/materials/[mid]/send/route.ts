@@ -21,19 +21,73 @@ export const dynamic    = "force-dynamic";
 export const runtime    = "nodejs";
 export const maxDuration = 60;
 
+const LOCAL_FILES_PREFIX = "/api/files/";
+
+function storageUrlType(storageUrl: string): "local-api-files" | "remote-url" | "unsupported" {
+  if (storageUrl.startsWith(LOCAL_FILES_PREFIX)) return "local-api-files";
+  if (storageUrl.startsWith("https://") || storageUrl.startsWith("http://")) return "remote-url";
+  return "unsupported";
+}
+
+async function resolveLocalFile(storageUrl: string): Promise<{ filePath: string; fileName: string } | null> {
+  const key = decodeURIComponent(storageUrl.slice(LOCAL_FILES_PREFIX.length));
+  if (!key) return null;
+
+  const baseDir  = path.resolve(uploadDir());
+  const filePath = path.resolve(path.join(baseDir, key));
+
+  if (!filePath.startsWith(baseDir + path.sep)) return null;
+
+  const stat = await fs.promises.stat(filePath).catch(() => null);
+  if (!stat?.isFile()) return null;
+
+  return { filePath, fileName: path.basename(filePath) };
+}
+
 export async function POST(
-  _req:    NextRequest,
+  req:     NextRequest,
   { params }: { params: Promise<{ mid: string }> },
 ) {
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const portal = await getPortalUser(_req);
+  const portal = await getPortalUser(req);
   if (!portal) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { mid } = await params;
 
   // ── Load material ─────────────────────────────────────────────────────────
-  const material = await prisma.homeworkMaterial.findUnique({ where: { id: mid } });
+  const material = await prisma.homeworkMaterial.findUnique({
+    where: { id: mid },
+    include: {
+      homework: {
+        select: {
+          id:         true,
+          trainingId: true,
+        },
+      },
+    },
+  });
   if (!material) return NextResponse.json({ error: "Material not found" }, { status: 404 });
+
+  const logCtx = {
+    materialId:    material.id,
+    homeworkId:    material.homeworkId,
+    participantId: portal.sub,
+    storageUrlType: material.storageUrl ? storageUrlType(material.storageUrl) : "missing",
+  };
+  console.info("[portal/materials/send] requested", logCtx);
+
+  const enrollment = await prisma.trainingParticipant.findUnique({
+    where: {
+      trainingId_participantId: {
+        trainingId:    material.homework.trainingId,
+        participantId: portal.sub,
+      },
+    },
+  });
+  if (!enrollment) {
+    console.warn("[portal/materials/send] forbidden unenrolled participant", logCtx);
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   if (material.kind === "LINK") {
     return NextResponse.json({ error: "Links cannot be sent via bot — open them directly" }, { status: 400 });
@@ -41,21 +95,6 @@ export async function POST(
 
   if (!material.storageUrl) {
     return NextResponse.json({ error: "No file attached to this material" }, { status: 400 });
-  }
-
-  // ── Verify file exists on disk ────────────────────────────────────────────
-  const key      = material.storageUrl.slice("/api/files/".length);
-  const baseDir  = path.resolve(uploadDir());
-  const filePath = path.resolve(path.join(baseDir, key));
-
-  if (!filePath.startsWith(baseDir + path.sep) && filePath !== baseDir) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  try {
-    await fs.promises.stat(filePath);
-  } catch {
-    return NextResponse.json({ error: "File not found on storage" }, { status: 404 });
   }
 
   // ── Find participant's Telegram chat ID ───────────────────────────────────
@@ -75,29 +114,49 @@ export async function POST(
   // ── Send via Grammy bot ───────────────────────────────────────────────────
   try {
     const bot      = getBot();
-    const fileName = material.fileName ?? path.basename(filePath);
     const caption  = `📚 <b>${material.title}</b>` +
                      (material.description ? `\n${material.description}` : "");
+    const urlType  = storageUrlType(material.storageUrl);
 
-    const stream    = fs.createReadStream(filePath);
-    const inputFile = new InputFile(stream, fileName);
+    let inputFile: InputFile | string;
+    if (urlType === "local-api-files") {
+      const resolved = await resolveLocalFile(material.storageUrl);
+      if (!resolved) {
+        console.warn("[portal/materials/send] local file not found or unsafe", logCtx);
+        return NextResponse.json({ error: "File not found on storage" }, { status: 404 });
+      }
 
+      const fileName = material.fileName ?? resolved.fileName;
+      inputFile = new InputFile(fs.createReadStream(resolved.filePath), fileName);
+    } else if (urlType === "remote-url") {
+      inputFile = material.storageUrl;
+    } else {
+      console.warn("[portal/materials/send] unsupported storage URL", logCtx);
+      return NextResponse.json({ error: "Unsupported storage URL" }, { status: 400 });
+    }
+
+    let result: unknown;
     const kind = material.kind;
     if (kind === "VIDEO") {
-      await bot.api.sendVideo(chatId, inputFile, { caption, parse_mode: "HTML" });
+      result = await bot.api.sendVideo(chatId, inputFile, { caption, parse_mode: "HTML" });
     } else if (kind === "AUDIO") {
-      await bot.api.sendAudio(chatId, inputFile, { caption, parse_mode: "HTML" });
+      result = await bot.api.sendAudio(chatId, inputFile, { caption, parse_mode: "HTML" });
     } else if (kind === "IMAGE") {
       // sendPhoto doesn't accept a caption with parse_mode at type level — cast
-      await bot.api.sendPhoto(chatId, inputFile, { caption, parse_mode: "HTML" });
+      result = await bot.api.sendPhoto(chatId, inputFile, { caption, parse_mode: "HTML" });
     } else {
       // PDF, DOCUMENT, and anything else → sendDocument
-      await bot.api.sendDocument(chatId, inputFile, { caption, parse_mode: "HTML" });
+      result = await bot.api.sendDocument(chatId, inputFile, { caption, parse_mode: "HTML" });
     }
+
+    console.info("[portal/materials/send] sent", {
+      ...logCtx,
+      telegramMessageId: (result as { message_id?: number }).message_id,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    console.error("[portal/materials/send] bot send failed:", err);
+    console.error("[portal/materials/send] bot send failed:", { ...logCtx, err });
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `Yuborish amalga oshmadi: ${msg}` }, { status: 502 });
   }

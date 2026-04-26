@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getUser } from "@/lib/getUser";
+import { getFullUser } from "@/lib/getUser";
+import { hasPermission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -8,8 +9,11 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ chatId: string }> }
 ) {
-  const user = await getUser();
+  const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(user, "chatbot", "conversations")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { chatId } = await params;
 

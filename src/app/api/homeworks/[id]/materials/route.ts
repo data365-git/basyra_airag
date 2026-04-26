@@ -1,20 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
-import { cookies } from "next/headers";
 import { getPortalUser } from "@/lib/portalAuth";
 import { uploadBufferToLocal } from "@/lib/localUpload";
 import { HomeworkMaterialKind } from "@prisma/client";
+import { getFullUser } from "@/lib/getUser";
+import { hasPermission } from "@/lib/permissions";
 
 export const dynamic    = "force-dynamic";
 export const runtime    = "nodejs";   // multipart body > 4 MB fails on edge runtime
 export const maxDuration = 60;        // allow slow uploads on Railway
-
-async function getStaffUser() {
-  const jar   = await cookies();
-  const token = jar.get(COOKIE_NAME)?.value;
-  return token ? verifyJWT(token) : null;
-}
 
 /** Infer HomeworkMaterialKind from MIME type. */
 function kindFromMime(mime: string): HomeworkMaterialKind {
@@ -51,9 +45,27 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: homeworkId } = await params;
-  const staff  = await getStaffUser();
+  const staff  = await getFullUser();
   const portal = await getPortalUser(req);
   if (!staff && !portal) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const homework = await prisma.homework.findUnique({
+    where:  { id: homeworkId },
+    select: { trainingId: true },
+  });
+  if (!homework) return NextResponse.json({ error: "Homework not found" }, { status: 404 });
+
+  if (!staff && portal) {
+    const enrollment = await prisma.trainingParticipant.findUnique({
+      where: {
+        trainingId_participantId: {
+          trainingId:    homework.trainingId,
+          participantId: portal.sub,
+        },
+      },
+    });
+    if (!enrollment) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const materials = await prisma.homeworkMaterial.findMany({
     where:   { homeworkId },
@@ -68,8 +80,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const user = await getStaffUser();
+  const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(user, "trainings", "edit"))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id: homeworkId } = await params;
 
@@ -85,7 +99,7 @@ export async function POST(
       return NextResponse.json({ error: "url must start with https://" }, { status: 400 });
 
     const mat = await prisma.homeworkMaterial.create({
-      data: { homeworkId, kind: "LINK", title: title.trim(), description: description?.trim() || null, url, createdById: user.sub },
+      data: { homeworkId, kind: "LINK", title: title.trim(), description: description?.trim() || null, url, createdById: user.id },
     });
     return NextResponse.json(serializeMaterial(mat), { status: 201 });
   }
@@ -122,7 +136,7 @@ export async function POST(
         fileSizeBytes: file.size,
         mimeType:      mime,
         sortOrder:     sortStr ? Number(sortStr) : 0,
-        createdById:   user.sub,
+        createdById:   user.id,
       },
     });
 

@@ -2,7 +2,7 @@
  * 3-layer intent router for the unified Basyra bot.
  *
  * Layer 1: Hard signals (commands → "command")
- * Layer 2: Keyword/regex table → LMS intents
+ * Layer 2: Keyword/regex table → business, LMS, feedback intents
  * Layer 3: Gemini Flash classifier (cached)
  *
  * Returns one of:
@@ -13,6 +13,7 @@
  *   "LMS_ATTENDANCE"     — attendance queries
  *   "LMS_OTHER"          — other LMS questions (handled by LMS fallback)
  *   "AI_COURSE_QUESTION" — forward to RAG service
+ *   "BUSINESS_CONSULTING" — business/system consulting questions → RAG service
  *   "SMALL_TALK"         — greeting, off-topic → templated reply
  *   "UNCLEAR"            — couldn't classify → show quick-action buttons
  */
@@ -25,6 +26,7 @@ export type Intent =
   | "LMS_ATTENDANCE"
   | "LMS_OTHER"
   | "AI_COURSE_QUESTION"
+  | "BUSINESS_CONSULTING"
   | "SMALL_TALK"
   | "COMPLAINT"
   | "SUGGESTION"
@@ -35,6 +37,21 @@ export type Intent =
 
 const KEYWORD_RULES: Array<{ intent: Intent; patterns: RegExp[] }> = [
   {
+    intent: "BUSINESS_CONSULTING",
+    patterns: [
+      /\b(crm|bi|dashboard|dashbord|telephony|telefoniya|telefonia|call center|sales funnel|voronka|integratsiya|integration|integrations)\b/i,
+      /\b(audit|аудит|checklist|check-list|tekshiruv|tekshirish|konsalting|consulting|biznes konsult|business consult|biznes jarayon|business process|process analysis|kpi|metrics?|metrika|ko'rsatkich|indikator|analitika|analytics)\b/i,
+      /\b(nimalarni|nimani|qaysi)\b.*\b(o'lchash|o'lchaymiz|tekshirish|tekshiramiz|audit|kpi|metrics?|metrika|ko'rsatkich)\b/i,
+      /\b(lms|learning management system)\b.*\b(tizim|system|platforma|platform|audit|аудит|checklist|tekshiruv|kpi|metrics?|metrika|ko'rsatkich|analitika|analytics|integratsiya|integration|crm|telephony|telefoniya|telefonia|telefon|calls?|qo['‘`]?ng['‘`]?iroq|sales|sotuv|funnel|voronka|dashboard|dashbord|bi)\b/i,
+      /\b(tizim|system|platforma|platform|audit|аудит|checklist|tekshiruv|kpi|metrics?|metrika|ko'rsatkich|analitika|analytics|integratsiya|integration|crm|telephony|telefoniya|telefonia|telefon|calls?|qo['‘`]?ng['‘`]?iroq|sales|sotuv|funnel|voronka|dashboard|dashbord|bi)\b.*\b(lms|learning management system)\b/i,
+      /\b(lms|learning management system)\b.*\b(crm)\b.*\b(telephony|telefoniya|telefonia|telefon|calls?|qo['‘`]?ng['‘`]?iroq)\b/i,
+      /\b(crm)\b.*\b(lms|learning management system)\b.*\b(telephony|telefoniya|telefonia|telefon|calls?|qo['‘`]?ng['‘`]?iroq)\b/i,
+      /\b(telephony|telefoniya|telefonia|telefon|calls?|qo['‘`]?ng['‘`]?iroq)\b.*\b(lms|learning management system)\b.*\b(crm)\b/i,
+      /\b(calls?|qo['‘`]?ng['‘`]?iroqlar?|qo['‘`]?ng['‘`]?iroq)\b.*\b(sales|sotuv|metric|metrika|audit|tahlil|analysis|operator|script|skript|conversion|konversiya|funnel|voronka)\b/i,
+      /\b(sales|sotuv|metric|metrika|audit|tahlil|analysis|operator|script|skript|conversion|konversiya|funnel|voronka)\b.*\b(calls?|qo['‘`]?ng['‘`]?iroqlar?|qo['‘`]?ng['‘`]?iroq)\b/i,
+    ],
+  },
+  {
     intent: "LMS_SCHEDULE",
     patterns: [
       /\b(dars|darsim|darslар|qachon|vaqti?|jadval|schedule|keyingi dars|navbatdagi|когда|расписание)\b/i,
@@ -44,19 +61,19 @@ const KEYWORD_RULES: Array<{ intent: Intent; patterns: RegExp[] }> = [
   {
     intent: "LMS_HOMEWORK",
     patterns: [
-      /\b(uy ?vazifa|topshiriq|homework|domashka|домашка|vazifam|topshiriqlarim|submit|topshir)\b/i,
+      /\b(uy ?vazifa|topshiriq|homework|domashka|домашка|vazifam|vazifalarim|topshiriqlarim|submit|topshir)\b/i,
     ],
   },
   {
     intent: "LMS_GRADE",
     patterns: [
-      /\b(ball|baho|natija|score|grade|оценка|баллы|result|progressim|statistika)\b/i,
+      /\b(ball|baho|bahom|baholarim|natija|score|grade|оценка|баллы|result|progressim|statistika)\b/i,
     ],
   },
   {
     intent: "LMS_ATTENDANCE",
     patterns: [
-      /\b(davomat|attendance|посещаемость|missed|kelmadim|bo'ldim|qatnashdim)\b/i,
+      /\b(davomat|davomatim|attendance|посещаемость|missed|kelmadim|bo'ldim|qatnashdim)\b/i,
     ],
   },
   {
@@ -105,7 +122,7 @@ function _hash(text: string): string {
 
 const VALID_INTENTS = new Set<Intent>([
   "LMS_SCHEDULE", "LMS_HOMEWORK", "LMS_GRADE", "LMS_ATTENDANCE",
-  "LMS_OTHER", "AI_COURSE_QUESTION", "SMALL_TALK",
+  "LMS_OTHER", "AI_COURSE_QUESTION", "BUSINESS_CONSULTING", "SMALL_TALK",
   "COMPLAINT", "SUGGESTION", "PRAISE",
   "UNCLEAR",
 ]);
@@ -124,14 +141,15 @@ async function classifyWithGemini(text: string): Promise<Intent> {
           contents: [{
             parts: [{
               text: `Classify this Telegram message into exactly ONE label.
-Labels: LMS_SCHEDULE | LMS_HOMEWORK | LMS_GRADE | LMS_ATTENDANCE | LMS_OTHER | AI_COURSE_QUESTION | SMALL_TALK | COMPLAINT | SUGGESTION | PRAISE | UNCLEAR
+Labels: LMS_SCHEDULE | LMS_HOMEWORK | LMS_GRADE | LMS_ATTENDANCE | LMS_OTHER | AI_COURSE_QUESTION | BUSINESS_CONSULTING | SMALL_TALK | COMPLAINT | SUGGESTION | PRAISE | UNCLEAR
 
-LMS_SCHEDULE = asking about class times, schedule, next session
-LMS_HOMEWORK = asking about homework tasks, submission, deadlines
-LMS_GRADE = asking about scores, grades, results, overall progress
-LMS_ATTENDANCE = asking about attendance records
-LMS_OTHER = other LMS/admin questions (login, account, etc.)
+LMS_SCHEDULE = personal student question about their class times, schedule, next session
+LMS_HOMEWORK = personal student question about their homework tasks, submission, deadlines
+LMS_GRADE = personal student question about their scores, grades, results, overall progress
+LMS_ATTENDANCE = personal student question about their attendance records
+LMS_OTHER = other personal LMS/admin questions (login, account, etc.)
 AI_COURSE_QUESTION = course content question (concepts, lessons, explanations)
+BUSINESS_CONSULTING = business/system consulting question about audits, checklists, KPIs, metrics, CRM, telephony/calls, LMS as a system, sales funnels, integrations, BI/dashboards, or business process analysis. Multi-domain LMS + CRM + telephony questions belong here, not LMS labels. Structural questions that ask what to measure/check/list belong here.
 SMALL_TALK = greetings, thanks, off-topic chitchat
 COMPLAINT = user expressing dissatisfaction, problem, or complaint
 SUGGESTION = user suggesting improvement or new feature

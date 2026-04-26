@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 
 type Settings = Record<string, string>;
 
+interface TestChatResult {
+  answer: string;
+  ok: boolean;
+  metadata: Record<string, unknown>;
+  error?: string;
+}
+
 const TTS_VOICES = [
   "Aoede",
   "Charon",
@@ -62,6 +69,10 @@ export default function ChatbotSettingsPage() {
     error: null,
     success: false,
   });
+  const [testQuestion, setTestQuestion] = useState("");
+  const [testResult, setTestResult] = useState<TestChatResult | null>(null);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -92,6 +103,40 @@ export default function ChatbotSettingsPage() {
       setTimeout(() => setSave((s) => ({ ...s, success: false })), 3000);
     } else {
       setSave({ saving: false, error: "Ba'zi sozlamalar saqlanmadi", success: false });
+    }
+  }
+
+  async function handleTestChat(e: React.FormEvent) {
+    e.preventDefault();
+    const question = testQuestion.trim();
+    if (!question) {
+      setTestError("Savol kiriting");
+      setTestResult(null);
+      return;
+    }
+
+    setTestLoading(true);
+    setTestError(null);
+    setTestResult(null);
+
+    try {
+      const res = await fetch("/api/chatbot/test-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setTestError(data.error ?? "Test chat ishlamadi");
+        return;
+      }
+
+      setTestResult(data as TestChatResult);
+    } catch {
+      setTestError("Test chat so'rovida xatolik yuz berdi");
+    } finally {
+      setTestLoading(false);
     }
   }
 
@@ -214,6 +259,44 @@ export default function ChatbotSettingsPage() {
                 </span>
               </label>
             </FieldRow>
+            <FieldRow label="Long answer threshold (chars)">
+              <input
+                type="number"
+                min={100}
+                max={10000}
+                step={50}
+                value={settings["bot.long_answer.threshold_chars"] ?? "3900"}
+                onChange={(e) =>
+                  set("bot.long_answer.threshold_chars", e.target.value)
+                }
+                className={inputCls}
+                placeholder="1200"
+              />
+            </FieldRow>
+            <FieldRow label="TTS chunk size (chars)">
+              <input
+                type="number"
+                min={100}
+                max={5000}
+                step={50}
+                value={settings["bot.tts.chunk_size_chars"] ?? "400"}
+                onChange={(e) => set("bot.tts.chunk_size_chars", e.target.value)}
+                className={inputCls}
+                placeholder="400"
+              />
+            </FieldRow>
+            <FieldRow label="TTS concurrency">
+              <input
+                type="number"
+                min={1}
+                max={10}
+                step={1}
+                value={settings["bot.tts.concurrency"] ?? "2"}
+                onChange={(e) => set("bot.tts.concurrency", e.target.value)}
+                className={inputCls}
+                placeholder="2"
+              />
+            </FieldRow>
           </div>
         </section>
 
@@ -245,6 +328,33 @@ export default function ChatbotSettingsPage() {
                 onChange={(e) => set("bot.rag.min_similarity", e.target.value)}
                 className={inputCls}
                 placeholder="0.70"
+              />
+            </FieldRow>
+          </div>
+        </section>
+
+        {/* Prompt Settings */}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+            <span>[ ]</span> Prompt sozlamalari
+          </h2>
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 space-y-4 shadow-sm">
+            <FieldRow label="System prompt">
+              <textarea
+                value={settings["bot.prompt.system"] ?? ""}
+                onChange={(e) => set("bot.prompt.system", e.target.value)}
+                className={`${inputCls} min-h-28 resize-y`}
+                placeholder="Bot uchun umumiy system prompt"
+              />
+            </FieldRow>
+            <FieldRow label="Admin instruction">
+              <textarea
+                value={settings["bot.prompt.admin_instruction"] ?? ""}
+                onChange={(e) =>
+                  set("bot.prompt.admin_instruction", e.target.value)
+                }
+                className={`${inputCls} min-h-28 resize-y`}
+                placeholder="Admin test yoki ichki yo'riqnoma"
               />
             </FieldRow>
           </div>
@@ -306,6 +416,65 @@ export default function ChatbotSettingsPage() {
           )}
         </button>
       </form>
+
+      <section className="mt-8">
+        <h2 className="text-sm font-semibold text-gray-700 mb-3">
+          Admin test chat
+        </h2>
+        <form
+          onSubmit={handleTestChat}
+          className="bg-white border border-gray-100 rounded-2xl p-4 space-y-4 shadow-sm"
+        >
+          <div>
+            <label className="block text-sm text-gray-500 mb-1.5">
+              Test savol
+            </label>
+            <textarea
+              value={testQuestion}
+              onChange={(e) => setTestQuestion(e.target.value)}
+              className={`${inputCls} min-h-24 resize-y`}
+              placeholder="Botga savol yozing..."
+            />
+            <p className="mt-1.5 text-xs text-gray-400">
+              Bu test Telegramga hech narsa yubormaydi.
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            disabled={testLoading}
+            className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-800 disabled:bg-gray-400"
+          >
+            {testLoading ? "Tekshirilmoqda..." : "Test chatni ishga tushirish"}
+          </button>
+
+          {testError && <p className="text-sm text-red-600">{testError}</p>}
+
+          {testResult && (
+            <div className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Javob
+                </p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
+                  {testResult.answer}
+                </p>
+              </div>
+              {testResult.error && (
+                <p className="text-sm text-amber-700">{testResult.error}</p>
+              )}
+              <details>
+                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Metadata
+                </summary>
+                <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-white p-3 text-xs text-gray-700">
+                  {JSON.stringify(testResult.metadata, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
+        </form>
+      </section>
     </div>
   );
 }

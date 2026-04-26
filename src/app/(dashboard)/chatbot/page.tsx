@@ -18,6 +18,49 @@ interface OverviewData {
     total_usd: number;
     month_start: string;
   };
+  usage: {
+    tokens_in: number;
+    tokens_out: number;
+    avg_response_time_ms: number | null;
+    tts_count: number;
+    top_expensive_users: Array<{
+      chat_id: string;
+      participant_id: string | null;
+      full_name: string | null;
+      cost_usd: number;
+      tokens_in: number;
+      tokens_out: number;
+    }>;
+  };
+  answers: {
+    ai_answered: number;
+    template_answered: number;
+    fallback_count: number;
+    unanswered_count: number;
+    routed_counts: Record<string, number>;
+  };
+  insights: {
+    common_intents: Array<{ intent: string; count: number }>;
+    low_rated_questions: Array<{
+      message_id: string;
+      chat_id: string;
+      content: string;
+      stars: number;
+      reason: string | null;
+      status: string;
+      created_at: string;
+    }>;
+    complaint_questions: Array<{
+      id: string;
+      chat_id: string;
+      participant_id: string | null;
+      full_name: string | null;
+      content: string;
+      severity: string | null;
+      status: string;
+      created_at: string;
+    }>;
+  };
   quality: {
     total_ratings: number;
     avg_stars: number | null;
@@ -58,6 +101,16 @@ function fmtUsd(n: number) {
   return `$${n.toFixed(2)}`;
 }
 
+function fmtMs(n: number | null) {
+  if (n == null) return "—";
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}s`;
+  return `${n}ms`;
+}
+
+function truncate(text: string, max = 96) {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function ChatbotOverviewPage() {
@@ -67,21 +120,30 @@ export default function ChatbotOverviewPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    fetch(`/api/chatbot/overview?days=${days}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`Server error ${r.status}`);
-        return r.json();
-      })
-      .then((d: OverviewData) => {
-        setData(d);
-        setLoading(false);
-      })
-      .catch((e: Error) => {
-        setError(e.message);
-        setLoading(false);
-      });
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      fetch(`/api/chatbot/overview?days=${days}`)
+        .then((r) => {
+          if (!r.ok) throw new Error(`Server error ${r.status}`);
+          return r.json();
+        })
+        .then((d: OverviewData) => {
+          if (cancelled) return;
+          setData(d);
+          setLoading(false);
+        })
+        .catch((e: Error) => {
+          if (cancelled) return;
+          setError(e.message);
+          setLoading(false);
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [days]);
 
   const maxDist = data
@@ -134,6 +196,27 @@ export default function ChatbotOverviewPage() {
         </div>
       ) : null}
 
+      {loading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} />)}
+        </div>
+      ) : data ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard label="AI javoblari" value={fmt(data.answers.ai_answered)} />
+          <KpiCard label="Shablon/LMS javoblari" value={fmt(data.answers.template_answered)} />
+          <KpiCard
+            label="Fallback javoblar"
+            value={fmt(data.answers.fallback_count)}
+            sub="AI band bo'lgan holatlar"
+          />
+          <KpiCard
+            label="Javobsiz user xabarlari"
+            value={fmt(data.answers.unanswered_count)}
+            sub="Keyingi assistant javobi topilmadi"
+          />
+        </div>
+      ) : null}
+
       {/* Cost + Quality row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Cost panel */}
@@ -168,6 +251,25 @@ export default function ChatbotOverviewPage() {
                   {fmtUsd(data.cost.total_usd)}
                 </span>
               </div>
+              <div className="grid grid-cols-3 gap-2 pt-2">
+                <div className="rounded-xl bg-gray-50 p-2">
+                  <p className="text-[11px] text-gray-400">Token in</p>
+                  <p className="text-sm font-semibold text-gray-800">{fmt(data.usage.tokens_in)}</p>
+                </div>
+                <div className="rounded-xl bg-gray-50 p-2">
+                  <p className="text-[11px] text-gray-400">Token out</p>
+                  <p className="text-sm font-semibold text-gray-800">{fmt(data.usage.tokens_out)}</p>
+                </div>
+                <div className="rounded-xl bg-gray-50 p-2">
+                  <p className="text-[11px] text-gray-400">Avg vaqt</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {fmtMs(data.usage.avg_response_time_ms)}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">
+                TTS ishlatilgan: {fmt(data.usage.tts_count)} marta
+              </p>
             </div>
           ) : null}
         </div>
@@ -216,6 +318,80 @@ export default function ChatbotOverviewPage() {
                   </div>
                 );
               })}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Insights */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <p className="text-sm font-semibold text-gray-900 mb-4">Eng ko&apos;p intentlar</p>
+          {loading ? (
+            <div className="space-y-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} h="h-7" />)}</div>
+          ) : data && data.insights.common_intents.length > 0 ? (
+            <div className="space-y-2">
+              {data.insights.common_intents.map((item) => (
+                <div key={item.intent} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-gray-600 truncate">{item.intent}</span>
+                  <span className="text-xs font-semibold text-gray-700 bg-gray-100 rounded-full px-2 py-0.5">
+                    {fmt(item.count)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">Hali intent ma&apos;lumoti yo&apos;q</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <p className="text-sm font-semibold text-gray-900 mb-4">Qimmat foydalanuvchilar</p>
+          {loading ? (
+            <div className="space-y-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} h="h-7" />)}</div>
+          ) : data && data.usage.top_expensive_users.length > 0 ? (
+            <div className="space-y-3">
+              {data.usage.top_expensive_users.map((item) => (
+                <div key={`${item.chat_id}-${item.participant_id ?? "anon"}`}>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-gray-700 truncate">
+                      {item.full_name ?? `Anonymous #${item.chat_id.slice(-6)}`}
+                    </span>
+                    <span className="font-semibold text-gray-900">{fmtUsd(item.cost_usd)}</span>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    {fmt(item.tokens_in + item.tokens_out)} token
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">Bu oy xarajat topilmadi</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <p className="text-sm font-semibold text-gray-900 mb-4">Past baho va shikoyatlar</p>
+          {loading ? (
+            <div className="space-y-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} h="h-7" />)}</div>
+          ) : data ? (
+            <div className="space-y-3">
+              {[...data.insights.low_rated_questions, ...data.insights.complaint_questions]
+                .slice(0, 5)
+                .map((item) => (
+                  <div key={"message_id" in item ? item.message_id : item.id}>
+                    <p className="text-sm text-gray-700 leading-snug">
+                      {truncate(item.content)}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {"stars" in item ? `${item.stars}⭐` : item.severity ?? "COMPLAINT"} · {item.status}
+                    </p>
+                  </div>
+                ))}
+              {data.insights.low_rated_questions.length === 0 &&
+                data.insights.complaint_questions.length === 0 && (
+                  <p className="text-sm text-gray-400">Muammo topilmadi</p>
+                )}
             </div>
           ) : null}
         </div>

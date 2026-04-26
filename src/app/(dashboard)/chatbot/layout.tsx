@@ -2,22 +2,36 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { hasPermission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/providers/LanguageProvider";
+import type { PermAction } from "@/types";
 
 const CHATBOT_TABS = [
-  { href: "/chatbot",               labelKey: "chatbot.tab_overview",       exact: true },
-  { href: "/chatbot/conversations",  labelKey: "chatbot.tab_conversations"  },
-  { href: "/chatbot/users",         labelKey: "chatbot.tab_users"           },
-  { href: "/chatbot/content",       labelKey: "chatbot.tab_content"         },
-  { href: "/chatbot/feedback",      labelKey: "chatbot.tab_feedback"        },
-  { href: "/chatbot/broadcast",     labelKey: "chatbot.tab_broadcast"       },
-  { href: "/chatbot/settings",      labelKey: "chatbot.tab_settings"        },
-];
+  { href: "/chatbot",               labelKey: "chatbot.tab_overview",       exact: true, actions: ["view"] },
+  { href: "/chatbot/conversations",  labelKey: "chatbot.tab_conversations",               actions: ["conversations"] },
+  { href: "/chatbot/users",         labelKey: "chatbot.tab_users",                       actions: ["conversations"] },
+  { href: "/chatbot/content",       labelKey: "chatbot.tab_content",                     actions: ["content"] },
+  { href: "/chatbot/feedback",      labelKey: "chatbot.tab_feedback",                    actions: ["conversations", "view"] },
+  { href: "/chatbot/broadcast",     labelKey: "chatbot.tab_broadcast",                   actions: ["broadcast"] },
+  { href: "/chatbot/settings",      labelKey: "chatbot.tab_settings",                    actions: ["settings"] },
+] satisfies Array<{
+  href: string;
+  labelKey: string;
+  exact?: boolean;
+  actions: PermAction[];
+}>;
 
 export default function ChatbotLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user, loading } = useAuth();
   const { t } = useTranslation();
+  const visibleTabs = loading
+    ? []
+    : CHATBOT_TABS.filter((tab) =>
+        tab.actions.some((action) => hasPermission(user, "chatbot", action))
+      );
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -25,7 +39,7 @@ export default function ChatbotLayout({ children }: { children: React.ReactNode 
       <div className="border-b border-gray-200 bg-white sticky top-0 z-10">
         <div className="px-4 sm:px-6">
           <nav className="flex gap-1 overflow-x-auto -mb-px scrollbar-hide">
-            {CHATBOT_TABS.map((tab) => {
+            {visibleTabs.map((tab) => {
               const active = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
               return (
                 <Link

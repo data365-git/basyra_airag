@@ -11,6 +11,12 @@ interface ConvUser {
   phone: string | null;
   message_count: number;
   last_message_at: string | null;
+  intent: string | null;
+  routed_to: string | null;
+  token_count: number;
+  usage_cost_usd: number;
+  avg_response_time_ms: number | null;
+  rating: { stars: number; status: string } | null;
 }
 
 interface BotMessage {
@@ -18,7 +24,26 @@ interface BotMessage {
   role: "user" | "assistant";
   content: string;
   created_at: string;
-  rating: { stars: number } | null;
+  intent: string | null;
+  routed_to: string | null;
+  token_count: number | null;
+  usage: {
+    tokens_in: number;
+    tokens_out: number;
+    cost_usd: number;
+    response_time_ms: number | null;
+  } | null;
+  diagnostics: {
+    reply_context_used: boolean | null;
+    reply_to_message_id: string | null;
+    telegram_message_id: number | null;
+    delivery_type: string | null;
+    finish_reason: string | null;
+    continuation_count: number | null;
+    answer_char_count: number | null;
+    timing_ms: number | null;
+  } | null;
+  rating: { stars: number; reason: string | null; status: string } | null;
 }
 
 interface Thread {
@@ -42,6 +67,42 @@ function relativeTime(iso: string | null): string {
 
 function displayName(u: ConvUser): string {
   return u.full_name ?? `Anonymous #${u.chat_id.slice(-6)}`;
+}
+
+function fmtCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function fmtUsd(n: number): string {
+  if (n <= 0) return "$0";
+  if (n < 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
+}
+
+function fmtMs(n: number | null): string {
+  if (n == null) return "";
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}s`;
+  return `${n}ms`;
+}
+
+function diagnosticItems(msg: BotMessage): string[] {
+  const d = msg.diagnostics;
+  if (!d) return [];
+
+  return [
+    d.reply_context_used != null
+      ? `reply ctx: ${d.reply_context_used ? "yes" : "no"}`
+      : null,
+    d.reply_to_message_id ? `reply_to: ${d.reply_to_message_id}` : null,
+    d.telegram_message_id != null ? `tg msg: ${d.telegram_message_id}` : null,
+    d.delivery_type ? `delivery: ${d.delivery_type}` : null,
+    d.finish_reason ? `finish: ${d.finish_reason}` : null,
+    d.continuation_count != null ? `cont: ${d.continuation_count}` : null,
+    d.answer_char_count != null ? `${fmtCompact(d.answer_char_count)} chars` : null,
+    d.timing_ms != null ? `timing: ${fmtMs(d.timing_ms)}` : null,
+  ].filter((item): item is string => Boolean(item));
 }
 
 // ---- Skeleton components ----
@@ -104,6 +165,20 @@ function UserRow({
         {relativeTime(user.last_message_at)}
         {user.phone ? ` · ${user.phone}` : ""}
       </p>
+      <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-gray-400">
+        {user.intent && (
+          <span className="rounded-full bg-gray-100 px-1.5 py-0.5">{user.intent}</span>
+        )}
+        {user.routed_to && (
+          <span className="rounded-full bg-blue-50 text-blue-600 px-1.5 py-0.5">
+            {user.routed_to}
+          </span>
+        )}
+        {user.token_count > 0 && <span>{fmtCompact(user.token_count)} tok</span>}
+        {user.usage_cost_usd > 0 && <span>{fmtUsd(user.usage_cost_usd)}</span>}
+        {user.avg_response_time_ms != null && <span>{fmtMs(user.avg_response_time_ms)}</span>}
+        {user.rating && <span>{user.rating.stars}★ {user.rating.status}</span>}
+      </div>
     </button>
   );
 }
@@ -112,6 +187,18 @@ function UserRow({
 
 function Bubble({ msg }: { msg: BotMessage }) {
   const isUser = msg.role === "user";
+  const usageTokens = msg.usage ? msg.usage.tokens_in + msg.usage.tokens_out : 0;
+  const meta = [
+    msg.intent,
+    msg.routed_to,
+    msg.token_count ? `${fmtCompact(msg.token_count)} tok` : null,
+    usageTokens > 0 ? `${fmtCompact(usageTokens)} usage tok` : null,
+    msg.usage && msg.usage.cost_usd > 0 ? fmtUsd(msg.usage.cost_usd) : null,
+    msg.usage?.response_time_ms != null ? fmtMs(msg.usage.response_time_ms) : null,
+    msg.rating ? `${msg.rating.stars}★ ${msg.rating.status}` : null,
+  ].filter(Boolean);
+  const diagnostics = diagnosticItems(msg);
+
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-2`}>
       <div
@@ -122,6 +209,44 @@ function Bubble({ msg }: { msg: BotMessage }) {
         }`}
       >
         {msg.content}
+        {meta.length > 0 && (
+          <div
+            className={`mt-2 flex flex-wrap gap-1 text-[11px] leading-none ${
+              isUser ? "text-indigo-100" : "text-gray-400"
+            }`}
+          >
+            {meta.map((item) => (
+              <span
+                key={item}
+                className={`rounded-full px-1.5 py-1 ${
+                  isUser ? "bg-indigo-500/60" : "bg-gray-100"
+                }`}
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+        {diagnostics.length > 0 && (
+          <div
+            className={`mt-2 flex flex-wrap gap-1 text-[10px] leading-none ${
+              isUser ? "text-indigo-50" : "text-slate-500"
+            }`}
+          >
+            {diagnostics.map((item) => (
+              <span
+                key={item}
+                className={`rounded-md border px-1.5 py-1 ${
+                  isUser
+                    ? "border-indigo-300/60 bg-indigo-700/30"
+                    : "border-slate-200 bg-slate-50"
+                }`}
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
         {msg.rating && (
           <span
             className={`absolute -bottom-2 ${
@@ -168,12 +293,23 @@ export default function ChatbotConversationsPage() {
   // Load thread when selection changes
   useEffect(() => {
     if (!selectedChatId) return;
-    setLoadingThread(true);
-    setThread(null);
-    fetch(`/api/chatbot/conversations/${selectedChatId}`)
-      .then((r) => r.json())
-      .then((data) => setThread(data))
-      .finally(() => setLoadingThread(false));
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setLoadingThread(true);
+      setThread(null);
+      fetch(`/api/chatbot/conversations/${selectedChatId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!cancelled) setThread(data);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingThread(false);
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedChatId]);
 
   // Scroll to bottom when thread loads

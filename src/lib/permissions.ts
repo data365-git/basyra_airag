@@ -66,7 +66,7 @@ export const PAGE_DEFS: PageDef[] = [
   { page: "participants",           label: "Participants",  actions: ["view", "create", "edit", "delete"] },
   { page: "scanner",                label: "Scanner",       actions: ["view"] },
   { page: "reports",                label: "Reports",       actions: ["view", "export"] },
-  { page: "chatbot",                 label: "Chat-bot",      actions: ["view", "conversations", "content", "broadcast", "settings"] as PermAction[] },
+  { page: "chatbot",                 label: "Chat-bot",      actions: ["view", "conversations", "content", "broadcast", "settings"] },
   { page: "settings.users",         label: "Users",         actions: ["view", "create", "edit", "delete"], parent: "settings" },
   { page: "settings.roles",         label: "Roles",         actions: ["view", "create", "edit", "delete"], parent: "settings" },
   { page: "settings.categories",    label: "Categories",    actions: ["view", "create", "edit", "delete"], parent: "settings" },

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   LogOut, User, Loader2, BookOpen, CheckCircle2, Clock,
   ChevronDown, ChevronUp, AlertCircle, Star, Send, Calendar,
-  Trash2, FileText, AlertTriangle, Link2, Video, Mic, Image, File, Users,
+  Trash2, FileText, AlertTriangle, Link2, Video, Mic, Image as ImageIcon, File, Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { fmtUzDateShort } from "@/lib/dateFormat";
@@ -50,6 +50,18 @@ interface PortalMaterial {
   storage_url: string | null;
   url:         string | null;
   file_size_bytes: number | null;
+}
+
+interface TelegramWebApp {
+  initData: string;
+  ready?: () => void;
+  expand?: () => void;
+  close?: () => void;
+  openLink?: (url: string) => void;
+}
+
+interface PortalTokenResponse {
+  token?: string;
 }
 
 interface ScorecardData {
@@ -104,15 +116,10 @@ function statusLabel(s: string): { label: string; cls: string } {
   return                       { label: "Kelmadi", cls: "text-red-500   bg-red-50"   };
 }
 
-function ProgressBar({ value, color }: { value: number; color?: string }) {
-  return (
-    <div className="w-full bg-white/20 rounded-full h-1.5">
-      <div
-        className="h-1.5 rounded-full transition-all duration-700"
-        style={{ width: `${Math.min(value, 100)}%`, background: color ?? "white" }}
-      />
-    </div>
-  );
+function getTelegramWebApp(): TelegramWebApp | undefined {
+  if (typeof window === "undefined") return undefined;
+  const webApp = window.Telegram?.WebApp;
+  return webApp as TelegramWebApp | undefined;
 }
 
 // ─── FIFA-style top card ──────────────────────────────────────────────────────
@@ -181,7 +188,7 @@ function MatKindIcon({ kind }: { kind: PortalMaterial["kind"] }) {
   if (kind === "LINK")     return <Link2    size={13} className="text-blue-500 shrink-0" />;
   if (kind === "VIDEO")    return <Video    size={13} className="text-purple-500 shrink-0" />;
   if (kind === "AUDIO")    return <Mic      size={13} className="text-green-500 shrink-0" />;
-  if (kind === "IMAGE")    return <Image    size={13} className="text-pink-500 shrink-0" />;
+  if (kind === "IMAGE")    return <ImageIcon size={13} className="text-pink-500 shrink-0" />;
   if (kind === "PDF")      return <FileText size={13} className="text-red-500 shrink-0" />;
   return <File size={13} className="text-gray-400 shrink-0" />;
 }
@@ -242,7 +249,7 @@ function HomeworkCard({
   }
 
   function openLink(url: string) {
-    const twa = (window as any).Telegram?.WebApp;
+    const twa = getTelegramWebApp();
     if (twa?.openLink) {
       twa.openLink(url);
     } else {
@@ -395,18 +402,36 @@ function HomeworkCard({
 
                 // ── Inline audio player ──────────────────────────────────
                 if (m.kind === "AUDIO" && fileHref) {
+                  const isSending = sending === m.id;
                   return (
                     <div key={m.id} className="bg-gray-50 rounded-xl px-3 py-2.5 space-y-1.5">
-                      <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => sendViaBot(m.id)}
+                        disabled={!!sending}
+                        className="w-full flex items-center gap-2 text-left transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
                         <MatKindIcon kind={m.kind} />
-                        <span className="text-xs text-gray-700 font-medium truncate flex-1">{m.title}</span>
-                        {m.file_size_bytes && (
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-gray-700 font-medium truncate">
+                            {isSending ? "Yuborilmoqda..." : m.title}
+                          </p>
+                          {isSending && (
+                            <p className="text-xs text-gray-400 mt-0.5">Telegram botga yuborilmoqda</p>
+                          )}
+                        </div>
+                        {!isSending && m.file_size_bytes && (
                           <span className="text-xs text-gray-400 shrink-0">
                             {(m.file_size_bytes / (1024 * 1024)).toFixed(1)} MB
                           </span>
                         )}
-                      </div>
-                      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                        <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-blue-600">
+                          {isSending
+                            ? <Loader2 size={11} className="animate-spin" />
+                            : <Send size={12} />
+                          }
+                        </span>
+                      </button>
                       <audio
                         controls
                         src={fileHref}
@@ -423,14 +448,20 @@ function HomeworkCard({
                   return (
                     <button
                       key={m.id}
+                      type="button"
                       onClick={() => sendViaBot(m.id)}
                       disabled={!!sending}
                       className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
                     >
                       <MatKindIcon kind={m.kind} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-gray-700 font-medium truncate">{m.title}</p>
-                        {m.file_size_bytes && (
+                        <p className="text-xs text-gray-700 font-medium truncate">
+                          {isSending ? "Yuborilmoqda..." : m.title}
+                        </p>
+                        {isSending && (
+                          <p className="text-xs text-gray-400 mt-0.5">Telegram botga yuborilmoqda</p>
+                        )}
+                        {!isSending && m.file_size_bytes && (
                           <p className="text-xs text-gray-400 mt-0.5">
                             {(m.file_size_bytes / (1024 * 1024)).toFixed(1)} MB
                           </p>
@@ -439,9 +470,9 @@ function HomeworkCard({
                       <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-blue-600">
                         {isSending
                           ? <Loader2 size={11} className="animate-spin" />
-                          : "📨"
+                          : <Send size={12} />
                         }
-                        {isSending ? "Yuklanmoqda…" : "Botga yuborish"}
+                        {!isSending && "Botga yuborish"}
                       </span>
                     </button>
                   );
@@ -450,16 +481,19 @@ function HomeworkCard({
                 // ── External link ─────────────────────────────────────────
                 if (linkHref) {
                   return (
-                    <div key={m.id} className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 rounded-xl">
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => openLink(linkHref)}
+                      disabled={!!sending}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                    >
                       <MatKindIcon kind={m.kind} />
                       <span className="text-xs text-gray-700 font-medium truncate flex-1">{m.title}</span>
-                      <button
-                        onClick={() => openLink(linkHref)}
-                        className="shrink-0 flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                      >
+                      <span className="shrink-0 flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg">
                         Ochish
-                      </button>
-                    </div>
+                      </span>
+                    </button>
                   );
                 }
 
@@ -699,7 +733,7 @@ export default function PortalMePage() {
     // "Telegram akkauntingiz ulanmagan" when a user's TelegramLink was deleted
     // while their 30-day portal JWT remained valid.
     function syncTelegramLink(portalToken?: string | null) {
-      const twa = (window as any).Telegram?.WebApp;
+      const twa = getTelegramWebApp();
       if (!twa?.initData) return;
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       const token = portalToken ?? localStorage.getItem("portal_token");
@@ -729,7 +763,7 @@ export default function PortalMePage() {
             return;
           }
           // Persist JWT for Authorization-header auth (Telegram Mini App)
-          const loginData = await tokenRes.json().catch(() => ({}));
+          const loginData = await tokenRes.json().catch(() => ({})) as PortalTokenResponse;
           if (loginData.token) localStorage.setItem("portal_token", loginData.token);
           // Cookie also set — remove token from URL so refresh doesn't reuse it
           window.history.replaceState({}, "", "/portal/me");
@@ -756,7 +790,7 @@ export default function PortalMePage() {
         // drop the httpOnly cookie on subsequent fetches (e.g. /api/homeworks/:id/materials).
         // Silently re-authenticate to get and store the Bearer token so all later
         // portalFetch() calls include the Authorization header.
-        const twaEarly = (window as any).Telegram?.WebApp;
+        const twaEarly = getTelegramWebApp();
         if (twaEarly && !localStorage.getItem("portal_token")) {
           try {
             const authRes = await fetch("/api/portal/telegram-miniapp-login", {
@@ -765,7 +799,7 @@ export default function PortalMePage() {
               body:    JSON.stringify({ initData: twaEarly.initData ?? "" }),
             });
             if (authRes.ok) {
-              const authData = await authRes.json().catch(() => ({}));
+              const authData = await authRes.json().catch(() => ({})) as PortalTokenResponse;
               if (authData.token) localStorage.setItem("portal_token", authData.token);
             }
           } catch { /* non-fatal — cookie will still work for this session */ }
@@ -788,7 +822,7 @@ export default function PortalMePage() {
       // 401 — try Telegram Mini App auto-login before redirecting.
       // Detect by WebApp presence, NOT by initData truthiness — initData can
       // legitimately be an empty string on some open paths.
-      const twa = (window as any).Telegram?.WebApp;
+      const twa = getTelegramWebApp();
       if (twa) {
         try {
           twa.ready?.();
@@ -800,7 +834,7 @@ export default function PortalMePage() {
           });
           if (authRes.ok) {
             // Persist JWT for Authorization-header auth
-            const authData = await authRes.json().catch(() => ({}));
+            const authData = await authRes.json().catch(() => ({})) as PortalTokenResponse;
             if (authData.token) localStorage.setItem("portal_token", authData.token);
             // Cookie also set — retry the /me request
             const r2 = await portalFetch("/api/portal/me");
