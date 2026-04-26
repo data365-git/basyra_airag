@@ -6,14 +6,15 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   request: Request,
-  { params }: { params: { chatId: string } }
+  { params }: { params: Promise<{ chatId: string }> }
 ) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { chatId: chatIdStr } = await params;
   let chatIdBig: bigint;
   try {
-    chatIdBig = BigInt(params.chatId);
+    chatIdBig = BigInt(chatIdStr);
   } catch {
     return NextResponse.json({ error: "Invalid chatId" }, { status: 400 });
   }
