@@ -421,7 +421,12 @@ function HomeworkCard({
                 if (fileHref) {
                   const isSending = sending === m.id;
                   return (
-                    <div key={m.id} className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 rounded-xl">
+                    <button
+                      key={m.id}
+                      onClick={() => sendViaBot(m.id)}
+                      disabled={!!sending}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                    >
                       <MatKindIcon kind={m.kind} />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-gray-700 font-medium truncate">{m.title}</p>
@@ -431,18 +436,14 @@ function HomeworkCard({
                           </p>
                         )}
                       </div>
-                      <button
-                        onClick={() => sendViaBot(m.id)}
-                        disabled={!!sending}
-                        className="shrink-0 flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
+                      <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-blue-600">
                         {isSending
                           ? <Loader2 size={11} className="animate-spin" />
                           : "📨"
                         }
                         {isSending ? "Yuklanmoqda…" : "Botga yuborish"}
-                      </button>
-                    </div>
+                      </span>
+                    </button>
                   );
                 }
 

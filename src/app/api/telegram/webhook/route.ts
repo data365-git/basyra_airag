@@ -15,7 +15,9 @@ let handler: ((req: Request) => Promise<Response>) | null = null;
 function getHandler() {
   if (handler) return handler;
   const bot = getBot();
-  handler = webhookCallback(bot, "std/http");
+  // onTimeout:"return" — lets long-running handlers (e.g. TTS, ~60-180s) keep
+  // running after Telegram's 10s webhook deadline without throwing an error.
+  handler = webhookCallback(bot, "std/http", { onTimeout: "return" });
   return handler;
 }
 

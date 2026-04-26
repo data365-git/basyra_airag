@@ -146,6 +146,7 @@ model Participant {
   subordinateLinks SupervisorLink[] @relation("ReportLinks")
   botMessageRatings     BotMessageRating[]
   studentFeedback       StudentFeedback[]
+  longAnswers           LongAnswer[]
 
   @@map("participants")
 }
@@ -454,6 +455,8 @@ model BotMessage {
   tokenCount    Int?     @map("token_count")
   createdAt     DateTime @default(now()) @map("created_at")
   rating        BotMessageRating?
+  ttsChunks     BotTtsChunk[]
+  longAnswer    LongAnswer?
 
   @@index([chatId, createdAt])
   @@map("bot_messages")
@@ -477,6 +480,34 @@ model BotMessageRating {
   @@index([reason])
   @@index([status])
   @@map("bot_message_ratings")
+}
+
+model BotTtsChunk {
+  id        String     @id @default(cuid())
+  messageId String     @map("message_id")
+  message   BotMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  idx       Int
+  fileId    String     @map("file_id")
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  @@unique([messageId, idx])
+  @@map("bot_tts_chunks")
+}
+
+model LongAnswer {
+  id            String       @id @default(cuid())
+  messageId     String?      @unique @map("message_id")
+  message       BotMessage?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  participantId String?      @map("participant_id")
+  participant   Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  title         String
+  summary       String
+  bodyMd        String       @map("body_md")
+  viewCount     Int          @default(0) @map("view_count")
+  viewedAt      DateTime?    @map("viewed_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@map("long_answers")
 }
 
 model StudentFeedback {

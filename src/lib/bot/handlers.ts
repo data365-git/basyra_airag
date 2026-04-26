@@ -42,6 +42,35 @@ function fmtUzDate(d: string | Date | null | undefined): string {
   return `${dt.getDate()} ${UZ_MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
 }
 
+/** Extract first sentence as title (max 80 chars) */
+function extractTitle(text: string): string {
+  const first = text.split(/[.!?]\s/)[0] ?? text;
+  return first.slice(0, 80).trim();
+}
+
+/** Extract first 3 sentences as summary */
+function extractSummary(text: string): string {
+  const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [];
+  return sentences.slice(0, 3).join(" ").trim() || text.slice(0, 400).trim();
+}
+
+/** Split text into sentence-aligned chunks for parallel TTS */
+function splitIntoChunks(text: string, maxChars = 400): string[] {
+  const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [];
+  const result: string[] = [];
+  let current = "";
+  for (const s of sentences) {
+    if (current && current.length + s.length + 1 > maxChars) {
+      result.push(current.trim());
+      current = s;
+    } else {
+      current = current ? current + " " + s : s;
+    }
+  }
+  if (current.trim()) result.push(current.trim());
+  return result.length ? result : [text.slice(0, maxChars)];
+}
+
 function buildHomeMenu() {
   return new InlineKeyboard()
     .text("📊 Mening progressim", "menu_status").row()
@@ -586,16 +615,45 @@ export function registerCommandHandlers(b: Bot) {
 
         const msgId = await logBotMessage({ chatId, role: "assistant", content: answer, intent, routedTo: "ai" });
 
-        // Message 1: AI answer + TTS only
-        const ttsKb = new InlineKeyboard().text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
-        const sanitized = sanitizeMarkdown(`💡 ${answer}`);
-        try {
-          await reply(ctx, sanitized, { parse_mode: "Markdown", reply_markup: ttsKb });
-        } catch (mdErr) {
-          if (String(mdErr).includes("can't parse")) {
-            await reply(ctx, `💡 ${answer}`, { reply_markup: ttsKb });
-          } else {
-            throw mdErr;
+        const LONG_THRESHOLD = 4096;
+        if (answer.length > LONG_THRESHOLD) {
+          // Long answer: save to DB, show summary + buttons
+          const title   = extractTitle(answer);
+          const summary = extractSummary(answer);
+          const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "";
+
+          const longAnswer = await prisma.longAnswer.create({
+            data: {
+              messageId:     msgId ?? undefined,
+              participantId: participantId ?? undefined,
+              title,
+              summary,
+              bodyMd: answer,
+            },
+          });
+
+          const kb = new InlineKeyboard()
+            .url("📖 To'liq o'qish", `${appUrl}/article/${longAnswer.id}`)
+            .text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
+
+          const summaryText = sanitizeMarkdown(`💡 ${summary}`);
+          try {
+            await reply(ctx, summaryText, { parse_mode: "Markdown", reply_markup: kb });
+          } catch {
+            await reply(ctx, `💡 ${summary}`, { reply_markup: kb });
+          }
+        } else {
+          // Short answer: existing behavior
+          const ttsKb = new InlineKeyboard().text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
+          const sanitized = sanitizeMarkdown(`💡 ${answer}`);
+          try {
+            await reply(ctx, sanitized, { parse_mode: "Markdown", reply_markup: ttsKb });
+          } catch (mdErr) {
+            if (String(mdErr).includes("can't parse")) {
+              await reply(ctx, `💡 ${answer}`, { reply_markup: ttsKb });
+            } else {
+              throw mdErr;
+            }
           }
         }
 
@@ -732,47 +790,73 @@ export function registerCommandHandlers(b: Bot) {
   b.callbackQuery(/^tts_(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery({ text: "🔊 Tayyorlanmoqda..." });
     const [, msgId] = ctx.match;
+    const chatId    = ctx.chat!.id;
+    const api       = ctx.api;
 
-    // Fetch stored answer text
-    let text = "";
-    try {
-      const stored = await prisma.botMessage.findUnique({ where: { id: msgId } });
-      if (stored?.content) text = stored.content.slice(0, 2000);
-    } catch {}
-
-    if (!text) {
-      await ctx.answerCallbackQuery({ text: "Matn topilmadi" });
-      return;
-    }
-
-    const ragUrl  = process.env.RAG_SERVICE_URL ?? "";
-    const ragToken = process.env.RAG_INTERNAL_TOKEN ?? "";
-
-    let audioBuffer: Buffer | null = null;
-    try {
-      const res = await fetch(`${ragUrl}/tts`, {
-        method:  "POST",
-        headers: {
-          "Content-Type":    "application/json",
-          "X-Internal-Token": ragToken,
-        },
-        body: JSON.stringify({ text, chat_id: Number(ctx.chat!.id) }),
+    void (async () => {
+      // ── Cache hit: re-send stored file_ids instantly ──────────────────────
+      const cached = await prisma.botTtsChunk.findMany({
+        where: { messageId: msgId },
+        orderBy: { idx: "asc" },
       });
-      if (res.ok) {
-        audioBuffer = Buffer.from(await res.arrayBuffer());
+      if (cached.length > 0) {
+        for (const c of cached) {
+          await api.sendVoice(chatId, c.fileId).catch(() => {});
+        }
+        return;
       }
-    } catch {}
 
-    if (!audioBuffer) {
-      await ctx.reply("❌ Ovoz yaratishda xatolik yuz berdi");
-      return;
-    }
+      // ── Fetch text ────────────────────────────────────────────────────────
+      let text = "";
+      try {
+        const stored = await prisma.botMessage.findUnique({ where: { id: msgId } });
+        if (stored?.content) text = stored.content.slice(0, 5000);
+      } catch {}
+      if (!text) { await api.sendMessage(chatId, "❌ Matn topilmadi"); return; }
 
-    try {
-      await ctx.replyWithVoice(new InputFile(audioBuffer, "voice.wav"));
-    } catch {
-      await ctx.reply("❌ Ovoz yuborishda xatolik");
-    }
+      const ragUrl   = process.env.RAG_SERVICE_URL ?? "";
+      const ragToken = process.env.RAG_INTERNAL_TOKEN ?? "";
+
+      // Show "recording" indicator
+      api.sendChatAction(chatId, "record_voice").catch(() => {});
+      const actionLoop = setInterval(
+        () => api.sendChatAction(chatId, "record_voice").catch(() => {}),
+        4000,
+      );
+
+      // ── Fetch audio (sequential: send each chunk as soon as ready) ────────
+      try {
+        const textChunks = text.length > 400 ? splitIntoChunks(text, 400) : [text];
+        const total = textChunks.length;
+        let sent = false;
+
+        for (let i = 0; i < total; i++) {
+          try {
+            const res = await fetch(`${ragUrl}/tts`, {
+              method:  "POST",
+              headers: { "Content-Type": "application/json", "X-Internal-Token": ragToken },
+              body:    JSON.stringify({ text: textChunks[i], chat_id: Number(chatId) }),
+              signal:  AbortSignal.timeout(120_000),
+            });
+            if (!res.ok) { console.error(`[TTS chunk ${i}] http ${res.status}`); continue; }
+            const buf = Buffer.from(await res.arrayBuffer());
+            const caption = total > 1 ? `🎙 ${i + 1}/${total}` : undefined;
+            const msg = await api.sendVoice(chatId, new InputFile(buf, "voice.ogg"), { caption });
+            sent = true;
+            const fileId = msg.voice?.file_id;
+            if (fileId && msgId) {
+              await prisma.botTtsChunk.create({ data: { messageId: msgId, idx: i, fileId } }).catch(() => {});
+            }
+          } catch (err) {
+            console.error(`[TTS chunk ${i}]`, err);
+          }
+        }
+
+        if (!sent) await api.sendMessage(chatId, "❌ Ovoz yaratib bo'lmadi");
+      } finally {
+        clearInterval(actionLoop);
+      }
+    })();
   });
 
   // ── 5-star ratings ────────────────────────────────────────────────────────
