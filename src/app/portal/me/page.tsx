@@ -693,6 +693,24 @@ export default function PortalMePage() {
   const [hasTeam,         setHasTeam]         = useState(false);
 
   useEffect(() => {
+    // ── Ensure TelegramLink is synced when inside Mini App ────────────────────
+    // Fire-and-forget: if we're inside Telegram WebApp, upsert the TelegramLink
+    // for the authenticated participant using the verified initData. This fixes
+    // "Telegram akkauntingiz ulanmagan" when a user's TelegramLink was deleted
+    // while their 30-day portal JWT remained valid.
+    function syncTelegramLink(portalToken?: string | null) {
+      const twa = (window as any).Telegram?.WebApp;
+      if (!twa?.initData) return;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const token = portalToken ?? localStorage.getItem("portal_token");
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      fetch("/api/portal/ensure-telegram-link", {
+        method:  "POST",
+        headers,
+        body:    JSON.stringify({ initData: twa.initData }),
+      }).catch(() => {}); // non-critical — never block on this
+    }
+
     async function init() {
       // ── Phone token login (from bot /login flow) ────────────────────────
       // Check ?token= before anything else so the cookie is set on first load.
@@ -715,6 +733,8 @@ export default function PortalMePage() {
           if (loginData.token) localStorage.setItem("portal_token", loginData.token);
           // Cookie also set — remove token from URL so refresh doesn't reuse it
           window.history.replaceState({}, "", "/portal/me");
+          // Sync TelegramLink now that we have the portal JWT
+          syncTelegramLink(loginData.token ?? null);
         } catch {
           router.replace("/portal/login");
           return;
@@ -751,6 +771,10 @@ export default function PortalMePage() {
           } catch { /* non-fatal — cookie will still work for this session */ }
         }
 
+        // Sync TelegramLink — ensures "Botga yuborish" works even if the link
+        // was deleted while the portal JWT was still valid.
+        syncTelegramLink();
+
         // Check if user has a team (non-blocking)
         portalFetch("/api/portal/team")
           .then((r) => r.ok ? r.json() : [])
@@ -784,6 +808,8 @@ export default function PortalMePage() {
             if (data) {
               setMe(data);
               if (data.trainings?.length > 0) setSelectedTraining(data.trainings[0].id);
+              // Sync TelegramLink after successful mini-app login
+              syncTelegramLink(authData.token ?? null);
               portalFetch("/api/portal/team")
                 .then((r) => r.ok ? r.json() : [])
                 .then((td: unknown[]) => setHasTeam(td.length > 0))
