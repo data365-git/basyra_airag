@@ -66,6 +66,38 @@ export async function askRag(req: AskRequest): Promise<{ text: string; raw: AskR
 }
 
 /**
+ * Write a BotUsageLog row. Fire-and-forget — never blocks.
+ */
+export async function logUsage(params: {
+  messageId?:     string | null;
+  participantId?: string | null;
+  chatId:         bigint;
+  model:          string;
+  kind:           "chat" | "tts" | "embed";
+  tokensIn?:      number;
+  tokensOut?:     number;
+  costUsd?:       number;
+  responseTimeMs?: number;
+}): Promise<void> {
+  try {
+    const { default: prisma } = await import("@/lib/prisma");
+    await (prisma as any).botUsageLog?.create({ data: {
+      messageId:      params.messageId ?? null,
+      participantId:  params.participantId ?? null,
+      chatId:         params.chatId,
+      model:          params.model,
+      kind:           params.kind,
+      tokensIn:       params.tokensIn ?? 0,
+      tokensOut:      params.tokensOut ?? 0,
+      costUsd:        params.costUsd ?? 0,
+      responseTimeMs: params.responseTimeMs ?? 0,
+    }});
+  } catch {
+    // non-critical — never throw
+  }
+}
+
+/**
  * Log a bot message to the BotMessage table.
  * Fire-and-forget — never blocks the bot response.
  */

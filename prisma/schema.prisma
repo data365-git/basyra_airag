@@ -540,3 +540,22 @@ model GradingPolicy {
 
   @@map("grading_policy")
 }
+
+model BotUsageLog {
+  id              String   @id @default(cuid())
+  messageId       String?  @map("message_id")
+  participantId   String?  @map("participant_id")
+  chatId          BigInt   @map("chat_id")
+  model           String
+  kind            String   // "chat" | "tts" | "embed" | "classify"
+  tokensIn        Int      @default(0) @map("tokens_in")
+  tokensOut       Int      @default(0) @map("tokens_out")
+  costUsd         Decimal  @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  responseTimeMs  Int      @default(0) @map("response_time_ms")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([chatId, createdAt])
+  @@index([kind, createdAt])
+  @@index([createdAt])
+  @@map("bot_usage_log")
+}

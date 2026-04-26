@@ -66,6 +66,7 @@ export const PAGE_DEFS: PageDef[] = [
   { page: "participants",           label: "Participants",  actions: ["view", "create", "edit", "delete"] },
   { page: "scanner",                label: "Scanner",       actions: ["view"] },
   { page: "reports",                label: "Reports",       actions: ["view", "export"] },
+  { page: "chatbot",                 label: "Chat-bot",      actions: ["view", "conversations", "content", "broadcast", "settings"] as PermAction[] },
   { page: "settings.users",         label: "Users",         actions: ["view", "create", "edit", "delete"], parent: "settings" },
   { page: "settings.roles",         label: "Roles",         actions: ["view", "create", "edit", "delete"], parent: "settings" },
   { page: "settings.categories",    label: "Categories",    actions: ["view", "create", "edit", "delete"], parent: "settings" },
@@ -89,6 +90,7 @@ export function emptyPermissions(): RolePermissions {
     participants: { view: false, create: false, edit: false, delete: false },
     scanner:      { view: false },
     reports:      { view: false, export: false },
+    chatbot:      { view: false, conversations: false, content: false, broadcast: false, settings: false },
     settings: {
       users:        { view: false, create: false, edit: false, delete: false },
       roles:        { view: false, create: false, edit: false, delete: false },
@@ -104,6 +106,7 @@ export function countAccessiblePages(perms: RolePermissions): number {
   if (perms.participants?.view)           n++;
   if (perms.scanner?.view)               n++;
   if (perms.reports?.view)               n++;
+  if (perms.chatbot?.view)               n++;
   if (perms.settings?.users?.view)       n++;
   if (perms.settings?.roles?.view)       n++;
   if (perms.settings?.categories?.view)  n++;

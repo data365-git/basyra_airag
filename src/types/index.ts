@@ -4,6 +4,7 @@ export type PermPage =
   | "participants"
   | "scanner"
   | "reports"
+  | "chatbot"
   | "settings.users"
   | "settings.roles"
   | "settings.categories"
@@ -18,6 +19,13 @@ export interface RolePermissions {
   participants: { view: boolean; create: boolean; edit: boolean; delete: boolean };
   scanner:      { view: boolean };
   reports:      { view: boolean; export: boolean };
+  chatbot?: {
+    view: boolean;
+    conversations: boolean;
+    content: boolean;
+    broadcast: boolean;
+    settings: boolean;
+  };
   settings: {
     users:        { view: boolean; create: boolean; edit: boolean; delete: boolean };
     roles:        { view: boolean; create: boolean; edit: boolean; delete: boolean };

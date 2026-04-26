@@ -20,7 +20,7 @@ import { requireParticipant } from "@/lib/botAuth";
 import { linkedKeyboard, logMessage, reply } from "./ui";
 import { pendingSubmissions, pendingFiles, pendingRatingComment } from "./state";
 import { classifyMessage, extractFeedbackMeta } from "@/lib/intentRouter";
-import { askRag, logBotMessage } from "@/lib/aiClient";
+import { askRag, logBotMessage, logUsage } from "@/lib/aiClient";
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
 
@@ -615,6 +615,20 @@ export function registerCommandHandlers(b: Bot) {
 
         const msgId = await logBotMessage({ chatId, role: "assistant", content: answer, intent, routedTo: "ai" });
 
+        if (raw) {
+          void logUsage({
+            messageId:      msgId ?? undefined,
+            participantId:  participantId ?? undefined,
+            chatId:         BigInt(chatId),
+            model:          "gemini-2.5-flash",
+            kind:           "chat",
+            tokensIn:       raw.tokens_in,
+            tokensOut:      raw.tokens_out,
+            costUsd:        raw.cost_usd,
+            responseTimeMs: raw.response_time_ms,
+          });
+        }
+
         const LONG_THRESHOLD = 4096;
         if (answer.length > LONG_THRESHOLD) {
           // Long answer: save to DB, show summary + buttons
@@ -847,6 +861,14 @@ export function registerCommandHandlers(b: Bot) {
             if (fileId && msgId) {
               await prisma.botTtsChunk.create({ data: { messageId: msgId, idx: i, fileId } }).catch(() => {});
             }
+            void logUsage({
+              messageId:      msgId !== "0" ? msgId : undefined,
+              chatId:         BigInt(chatId),
+              model:          "gemini-2.5-flash-preview-tts",
+              kind:           "tts",
+              costUsd:        0,
+              responseTimeMs: 0,
+            });
           } catch (err) {
             console.error(`[TTS chunk ${i}]`, err);
           }
