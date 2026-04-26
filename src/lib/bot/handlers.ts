@@ -636,7 +636,7 @@ export function registerCommandHandlers(b: Bot) {
           const summary = extractSummary(answer);
           const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
-          const longAnswer = await prisma.longAnswer.create({
+          const longAnswer = await (prisma as any).longAnswer.create({
             data: {
               messageId:     msgId ?? undefined,
               participantId: participantId ?? undefined,
@@ -809,7 +809,7 @@ export function registerCommandHandlers(b: Bot) {
 
     void (async () => {
       // ── Cache hit: re-send stored file_ids instantly ──────────────────────
-      const cached = await prisma.botTtsChunk.findMany({
+      const cached = await (prisma as any).botTtsChunk.findMany({
         where: { messageId: msgId },
         orderBy: { idx: "asc" },
       });
@@ -859,7 +859,7 @@ export function registerCommandHandlers(b: Bot) {
             sent = true;
             const fileId = msg.voice?.file_id;
             if (fileId && msgId) {
-              await prisma.botTtsChunk.create({ data: { messageId: msgId, idx: i, fileId } }).catch(() => {});
+              await (prisma as any).botTtsChunk.create({ data: { messageId: msgId, idx: i, fileId } }).catch(() => {});
             }
             void logUsage({
               messageId:      msgId !== "0" ? msgId : undefined,
