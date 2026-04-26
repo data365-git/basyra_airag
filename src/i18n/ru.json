@@ -1,5 +1,13 @@
 {
   "nav.ai_reviews": "AI Качество",
+  "nav.chatbot": "Чат-бот",
+  "chatbot.tab_overview": "Обзор",
+  "chatbot.tab_conversations": "Разговоры",
+  "chatbot.tab_users": "Пользователи",
+  "chatbot.tab_content": "Контент",
+  "chatbot.tab_feedback": "Отзывы",
+  "chatbot.tab_broadcast": "Рассылка",
+  "chatbot.tab_settings": "Настройки",
   "nav.dashboard": "Главная",
   "nav.trainings": "Тренинги",
   "nav.homeworks": "Задания",
