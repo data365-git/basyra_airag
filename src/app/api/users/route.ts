@@ -7,7 +7,8 @@ import { hashPassword } from "@/lib/auth";
 
 const CreateUserSchema = z.object({
   name: z.string().min(1, "Name is required").max(200),
-  email: z.string().email("Invalid email").max(200),
+  username: z.string().min(3, "Username must be at least 3 characters").max(80),
+  email: z.string().email("Invalid email").max(200).optional().nullable(),
   password: z.string().min(6, "Password must be at least 6 characters"),
   role_id: z.string().optional().nullable(),
 });
@@ -19,10 +20,11 @@ const PatchUserSchema = z.object({
   name: z.string().min(1).max(200).optional(),
 });
 
-function mapUser(u: { id: string; name: string; email: string; roleId: string | null; role: { id: string; name: string; description: string | null; color: string; isSuperadmin: boolean; permissions: unknown; createdAt: Date } | null; isActive: boolean; createdAt: Date }) {
+function mapUser(u: { id: string; name: string; username: string | null; email: string | null; roleId: string | null; role: { id: string; name: string; description: string | null; color: string; isSuperadmin: boolean; permissions: unknown; createdAt: Date } | null; isActive: boolean; createdAt: Date }) {
   return {
     id: u.id,
     name: u.name,
+    username: u.username,
     email: u.email,
     role_id: u.roleId,
     role: u.role,
@@ -66,11 +68,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const { name, email, password, role_id } = parsed.data;
+    const { name, username, email, password, role_id } = parsed.data;
 
-    const existing = await prisma.staffUser.findUnique({ where: { email } });
-    if (existing) {
-      return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
+    const existingByUsername = await prisma.staffUser.findUnique({ where: { username } });
+    if (existingByUsername) {
+      return NextResponse.json({ error: "A user with this username already exists" }, { status: 409 });
+    }
+
+    if (email) {
+      const existingByEmail = await prisma.staffUser.findUnique({ where: { email } });
+      if (existingByEmail) {
+        return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
+      }
     }
 
     const hashed = await hashPassword(password);
@@ -78,7 +87,8 @@ export async function POST(request: Request) {
     const user = await prisma.staffUser.create({
       data: {
         name,
-        email,
+        username,
+        ...(email ? { email } : {}),
         password: hashed,
         roleId: role_id || null,
         isActive: true,
@@ -90,7 +100,7 @@ export async function POST(request: Request) {
   } catch (e: unknown) {
     const err = e as { code?: string };
     if (err?.code === "P2002") {
-      return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
+      return NextResponse.json({ error: "A user with this username or email already exists" }, { status: 409 });
     }
     console.error("users POST error:", e);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });

@@ -48,7 +48,10 @@ export async function GET(
     // Homeworks with submission + grade + file count
     prisma.homework.findMany({
       where:   { trainingId },
-      orderBy: { createdAt: "asc" },
+      orderBy: [
+        { dueDate: { sort: "asc", nulls: "last" } },
+        { createdAt: "asc" },
+      ],
       include: {
         submissions: {
           where:   { participantId: user.sub },

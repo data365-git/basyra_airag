@@ -14,7 +14,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
-  const [email, setEmail] = useState("");
+  const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -27,7 +27,7 @@ function LoginForm() {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ usernameOrEmail, password }),
     });
 
     if (!res.ok) {
@@ -46,13 +46,13 @@ function LoginForm() {
     <div className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
-          label={t("auth.email")}
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
+          label="Username or email"
+          type="text"
+          value={usernameOrEmail}
+          onChange={(e) => setUsernameOrEmail(e.target.value)}
+          placeholder="username or you@example.com"
           required
-          autoComplete="email"
+          autoComplete="username"
         />
         <Input
           label={t("auth.password")}

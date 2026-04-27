@@ -817,7 +817,10 @@ export function registerCommandHandlers(b: Bot) {
           include: { grade: true, files: { select: { id: true } } },
         },
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: [
+        { dueDate: { sort: "asc", nulls: "last" } },
+        { createdAt: "asc" },
+      ],
     });
 
     if (homeworks.length === 0) {
@@ -835,7 +838,7 @@ export function registerCommandHandlers(b: Bot) {
       const icon   = graded ? "✅" : sub ? "📤" : (isOverdue ? "⏰" : "⏳");
 
       text +=
-        `${i + 1}. ${icon} <b>${hw.title}</b>` +
+        `${icon} <b>${hw.title}</b>` +
         (isOverdue && !sub ? " <i>(kechikkan)</i>" : "") + "\n" +
         `   📚 ${hw.training.name}\n` +
         (hw.dueDate ? `   📅 Muddat: ${fmtUzDate(hw.dueDate)}\n`    : "") +

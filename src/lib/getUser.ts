@@ -27,7 +27,8 @@ export async function getFullUser(): Promise<StaffUser | null> {
   return {
     id: user.id,
     name: user.name,
-    email: user.email,
+    username: user.username ?? null,
+    email: user.email ?? null,
     avatar_url: user.avatarUrl ?? null,
     role_id: user.roleId,
     role: user.role

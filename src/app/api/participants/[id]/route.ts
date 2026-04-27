@@ -39,7 +39,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       photo_url: p.photoUrl,
       qr_token: p.qrToken,
       created_at: p.createdAt,
-      training_participants: (p as any).trainingParticipants?.map((tp: any) => ({
+      training_participants: p.trainingParticipants?.map((tp) => ({
         enrolled_at: tp.enrolledAt,
         training: {
           id: tp.training.id,

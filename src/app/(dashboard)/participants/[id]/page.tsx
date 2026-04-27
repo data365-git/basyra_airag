@@ -4,21 +4,88 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Edit, Trash2, KeyRound, ExternalLink, Send, RefreshCw, Unlink, Copy, Check } from "lucide-react";
+import { AlertTriangle, ChevronDown, Edit, Trash2, KeyRound, ExternalLink, Send, RefreshCw, Unlink, Copy, Check, UserPlus, Eye } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { QRCodeDisplay } from "@/components/participants/QRCodeDisplay";
 import { AttendanceBadge, TrainingStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardTitle } from "@/components/ui/Card";
 import { ConfirmModal } from "@/components/ui/Modal";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { formatDate, getAttendanceColorClass } from "@/lib/utils";
-import { fmtUzDate, fmtUzDateTime } from "@/lib/dateFormat";
 import { usePermission } from "@/hooks/usePermission";
 import { useTranslation } from "@/providers/LanguageProvider";
 import toast from "react-hot-toast";
 import type { Participant } from "@/types";
+
+type ParticipantDetail = Participant & {
+  training_participants?: Array<{
+    enrolled_at: string;
+    training: {
+      id: string;
+      name: string;
+      color?: string | null;
+      icon?: string | null;
+      start_date?: string;
+      end_date?: string;
+      status?: string;
+      schedule_days?: number[];
+    };
+  }>;
+};
+
+type AttendanceStatusValue = "present" | "absent" | "late" | "excused";
+
+type HistorySession = {
+  id: string;
+  session_number: number;
+  session_date: string;
+  status: string;
+  record?: {
+    status?: AttendanceStatusValue | null;
+    note?: string | null;
+  } | null;
+};
+
+type ParticipantHistoryItem = {
+  trainingId: string;
+  training: {
+    name: string;
+    color: string;
+    status: "upcoming" | "active" | "completed";
+  };
+  sessions: HistorySession[];
+};
+
+type SupervisorLinkRow = {
+  id: string;
+  boss_id: string;
+  boss_name: string;
+  report_id: string;
+  report_name: string;
+  training_id: string | null;
+  training_name?: string | null;
+  created_at: string;
+};
+
+type ParticipantSearchResult = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  eligibility?: {
+    mode: "supervisor" | "employee";
+    eligible: boolean;
+    reason: string | null;
+  } | null;
+  eligible?: boolean;
+  is_eligible?: boolean;
+  reason?: string | null;
+  eligibility_reason?: string | null;
+  ineligible_reason?: string | null;
+};
+
+type SupervisorPickerMode = "supervisor" | "watching";
 
 export default function ParticipantProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -26,10 +93,11 @@ export default function ParticipantProfilePage() {
   const { t } = useTranslation();
   const canManage = usePermission("participants", "edit");
   const canDelete = usePermission("participants", "delete");
-  const [participant, setParticipant] = useState<Participant | null>(null);
-  const [history, setHistory] = useState<any[]>([]);
+  const [participant, setParticipant] = useState<ParticipantDetail | null>(null);
+  const [history, setHistory] = useState<ParticipantHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "activity" | "supervisors">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "activity">("overview");
+  const [accessOpen, setAccessOpen] = useState(false);
   const [activityData, setActivityData] = useState<{
     count: number;
     avg_score: number | null;
@@ -47,6 +115,22 @@ export default function ParticipantProfilePage() {
   const [deleting,        setDeleting]        = useState(false);
   const [unlinkTgOpen,    setUnlinkTgOpen]    = useState(false);
   const [deleteLoginOpen, setDeleteLoginOpen] = useState(false);
+  const [supervisors,     setSupervisors]     = useState<SupervisorLinkRow[]>([]);
+  const [watching,        setWatching]        = useState<SupervisorLinkRow[]>([]);
+  const [supervisorQuery, setSupervisorQuery] = useState("");
+  const [supervisorPickerOpen, setSupervisorPickerOpen] = useState(false);
+  const [supervisorResults, setSupervisorResults] = useState<ParticipantSearchResult[]>([]);
+  const [supervisorSearching, setSupervisorSearching] = useState(false);
+  const [supervisorSearchError, setSupervisorSearchError] = useState<string | null>(null);
+  const [addingSupervisorId, setAddingSupervisorId] = useState<string | null>(null);
+  const [removingSupervisorId, setRemovingSupervisorId] = useState<string | null>(null);
+  const [watchingQuery, setWatchingQuery] = useState("");
+  const [watchingPickerOpen, setWatchingPickerOpen] = useState(false);
+  const [watchingResults, setWatchingResults] = useState<ParticipantSearchResult[]>([]);
+  const [watchingSearching, setWatchingSearching] = useState(false);
+  const [watchingSearchError, setWatchingSearchError] = useState<string | null>(null);
+  const [addingWatchingId, setAddingWatchingId] = useState<string | null>(null);
+  const [removingWatchingId, setRemovingWatchingId] = useState<string | null>(null);
 
   // Portal login state
   interface AuthInfo { id: string; username: string; lastLoginAt: string | null; createdAt: string }
@@ -54,22 +138,6 @@ export default function ParticipantProfilePage() {
   const [loginModal, setLoginModal]   = useState<"create" | "reset" | null>(null);
   const [loginForm, setLoginForm]     = useState({ username: "", password: "" });
   const [loginSaving, setLoginSaving] = useState(false);
-
-  // Supervisor state
-  interface SupervisorAssignmentRow {
-    supervisor_id:    string;
-    supervisor_name:  string;
-    supervisor_email: string;
-    is_active:        boolean;
-    training_id:      string | null;
-    training_name:    string | null;
-    training_color:   string | null;
-  }
-  const [supervisorAssignments, setSupervisorAssignments] = useState<SupervisorAssignmentRow[]>([]);
-  const [svLoading, setSvLoading] = useState(false);
-  const [allSupervisors, setAllSupervisors] = useState<{ id: string; name: string; email: string }[]>([]);
-  const [addSvForm, setAddSvForm] = useState<{ supervisorId: string; trainingId: string }>({ supervisorId: "", trainingId: "" });
-  const [addSvSaving, setAddSvSaving] = useState(false);
 
   // Telegram state
   interface TelegramInfo {
@@ -93,64 +161,85 @@ export default function ParticipantProfilePage() {
       fetch(`/api/participants/${id}/auth`).then((r) => r.json()),
       fetch(`/api/participants/${id}/telegram`).then((r) => r.ok ? r.json() : null),
       fetch(`/api/participants/${id}/activity`).then((r) => r.json()).catch(() => null),
-    ]).then(([p, h, a, tg, act]) => {
+      fetch(`/api/supervisor-links?reportId=${encodeURIComponent(id)}`).then((r) => r.ok ? r.json() : []),
+      fetch(`/api/supervisor-links?bossId=${encodeURIComponent(id)}`).then((r) => r.ok ? r.json() : []),
+    ]).then(([p, h, a, tg, act, supervisorRows, watchingRows]) => {
       setParticipant(p);
-      setHistory(Array.isArray(h) ? h : []);
+      setHistory(Array.isArray(h) ? h as ParticipantHistoryItem[] : []);
       setAuthInfo(a ?? null);
       setTgInfo(tg ?? null);
       setActivityData(act ?? null);
+      setSupervisors(Array.isArray(supervisorRows) ? supervisorRows as SupervisorLinkRow[] : []);
+      setWatching(Array.isArray(watchingRows) ? watchingRows as SupervisorLinkRow[] : []);
       setLoading(false);
     });
   }, [id]);
 
-  async function loadSupervisors() {
-    setSvLoading(true);
-    const [svRes, allRes] = await Promise.all([
-      fetch(`/api/participants/${id}/supervisors`),
-      fetch(`/api/supervisors`),
-    ]);
-    if (svRes.ok) setSupervisorAssignments(await svRes.json());
-    if (allRes.ok) setAllSupervisors(await allRes.json());
-    setSvLoading(false);
-  }
+  useEffect(() => {
+    const q = supervisorQuery.trim();
+    if (q.length < 2) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      setSupervisorSearching(true);
+      setSupervisorSearchError(null);
+      fetch(`/api/participants/search?q=${encodeURIComponent(q)}&eligible_supervisor_for=${encodeURIComponent(id)}`, { signal: controller.signal })
+        .then(async (r) => {
+          if (r.ok) return r.json();
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error ?? "Could not search participants");
+        })
+        .then((rows) => {
+          setSupervisorResults(Array.isArray(rows) ? rows as ParticipantSearchResult[] : []);
+        })
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setSupervisorResults([]);
+          setSupervisorSearchError(err instanceof Error ? err.message : "Could not search participants");
+        })
+        .finally(() => setSupervisorSearching(false));
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [id, supervisorQuery]);
 
   useEffect(() => {
-    if (activeTab === "supervisors") loadSupervisors();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
-  async function handleRemoveSupervisor(supervisorId: string, trainingId: string | null) {
-    await fetch(`/api/participants/${id}/supervisors`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ supervisorId, trainingId }),
-    });
-    await loadSupervisors();
-    toast.success("Supervisor removed");
-  }
-
-  async function handleAddSupervisor(e: React.FormEvent) {
-    e.preventDefault();
-    if (!addSvForm.supervisorId) return;
-    setAddSvSaving(true);
-    const res = await fetch(`/api/supervisors/${addSvForm.supervisorId}/assignments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        participantId: id,
-        trainingId: addSvForm.trainingId || null,
-      }),
-    });
-    setAddSvSaving(false);
-    if (res.ok) {
-      setAddSvForm({ supervisorId: "", trainingId: "" });
-      await loadSupervisors();
-      toast.success("Supervisor added");
-    } else {
-      const err = await res.json().catch(() => ({}));
-      toast.error(err.error ?? "Error");
+    const q = watchingQuery.trim();
+    if (q.length < 2) {
+      return;
     }
-  }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      setWatchingSearching(true);
+      setWatchingSearchError(null);
+      fetch(`/api/participants/search?q=${encodeURIComponent(q)}&eligible_employee_for=${encodeURIComponent(id)}`, { signal: controller.signal })
+        .then(async (r) => {
+          if (r.ok) return r.json();
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error ?? "Could not search participants");
+        })
+        .then((rows) => {
+          setWatchingResults(Array.isArray(rows) ? rows as ParticipantSearchResult[] : []);
+        })
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setWatchingResults([]);
+          setWatchingSearchError(err instanceof Error ? err.message : "Could not search participants");
+        })
+        .finally(() => setWatchingSearching(false));
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [id, watchingQuery]);
 
   async function handleGenerateTgCode() {
     setTgCodeLoading(true);
@@ -217,7 +306,140 @@ export default function ParticipantProfilePage() {
     toast.success("Login o'chirildi");
   }
 
-  function getStats(sessions: any[]) {
+  async function handleAddSupervisor(candidate: ParticipantSearchResult) {
+    const reason = getCandidateIneligibleReason(candidate, "supervisor");
+    if (reason) {
+      setSupervisorSearchError(reason);
+      return;
+    }
+
+    setAddingSupervisorId(candidate.id);
+    setSupervisorSearchError(null);
+    const res = await fetch("/api/supervisor-links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ boss_id: candidate.id, report_id: id }),
+    });
+    setAddingSupervisorId(null);
+
+    if (res.ok) {
+      const row = await res.json();
+      setSupervisors((current) => [row as SupervisorLinkRow, ...current]);
+      setSupervisorQuery("");
+      setSupervisorPickerOpen(false);
+      setSupervisorResults([]);
+      toast.success("Supervisor qo'shildi");
+      return;
+    }
+
+    const err = await res.json().catch(() => ({}));
+    setSupervisorSearchError(err.error ?? "Supervisor qo'shilmadi");
+    toast.error(err.error ?? "Supervisor qo'shilmadi");
+  }
+
+  function handleSupervisorQueryChange(value: string) {
+    setSupervisorQuery(value);
+    setSupervisorSearchError(null);
+    if (value.trim().length < 2) {
+      setSupervisorResults([]);
+      setSupervisorSearching(false);
+    }
+  }
+
+  async function handleRemoveSupervisor(linkId: string) {
+    setRemovingSupervisorId(linkId);
+    const res = await fetch(`/api/supervisor-links/${linkId}`, { method: "DELETE" });
+    setRemovingSupervisorId(null);
+
+    if (res.ok) {
+      setSupervisors((current) => current.filter((row) => row.id !== linkId));
+      toast.success("Supervisor olib tashlandi");
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Supervisor olib tashlanmadi");
+    }
+  }
+
+  async function handleAddWatchedEmployee(candidate: ParticipantSearchResult) {
+    const reason = getCandidateIneligibleReason(candidate, "watching");
+    if (reason) {
+      setWatchingSearchError(reason);
+      return;
+    }
+
+    setAddingWatchingId(candidate.id);
+    setWatchingSearchError(null);
+    const res = await fetch("/api/supervisor-links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ boss_id: id, report_id: candidate.id }),
+    });
+    setAddingWatchingId(null);
+
+    if (res.ok) {
+      const row = await res.json();
+      setWatching((current) => [row as SupervisorLinkRow, ...current]);
+      setWatchingQuery("");
+      setWatchingPickerOpen(false);
+      setWatchingResults([]);
+      toast.success("Employee added to watching");
+      return;
+    }
+
+    const err = await res.json().catch(() => ({}));
+    setWatchingSearchError(err.error ?? "Employee was not added");
+    toast.error(err.error ?? "Employee was not added");
+  }
+
+  function handleWatchingQueryChange(value: string) {
+    setWatchingQuery(value);
+    setWatchingSearchError(null);
+    if (value.trim().length < 2) {
+      setWatchingResults([]);
+      setWatchingSearching(false);
+    }
+  }
+
+  async function handleRemoveWatching(linkId: string) {
+    setRemovingWatchingId(linkId);
+    const res = await fetch(`/api/supervisor-links/${linkId}`, { method: "DELETE" });
+    setRemovingWatchingId(null);
+
+    if (res.ok) {
+      setWatching((current) => current.filter((row) => row.id !== linkId));
+      toast.success("Employee removed from watching");
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Employee was not removed");
+    }
+  }
+
+  function getCandidateIneligibleReason(candidate: ParticipantSearchResult, mode: SupervisorPickerMode) {
+    const apiEligible = candidate.eligible ?? candidate.is_eligible;
+    const apiReason =
+      candidate.eligibility?.reason ??
+      candidate.ineligible_reason ??
+      candidate.eligibility_reason ??
+      candidate.reason ??
+      null;
+
+    if (candidate.eligibility?.eligible === false) return apiReason || "Not eligible for this role.";
+    if (apiEligible === false) return apiReason || "Not eligible for this role.";
+    if (apiReason) return apiReason;
+    if (candidate.id === id) return "A participant cannot supervise or watch themselves.";
+
+    if (mode === "supervisor" && supervisors.some((link) => link.boss_id === candidate.id)) {
+      return "Already assigned as this participant's supervisor.";
+    }
+
+    if (mode === "watching" && watching.some((link) => link.report_id === candidate.id)) {
+      return "Already in this participant's watching list.";
+    }
+
+    return null;
+  }
+
+  function getStats(sessions: HistorySession[]) {
     const closed = sessions.filter((s) => s.status === "closed");
     const present = closed.filter((s) => s.record?.status === "present" || s.record?.status === "late").length;
     const absent = closed.filter((s) => s.record?.status === "absent").length;
@@ -249,6 +471,7 @@ export default function ParticipantProfilePage() {
 
   if (loading) return <div className="space-y-4"><CardSkeleton /><CardSkeleton /></div>;
   if (!participant) return <div className="text-center py-16 text-gray-400">{t("participants.not_found")}</div>;
+  const hasLegacySupervisorXorViolation = supervisors.length > 0 && watching.length > 0;
 
   return (
     <div className="space-y-6">
@@ -259,6 +482,141 @@ export default function ParticipantProfilePage() {
         backHref="/participants"
         actions={
           <>
+            {canManage && (authInfo !== "none" || tgInfo !== null) && (
+              <div className="relative">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAccessOpen((open) => !open)}
+                >
+                  <KeyRound size={14} /> Access <ChevronDown size={14} />
+                </Button>
+
+                {accessOpen && (
+                  <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-2xl border border-gray-200 bg-white p-3 text-sm shadow-xl">
+                    {authInfo !== "none" && (
+                      <div className="space-y-2 rounded-xl bg-gray-50 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold text-gray-900">Shaxsiy kabinet</p>
+                          <a
+                            href="/portal/login"
+                            target="_blank"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                          >
+                            <ExternalLink size={12} /> Portal
+                          </a>
+                        </div>
+
+                        {authInfo === null ? (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setLoginForm({ username: "", password: "" });
+                              setLoginModal("create");
+                              setAccessOpen(false);
+                            }}
+                          >
+                            Login yaratish
+                          </Button>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-gray-500">Login</span>
+                              <span className="font-mono font-medium">{authInfo.username}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-3 text-xs">
+                              <button
+                                onClick={() => {
+                                  setLoginForm({ username: "", password: "" });
+                                  setLoginModal("reset");
+                                  setAccessOpen(false);
+                                }}
+                                className="text-gray-600 underline hover:text-gray-900"
+                              >
+                                Parolni yangilash
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setDeleteLoginOpen(true);
+                                  setAccessOpen(false);
+                                }}
+                                className="text-red-500 underline hover:text-red-700"
+                              >
+                                O&apos;chirish
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {tgInfo !== null && (
+                      <div className="mt-2 space-y-2 rounded-xl bg-blue-50 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold text-gray-900">Telegram</p>
+                          <span className="text-xs text-gray-500">
+                            {tgInfo.linked ? "Ulangan" : "Ulanmagan"}
+                          </span>
+                        </div>
+
+                        {tgInfo.linked ? (
+                          <>
+                            <p className="text-xs text-gray-600">
+                              {tgInfo.firstName ?? "Ulangan"}
+                              {tgInfo.username && <span className="ml-1">@{tgInfo.username}</span>}
+                            </p>
+                            <button
+                              onClick={() => {
+                                setUnlinkTgOpen(true);
+                                setAccessOpen(false);
+                              }}
+                              className="inline-flex items-center gap-1 text-xs text-red-500 underline hover:text-red-700"
+                            >
+                              <Unlink size={11} /> Telegram&apos;ni uzish
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {tgInfo.pendingCode && (() => {
+                              const deepLink = `https://t.me/basyra_yordamchi_bot?start=${tgInfo.pendingCode}`;
+                              return (
+                                <div className="rounded-lg border border-blue-200 bg-white p-2">
+                                  <p className="break-all font-mono text-xs text-blue-700">{deepLink}</p>
+                                  <button
+                                    onClick={() => {
+                                      const msg =
+                                        `Basyra o'quv markaziga xush kelibsiz!\n` +
+                                        `Shaxsiy kabinetingizni ochish uchun quyidagi havolani bosing:\n` +
+                                        deepLink;
+                                      navigator.clipboard.writeText(msg);
+                                      setTgCopied(true);
+                                      setTimeout(() => setTgCopied(false), 2000);
+                                    }}
+                                    className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 underline hover:text-blue-800"
+                                  >
+                                    {tgCopied ? <Check size={12} /> : <Copy size={12} />} Xabarni nusxa olish
+                                  </button>
+                                </div>
+                              );
+                            })()}
+                            <button
+                              onClick={handleGenerateTgCode}
+                              disabled={tgCodeLoading}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {tgCodeLoading
+                                ? <RefreshCw size={12} className="animate-spin" />
+                                : <Send size={12} />}
+                              {tgInfo.pendingCode ? "Yangi kod yaratish" : "Telegram kodi yaratish"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {canManage && (
               <Link href={`/participants/${id}/edit`}>
                 <Button variant="outline" size="sm"><Edit size={14} /> {t("common.edit")}</Button>
@@ -274,7 +632,7 @@ export default function ParticipantProfilePage() {
       />
 
       <div className="flex gap-1 border-b border-gray-100 mb-6">
-        {(["overview", "activity", "supervisors"] as const).map((tab) => (
+        {(["overview", "activity"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -284,10 +642,22 @@ export default function ParticipantProfilePage() {
                 : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
-            {tab === "overview" ? t("common.overview") ?? "Overview" : tab === "activity" ? "Activity" : "Supervisors"}
+            {tab === "overview" ? t("common.overview") ?? "Overview" : "Activity"}
           </button>
         ))}
       </div>
+
+      {hasLegacySupervisorXorViolation && (
+        <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">Legacy supervisor eligibility violation</p>
+            <p className="mt-1 text-amber-800">
+              This participant is both a supervisor and an employee. The new XOR rule prevents creating this state, but this existing data was left unchanged.
+            </p>
+          </div>
+        </div>
+      )}
 
       {activeTab === "overview" && (
       <div className="grid lg:grid-cols-3 gap-6">
@@ -315,147 +685,242 @@ export default function ParticipantProfilePage() {
           </div>
         </Card>
 
-        {/* Portal Login card */}
-        {canManage && authInfo !== "none" && (
-          <Card>
-            <CardTitle className="mb-4 flex items-center gap-2">
-              <KeyRound size={16} className="text-gray-500" /> Shaxsiy kabinet
-            </CardTitle>
+        {/* Supervisors */}
+        <Card>
+          <CardTitle className="mb-4 flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2">
+              <UserPlus size={16} className="text-blue-600" /> Supervisors
+            </span>
+            {canManage && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSupervisorPickerOpen((open) => !open)}
+              >
+                Add supervisor
+              </Button>
+            )}
+          </CardTitle>
 
-            {authInfo === null ? (
-              <div className="space-y-3">
-                <p className="text-sm text-gray-500">Login yaratilmagan</p>
-                <Button
-                  size="sm"
-                  onClick={() => { setLoginForm({ username: "", password: "" }); setLoginModal("create"); }}
-                >
-                  Login yaratish
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Login</span>
-                  <span className="font-mono font-medium">{authInfo.username}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">So'ngi kirish</span>
-                  <span>{authInfo.lastLoginAt ? fmtUzDateTime(authInfo.lastLoginAt) : "Hali kirmagan"}</span>
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <a
-                    href="/portal/login"
-                    target="_blank"
-                    className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                  >
-                    <ExternalLink size={12} /> Portal
-                  </a>
-                  <button
-                    onClick={() => { setLoginForm({ username: "", password: "" }); setLoginModal("reset"); }}
-                    className="text-xs text-gray-500 hover:text-gray-800 underline"
-                  >
-                    Parolni yangilash
-                  </button>
-                  <button
-                    onClick={() => setDeleteLoginOpen(true)}
-                    className="text-xs text-red-500 hover:text-red-700 underline ml-auto"
-                  >
-                    O'chirish
-                  </button>
-                </div>
+          <div className="space-y-3">
+            {canManage && supervisorPickerOpen && (
+              <div className="relative">
+                <input
+                  type="search"
+                  autoFocus
+                  value={supervisorQuery}
+                  onChange={(event) => handleSupervisorQueryChange(event.target.value)}
+                  placeholder="Add supervisor by name or phone..."
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="mt-2 text-xs text-gray-500">
+                  Eligible supervisors cannot already be employees. Ineligible matches stay visible but disabled with the reason.
+                </p>
+                {supervisorSearchError && (
+                  <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {supervisorSearchError}
+                  </div>
+                )}
+                {supervisorQuery.trim().length >= 2 && (
+                  <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                    {supervisorSearching ? (
+                      <div className="px-3 py-3 text-sm text-gray-500">Searching...</div>
+                    ) : supervisorResults.length === 0 ? (
+                      <div className="px-3 py-3 text-sm text-gray-500">
+                        No eligible supervisor matches yet. Search for someone who is not already an employee.
+                      </div>
+                    ) : supervisorResults.map((candidate) => {
+                      const reason = getCandidateIneligibleReason(candidate, "supervisor");
+                      const disabled = Boolean(reason) || addingSupervisorId !== null;
+
+                      return (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          onClick={() => handleAddSupervisor(candidate)}
+                          disabled={disabled}
+                          className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors ${
+                            reason
+                              ? "cursor-not-allowed bg-gray-50 text-gray-400"
+                              : "hover:bg-blue-50 disabled:opacity-60"
+                          }`}
+                        >
+                          <span>
+                            <span className={`block font-medium ${reason ? "text-gray-500" : "text-gray-900"}`}>{candidate.full_name}</span>
+                            <span className="block text-xs text-gray-500">{candidate.phone || "No phone"}</span>
+                            {reason && <span className="mt-1 block text-xs text-gray-400">{reason}</span>}
+                          </span>
+                          <span className={`text-xs font-semibold ${reason ? "text-gray-400" : "text-blue-600"}`}>
+                            {reason ? "Unavailable" : addingSupervisorId === candidate.id ? "Adding..." : "Add"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
-          </Card>
-        )}
 
-        {/* Telegram card */}
-        {canManage && tgInfo !== null && (
-          <Card>
-            <CardTitle className="mb-4 flex items-center gap-2">
-              <Send size={16} className="text-blue-500" /> Telegram
-            </CardTitle>
-
-            {tgInfo.linked ? (
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-xl px-3 py-2">
-                  <span className="text-lg">✅</span>
-                  <div>
-                    <p className="font-semibold leading-tight">
-                      {tgInfo.firstName ?? "Ulangan"}
-                      {tgInfo.username && <span className="text-gray-400 font-normal ml-1">@{tgInfo.username}</span>}
-                    </p>
-                    {tgInfo.linkedAt && (
-                      <p className="text-xs text-gray-500">{fmtUzDate(tgInfo.linkedAt)}</p>
+            {supervisors.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm">
+                <p className="font-medium text-gray-800">No supervisors assigned</p>
+                <p className="mt-1 text-gray-500">Add an existing participant so they can watch this participant directly.</p>
+                {canManage && !supervisorPickerOpen && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSupervisorPickerOpen(true)}
+                    className="mt-3"
+                  >
+                    Add supervisor
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {supervisors.map((link) => (
+                  <div key={link.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2">
+                    <Link href={`/participants/${link.boss_id}`} className="min-w-0 text-sm font-medium text-gray-900 hover:text-blue-600">
+                      {link.boss_name}
+                    </Link>
+                    {canManage && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        loading={removingSupervisorId === link.id}
+                        onClick={() => handleRemoveSupervisor(link.id)}
+                        className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 size={13} /> Remove
+                      </Button>
                     )}
                   </div>
-                </div>
-                <button
-                  onClick={() => setUnlinkTgOpen(true)}
-                  className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 underline"
-                >
-                  <Unlink size={11} /> Telegram'ni uzish
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3 text-sm">
-                <p className="text-gray-500">Telegram ulanmagan</p>
-
-                {tgInfo.pendingCode ? (() => {
-                  const deepLink = `https://t.me/basyra_yordamchi_bot?start=${tgInfo.pendingCode}`;
-                  return (
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
-                      <p className="text-xs text-blue-600 font-semibold">Ishtirokchiga yuboriladigan havola:</p>
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={deepLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 block bg-white border border-blue-200 rounded-lg px-3 py-2 font-mono text-xs text-blue-700 break-all hover:bg-blue-50 transition-colors"
-                        >
-                          {deepLink}
-                        </a>
-                        <button
-                          onClick={() => {
-                            const msg =
-                              `Basyra o'quv markaziga xush kelibsiz!\n` +
-                              `Shaxsiy kabinetingizni ochish uchun quyidagi havolani bosing:\n` +
-                              deepLink;
-                            navigator.clipboard.writeText(msg);
-                            setTgCopied(true);
-                            setTimeout(() => setTgCopied(false), 2000);
-                          }}
-                          className="shrink-0 p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                          title="WhatsApp/Telegram uchun tayyor xabarni nusxa olish"
-                        >
-                          {tgCopied ? <Check size={14} /> : <Copy size={14} />}
-                        </button>
-                      </div>
-                      <p className="text-xs text-blue-500">
-                        Xabarni nusxa oling → WhatsApp yoki Telegram ga joylashtiring → Ishtirokchi havolani bosib kabinetga kiradi
-                      </p>
-                      {tgInfo.codeExpiresAt && (
-                        <p className="text-xs text-gray-400">
-                          Muddati: {fmtUzDateTime(tgInfo.codeExpiresAt)}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })() : null}
-
-                <button
-                  onClick={handleGenerateTgCode}
-                  disabled={tgCodeLoading}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
-                >
-                  {tgCodeLoading
-                    ? <RefreshCw size={12} className="animate-spin" />
-                    : <Send size={12} />}
-                  {tgInfo.pendingCode ? "Yangi kod yaratish" : "Telegram kodi yaratish"}
-                </button>
+                ))}
               </div>
             )}
-          </Card>
-        )}
+          </div>
+        </Card>
+
+        <Card>
+          <CardTitle className="mb-4 flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2">
+              <Eye size={16} className="text-emerald-600" /> Watching
+            </span>
+            {canManage && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setWatchingPickerOpen((open) => !open)}
+              >
+                Add employee
+              </Button>
+            )}
+          </CardTitle>
+
+          <div className="space-y-3">
+            {canManage && watchingPickerOpen && (
+              <div className="relative">
+                <input
+                  type="search"
+                  autoFocus
+                  value={watchingQuery}
+                  onChange={(event) => handleWatchingQueryChange(event.target.value)}
+                  placeholder="Add employee by name or phone..."
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                />
+                <p className="mt-2 text-xs text-gray-500">
+                  Eligible employees cannot already be supervisors. Ineligible matches stay visible but disabled with the reason.
+                </p>
+                {watchingSearchError && (
+                  <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {watchingSearchError}
+                  </div>
+                )}
+                {watchingQuery.trim().length >= 2 && (
+                  <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                    {watchingSearching ? (
+                      <div className="px-3 py-3 text-sm text-gray-500">Searching...</div>
+                    ) : watchingResults.length === 0 ? (
+                      <div className="px-3 py-3 text-sm text-gray-500">
+                        No eligible employee matches yet. Search for someone who is not already a supervisor.
+                      </div>
+                    ) : watchingResults.map((candidate) => {
+                      const reason = getCandidateIneligibleReason(candidate, "watching");
+                      const disabled = Boolean(reason) || addingWatchingId !== null;
+
+                      return (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          onClick={() => handleAddWatchedEmployee(candidate)}
+                          disabled={disabled}
+                          className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors ${
+                            reason
+                              ? "cursor-not-allowed bg-gray-50 text-gray-400"
+                              : "hover:bg-emerald-50 disabled:opacity-60"
+                          }`}
+                        >
+                          <span>
+                            <span className={`block font-medium ${reason ? "text-gray-500" : "text-gray-900"}`}>{candidate.full_name}</span>
+                            <span className="block text-xs text-gray-500">{candidate.phone || "No phone"}</span>
+                            {reason && <span className="mt-1 block text-xs text-gray-400">{reason}</span>}
+                          </span>
+                          <span className={`text-xs font-semibold ${reason ? "text-gray-400" : "text-emerald-600"}`}>
+                            {reason ? "Unavailable" : addingWatchingId === candidate.id ? "Adding..." : "Add"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {watching.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm">
+                <p className="font-medium text-gray-800">Not watching any participants yet</p>
+                <p className="mt-1 text-gray-500">Add an eligible employee so this participant can watch them directly.</p>
+                {canManage && !watchingPickerOpen && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setWatchingPickerOpen(true)}
+                    className="mt-3"
+                  >
+                    Add employee
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {watching.map((link) => (
+                  <div key={link.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2">
+                    <Link href={`/participants/${link.report_id}`} className="min-w-0 text-sm font-medium text-gray-900 hover:text-emerald-600">
+                      {link.report_name}
+                    </Link>
+                    {canManage && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        loading={removingWatchingId === link.id}
+                        onClick={() => handleRemoveWatching(link.id)}
+                        className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 size={13} /> Remove
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
 
         {/* Training stats */}
         <div className="lg:col-span-2 space-y-4">
@@ -509,7 +974,7 @@ export default function ParticipantProfilePage() {
                 {/* Session history */}
                 <details>
                   <summary className="text-sm text-blue-600 cursor-pointer hover:underline">
-                    {t("participants.view_history", { n: item.sessions.length })}
+                    {t("participants.view_history", { n: String(item.sessions.length) })}
                   </summary>
                   <div className="mt-3">
                     <Table>
@@ -522,7 +987,7 @@ export default function ParticipantProfilePage() {
                         </tr>
                       </Thead>
                       <Tbody>
-                        {item.sessions.length === 0 ? <EmptyRow cols={4} /> : item.sessions.map((row: any) => (
+                        {item.sessions.length === 0 ? <EmptyRow cols={4} /> : item.sessions.map((row) => (
                           <Tr key={row.id}>
                             <Td>{row.session_number}</Td>
                             <Td>{formatDate(row.session_date)}</Td>
@@ -597,111 +1062,6 @@ export default function ParticipantProfilePage() {
               )}
             </Tbody>
           </Table>
-        </div>
-      )}
-
-      {activeTab === "supervisors" && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-3">
-            <span>👥</span>
-            <span>
-              <strong>{supervisorAssignments.length}</strong> supervisor(s) watching this participant
-            </span>
-          </div>
-
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Supervisor</Th>
-                <Th>Scope</Th>
-                <Th>Status</Th>
-                <Th></Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {svLoading ? (
-                <EmptyRow cols={4} message="Loading..." />
-              ) : supervisorAssignments.length === 0 ? (
-                <EmptyRow cols={4} message="No supervisors assigned" />
-              ) : (
-                supervisorAssignments.map((row, i) => (
-                  <Tr key={i}>
-                    <Td>
-                      <div className="font-medium text-gray-900">{row.supervisor_name}</div>
-                      <div className="text-xs text-gray-500">{row.supervisor_email}</div>
-                    </Td>
-                    <Td>
-                      {row.training_id ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          {row.training_color && (
-                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: row.training_color }} />
-                          )}
-                          {row.training_name}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">All trainings</span>
-                      )}
-                    </Td>
-                    <Td>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${row.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                        {row.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </Td>
-                    <Td>
-                      <button
-                        onClick={() => handleRemoveSupervisor(row.supervisor_id, row.training_id)}
-                        className="text-xs text-red-500 hover:text-red-700 underline"
-                      >
-                        Remove
-                      </button>
-                    </Td>
-                  </Tr>
-                ))
-              )}
-            </Tbody>
-          </Table>
-
-          {canManage && (
-            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-              <p className="text-sm font-medium text-gray-700">Add supervisor</p>
-              <form onSubmit={handleAddSupervisor} className="flex flex-wrap gap-3 items-end">
-                <div className="flex-1 min-w-[180px]">
-                  <label className="block text-xs text-gray-500 mb-1">Supervisor</label>
-                  <select
-                    required
-                    value={addSvForm.supervisorId}
-                    onChange={(e) => setAddSvForm((f) => ({ ...f, supervisorId: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">— select —</option>
-                    {allSupervisors.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex-1 min-w-[180px]">
-                  <label className="block text-xs text-gray-500 mb-1">Training scope (optional)</label>
-                  <select
-                    value={addSvForm.trainingId}
-                    onChange={(e) => setAddSvForm((f) => ({ ...f, trainingId: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">All trainings</option>
-                    {((participant as any).training_participants ?? []).map((tp: any) => (
-                      <option key={tp.training.id} value={tp.training.id}>{tp.training.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="submit"
-                  disabled={addSvSaving}
-                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-50 transition-colors"
-                >
-                  {addSvSaving ? "..." : "Add"}
-                </button>
-              </form>
-            </div>
-          )}
         </div>
       )}
 

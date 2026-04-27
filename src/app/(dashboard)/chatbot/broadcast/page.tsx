@@ -55,6 +55,11 @@ const SEGMENT_LABELS: Record<Segment, string> = {
   homework_pending: "Uy vazifasi topshirmaganlar",
 };
 
+const HISTORY_SEGMENT_LABELS: Record<string, string> = {
+  ...SEGMENT_LABELS,
+  participants: "Tanlangan ishtirokchilar (legacy)",
+};
+
 interface Toast {
   message: string;
   ok: boolean;
@@ -65,7 +70,7 @@ function getTypeLabel(value: string) {
 }
 
 function getSegmentLabel(value: string) {
-  return value in SEGMENT_LABELS ? SEGMENT_LABELS[value as Segment] : value;
+  return HISTORY_SEGMENT_LABELS[value] ?? value;
 }
 
 function formatHistoryDate(value: string) {

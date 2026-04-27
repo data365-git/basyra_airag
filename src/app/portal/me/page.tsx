@@ -122,6 +122,13 @@ function getTelegramWebApp(): TelegramWebApp | undefined {
   return webApp as TelegramWebApp | undefined;
 }
 
+function portalTeamHasMembers(data: unknown): boolean {
+  if (Array.isArray(data)) return data.length > 0;
+  if (!data || typeof data !== "object") return false;
+  const team = data as { employees?: unknown };
+  return Array.isArray(team.employees) && team.employees.length > 0;
+}
+
 // ─── FIFA-style top card ──────────────────────────────────────────────────────
 
 function FifaCard({
@@ -812,7 +819,7 @@ export default function PortalMePage() {
         // Check if user has a team (non-blocking)
         portalFetch("/api/portal/team")
           .then((r) => r.ok ? r.json() : [])
-          .then((data: unknown[]) => setHasTeam(data.length > 0))
+          .then((data: unknown) => setHasTeam(portalTeamHasMembers(data)))
           .catch(() => {});
 
         setLoading(false);
@@ -846,7 +853,7 @@ export default function PortalMePage() {
               syncTelegramLink(authData.token ?? null);
               portalFetch("/api/portal/team")
                 .then((r) => r.ok ? r.json() : [])
-                .then((td: unknown[]) => setHasTeam(td.length > 0))
+                .then((td: unknown) => setHasTeam(portalTeamHasMembers(td)))
                 .catch(() => {});
               setLoading(false);
               return;

@@ -67,7 +67,8 @@ export interface Role {
 export interface StaffUser {
   id: string;
   name: string;
-  email: string;
+  username: string | null;
+  email: string | null;
   avatar_url: string | null;
   role_id: string | null;
   role: Role | null;

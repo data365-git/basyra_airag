@@ -273,7 +273,7 @@ export default function ChatbotFeedbackPage() {
                         <span className="text-gray-400 italic">Bog&apos;lanmagan</span>
                       )}
                       <Link
-                        href={`/chatbot/conversations?chatId=${item.chat_id}`}
+                        href={`/chat?chatId=${item.chat_id}`}
                         className="mt-2 inline-flex rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-50"
                       >
                         Chat ID: {item.chat_id}

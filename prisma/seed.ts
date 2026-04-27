@@ -41,6 +41,7 @@ async function main() {
     participants: { view: true,  create: true,  edit: true,  delete: true  },
     scanner:      { view: true  },
     reports:      { view: true,  export: true  },
+    chatbot:      { view: true,  conversations: true, content: true, broadcast: true, settings: true },
     settings: {
       users:        { view: true,  create: true,  edit: true,  delete: true  },
       roles:        { view: true,  create: true,  edit: true,  delete: true  },
@@ -53,6 +54,7 @@ async function main() {
     participants: { view: false, create: false, edit: false, delete: false },
     scanner:      { view: true  },
     reports:      { view: false, export: false },
+    chatbot:      { view: false, conversations: false, content: false, broadcast: false, settings: false },
     settings: {
       users:        { view: false, create: false, edit: false, delete: false },
       roles:        { view: false, create: false, edit: false, delete: false },
@@ -65,6 +67,7 @@ async function main() {
     participants: { view: false, create: false, edit: false, delete: false },
     scanner:      { view: false },
     reports:      { view: true,  export: true  },
+    chatbot:      { view: false, conversations: false, content: false, broadcast: false, settings: false },
     settings: {
       users:        { view: false, create: false, edit: false, delete: false },
       roles:        { view: false, create: false, edit: false, delete: false },

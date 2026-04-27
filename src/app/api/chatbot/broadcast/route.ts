@@ -2,17 +2,26 @@ import { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 import { hasPermission } from "@/lib/permissions";
+import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
+import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-type BroadcastSegment = "all" | "active" | "inactive" | "training" | "homework_pending";
+type BroadcastSegment =
+  | "all"
+  | "active"
+  | "inactive"
+  | "training"
+  | "homework_pending"
+  | "participants";
 
 type BroadcastBody = {
   message: string;
   type?: string;
   segment?: BroadcastSegment;
   trainingId?: string;
+  participantIds?: unknown;
 };
 
 function parseSegment(value: unknown): BroadcastSegment {
@@ -34,6 +43,14 @@ async function requireBroadcastUser() {
     return { response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
   return { user };
+}
+
+async function requireLegacyBroadcastUser() {
+  const jar = await cookies();
+  const token = jar.get(COOKIE_NAME)?.value;
+  const user = token ? await verifyJWT(token) : null;
+  if (!user) return { response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  return { user: { id: user.sub } };
 }
 
 async function getPendingHomeworkParticipantIds(trainingId?: string) {
@@ -63,7 +80,33 @@ async function getPendingHomeworkParticipantIds(trainingId?: string) {
   return [...pending];
 }
 
-async function getRecipientLinks(segment: BroadcastSegment, trainingId?: string) {
+function normalizeParticipantIds(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    ),
+  ];
+}
+
+async function getParticipantRecipientLinks(participantIds: string[]) {
+  if (participantIds.length === 0) return [];
+
+  return prisma.telegramLink.findMany({
+    where: { participantId: { in: participantIds } },
+    select: { chatId: true, participantId: true },
+  });
+}
+
+async function getRecipientLinks(
+  segment: BroadcastSegment,
+  trainingId?: string,
+  participantIds: string[] = []
+) {
+  if (segment === "participants") {
+    return getParticipantRecipientLinks(participantIds);
+  }
+
   if (segment === "training" && !trainingId) {
     throw new Error("Training required");
   }
@@ -206,20 +249,30 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireBroadcastUser();
+  const body = (await req.json().catch(() => ({}))) as BroadcastBody;
+  const isLegacyCompatibility = req.headers.get("x-telegram-broadcast-compat") === "1";
+  const auth = isLegacyCompatibility
+    ? await requireLegacyBroadcastUser()
+    : await requireBroadcastUser();
   if ("response" in auth) return auth.response;
 
-  const body = await req.json();
-  const { message, type, trainingId } = body as BroadcastBody;
-  const segment = parseSegment((body as BroadcastBody).segment);
+  const { message, type, trainingId } = body;
+  const participantIds = normalizeParticipantIds(body.participantIds);
+  const segment = isLegacyCompatibility ? "participants" : parseSegment(body.segment);
 
-  if (!message?.trim()) {
+  if (typeof message !== "string" || !message.trim()) {
     return NextResponse.json({ error: "Message required" }, { status: 400 });
+  }
+
+  const trimmedMessage = message.trim();
+
+  if (segment === "participants" && participantIds.length === 0) {
+    return NextResponse.json({ error: "participantIds required" }, { status: 400 });
   }
 
   let links: Awaited<ReturnType<typeof getRecipientLinks>>;
   try {
-    links = await getRecipientLinks(segment, trainingId);
+    links = await getRecipientLinks(segment, trainingId, participantIds);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Invalid segment" },
@@ -238,7 +291,7 @@ export async function POST(req: NextRequest) {
 
   for (const link of links) {
     try {
-      await bot.api.sendMessage(Number(link.chatId), message, { parse_mode: "HTML" });
+      await bot.api.sendMessage(Number(link.chatId), trimmedMessage, { parse_mode: "HTML" });
       sent++;
     } catch (error) {
       failed++;
@@ -255,8 +308,8 @@ export async function POST(req: NextRequest) {
   }
 
   const historyEntry = await createBroadcastHistory(auth.user.id, {
-    message,
-    type,
+    message: trimmedMessage,
+    type: isLegacyCompatibility ? type ?? "legacy_telegram" : type,
     segment,
     trainingId,
     total: links.length,

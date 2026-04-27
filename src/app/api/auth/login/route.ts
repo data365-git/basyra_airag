@@ -3,29 +3,36 @@ import prisma from "@/lib/prisma";
 import { signJWT, comparePassword, COOKIE_NAME } from "@/lib/auth";
 
 export async function POST(request: Request) {
-  const { email, password } = await request.json();
+  const { usernameOrEmail, password } = await request.json();
 
-  if (!email || !password) {
-    return NextResponse.json({ error: "Email and password required" }, { status: 400 });
+  if (!usernameOrEmail || !password) {
+    return NextResponse.json({ error: "Username/email and password required" }, { status: 400 });
   }
 
-  const user = await prisma.staffUser.findUnique({
-    where: { email },
+  let user = await prisma.staffUser.findUnique({
+    where: { username: usernameOrEmail },
     include: { role: true },
   });
 
+  if (!user) {
+    user = await prisma.staffUser.findUnique({
+      where: { email: usernameOrEmail },
+      include: { role: true },
+    });
+  }
+
   if (!user || !user.isActive) {
-    return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
   const valid = await comparePassword(password, user.password);
   if (!valid) {
-    return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
   const token = await signJWT({
     sub: user.id,
-    email: user.email,
+    email: user.email ?? "",
     roleId: user.roleId,
   });
 

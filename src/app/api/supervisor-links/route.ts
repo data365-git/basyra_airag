@@ -4,6 +4,10 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getFullUser } from "@/lib/getUser";
 
+function normalizeTrainingId(trainingId?: string) {
+  return trainingId ?? null;
+}
+
 export async function GET(request: Request) {
   const user = await getFullUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -58,32 +62,63 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "boss_id and report_id must be different" }, { status: 400 });
   }
 
-  // Validate both participants exist
-  const [boss, report] = await Promise.all([
+  const trainingId = normalizeTrainingId(training_id);
+
+  const [boss, report, relatedLinks] = await prisma.$transaction([
     prisma.participant.findUnique({ where: { id: boss_id } }),
     prisma.participant.findUnique({ where: { id: report_id } }),
+    prisma.supervisorLink.findMany({
+      where: {
+        OR: [
+          { bossId: boss_id },
+          { reportId: boss_id },
+          { bossId: report_id },
+          { reportId: report_id },
+        ],
+      },
+      select: {
+        bossId: true,
+        reportId: true,
+        trainingId: true,
+      },
+    }),
   ]);
 
   if (!boss) return NextResponse.json({ error: "boss_id not found" }, { status: 400 });
   if (!report) return NextResponse.json({ error: "report_id not found" }, { status: 400 });
 
-  // Check for duplicate
-  const existing = await prisma.supervisorLink.findFirst({
-    where: {
-      bossId: boss_id,
-      reportId: report_id,
-      trainingId: training_id ?? null,
-    },
-  });
+  const existing = relatedLinks.some(
+    (link) =>
+      link.bossId === boss_id &&
+      link.reportId === report_id &&
+      link.trainingId === trainingId
+  );
+
   if (existing) {
     return NextResponse.json({ error: "Link already exists" }, { status: 409 });
+  }
+
+  const bossIsEmployee = relatedLinks.some((link) => link.reportId === boss_id);
+  if (bossIsEmployee) {
+    return NextResponse.json(
+      { error: "boss_id is already an employee and cannot be a supervisor" },
+      { status: 409 }
+    );
+  }
+
+  const reportIsSupervisor = relatedLinks.some((link) => link.bossId === report_id);
+  if (reportIsSupervisor) {
+    return NextResponse.json(
+      { error: "report_id is already a supervisor and cannot be an employee" },
+      { status: 409 }
+    );
   }
 
   const link = await prisma.supervisorLink.create({
     data: {
       bossId: boss_id,
       reportId: report_id,
-      trainingId: training_id ?? null,
+      trainingId,
       createdById: user.id,
     },
   });

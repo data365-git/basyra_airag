@@ -14,7 +14,6 @@ export function SettingsTabs() {
   const { t } = useTranslation();
   const superadmin = isSuperadmin(user);
 
-  const canUsersView        = usePermission("settings.users",        "view");
   const canRolesView        = usePermission("settings.roles",        "view");
   const canCategoriesView   = usePermission("settings.categories",   "view");
   const canTranslationsView = usePermission("settings.translations", "view");
@@ -22,13 +21,11 @@ export function SettingsTabs() {
   // Profile is always visible to every logged-in user
   const tabs = [
     { href: "/settings/profile",      label: t("settings.tab_profile"),      show: true },
-    { href: "/settings/users",        label: t("settings.tab_users"),        show: superadmin || canUsersView },
     { href: "/settings/roles",        label: t("settings.tab_roles"),        show: superadmin || canRolesView },
     { href: "/settings/categories",   label: t("settings.tab_categories"),   show: superadmin || canCategoriesView },
     { href: "/settings/translations", label: t("settings.tab_translations"), show: superadmin || canTranslationsView },
     { href: "/settings/system",       label: t("settings.tab_system"),       show: superadmin },
     { href: "/settings/grading",      label: t("settings.tab_grading"),      show: superadmin },
-    { href: "/settings/supervisor-links",  label: "Nazoratchilar",                show: !!user },
   ];
 
   const visibleTabs = tabs.filter((tab) => tab.show);

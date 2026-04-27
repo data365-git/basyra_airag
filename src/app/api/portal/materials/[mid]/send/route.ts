@@ -149,15 +149,23 @@ export async function POST(
       result = await bot.api.sendDocument(chatId, inputFile, { caption, parse_mode: "HTML" });
     }
 
-    console.info("[portal/materials/send] sent", {
+    console.info("[portal/materials/send] sent ok", {
       ...logCtx,
+      chatId,
       telegramMessageId: (result as { message_id?: number }).message_id,
     });
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    console.error("[portal/materials/send] bot send failed:", { ...logCtx, err });
-    const msg = err instanceof Error ? err.message : String(err);
+    const errName = err instanceof Error ? err.constructor.name : typeof err;
+    const errMsg  = err instanceof Error ? err.message : String(err);
+    console.error("[portal/materials/send] bot send failed", {
+      ...logCtx,
+      errName,
+      errMsg,
+      chatId,
+    });
+    const msg = errMsg;
     return NextResponse.json({ error: `Yuborish amalga oshmadi: ${msg}` }, { status: 502 });
   }
 }
