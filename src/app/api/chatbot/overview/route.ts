@@ -62,33 +62,47 @@ export async function GET(request: Request) {
   const windowStart = dateNDaysAgo(days);
 
   // ── Active users ──────────────────────────────────────────────────────────
-  const [dauRaw, wauRaw, mauRaw, totalRaw, totalMessages] = await Promise.all([
-    prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(DISTINCT "chat_id") AS count
-      FROM bot_messages
-      WHERE created_at >= ${todayStart}
-    `,
-    prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(DISTINCT "chat_id") AS count
-      FROM bot_messages
-      WHERE created_at >= ${day7Start}
-    `,
-    prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(DISTINCT "chat_id") AS count
-      FROM bot_messages
-      WHERE created_at >= ${day30Start}
-    `,
-    prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(DISTINCT "chat_id") AS count
-      FROM bot_messages
-    `,
-    prisma.botMessage.count(),
-  ]);
+  let dauRaw: { count: bigint }[] = [];
+  let wauRaw: { count: bigint }[] = [];
+  let mauRaw: { count: bigint }[] = [];
+  let totalRaw: { count: bigint }[] = [];
+  let totalMessages = 0;
+  try {
+    [dauRaw, wauRaw, mauRaw, totalRaw, totalMessages] = await Promise.all([
+      prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(DISTINCT "chat_id") AS count
+        FROM bot_messages
+        WHERE created_at >= ${todayStart}
+      `,
+      prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(DISTINCT "chat_id") AS count
+        FROM bot_messages
+        WHERE created_at >= ${day7Start}
+      `,
+      prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(DISTINCT "chat_id") AS count
+        FROM bot_messages
+        WHERE created_at >= ${day30Start}
+      `,
+      prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(DISTINCT "chat_id") AS count
+        FROM bot_messages
+      `,
+      prisma.botMessage.count(),
+    ]);
+  } catch (err) {
+    console.warn('[chatbot/overview] active users query failed', err);
+  }
 
   // ── Quality ───────────────────────────────────────────────────────────────
-  const ratings = await prisma.botMessageRating.findMany({
-    select: { stars: true },
-  });
+  let ratings: { stars: number }[] = [];
+  try {
+    ratings = await prisma.botMessageRating.findMany({
+      select: { stars: true },
+    });
+  } catch (err) {
+    console.warn('[chatbot/overview] quality ratings query failed', err);
+  }
 
   const distribution: Record<string, number> = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
   let starSum = 0;
@@ -99,7 +113,7 @@ export async function GET(request: Request) {
   }
   const avgStars = ratings.length > 0 ? starSum / ratings.length : null;
 
-  // ── Cost ──────────────────────────────────────────────────────────────────
+  // ── Cost / usage ──────────────────────────────────────────────────────────
   const monthStart = new Date(`${today.slice(0, 7)}-01T00:00:00+05:00`);
 
   let llmUsd = 0;
@@ -180,101 +194,122 @@ export async function GET(request: Request) {
       tokens_in: Number(r.tokens_in),
       tokens_out: Number(r.tokens_out),
     }));
-  } catch {
-    // table not yet migrated — return zeros
+  } catch (err) {
+    console.warn('[chatbot/overview] cost/usage query failed', err);
   }
 
   // ── Answer routing / intent richness ──────────────────────────────────────
-  const [
-    answerRows,
-    intentRows,
-    unansweredRows,
-    lowRatedRows,
-    complaintRows,
-  ] = await Promise.all([
-    prisma.$queryRaw<
-      { routed_to: string | null; count: bigint }[]
-    >`
-      SELECT routed_to, COUNT(*) AS count
-      FROM bot_messages
-      WHERE role = 'assistant'
-        AND created_at >= ${windowStart}
-      GROUP BY routed_to
-    `,
-    prisma.$queryRaw<
-      { intent: string; count: bigint }[]
-    >`
-      SELECT intent, COUNT(*) AS count
-      FROM bot_messages
-      WHERE intent IS NOT NULL
-        AND created_at >= ${windowStart}
-      GROUP BY intent
-      ORDER BY COUNT(*) DESC
-      LIMIT 8
-    `,
-    prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(*) AS count
-      FROM bot_messages m
-      WHERE m.role = 'user'
-        AND m.created_at >= ${windowStart}
-        AND NOT EXISTS (
-          SELECT 1
-          FROM bot_messages a
-          WHERE a.chat_id = m.chat_id
-            AND a.role = 'assistant'
-            AND a.created_at > m.created_at
-        )
-    `,
-    prisma.$queryRaw<
-      {
-        message_id: string;
-        chat_id: bigint;
-        content: string;
-        stars: number;
-        reason: string | null;
-        status: string;
-        created_at: Date;
-      }[]
-    >`
-      SELECT
-        m.id AS message_id,
-        m.chat_id,
-        COALESCE(q.content, m.content) AS content,
-        r.stars,
-        r.reason,
-        r.status,
-        m.created_at
-      FROM bot_message_ratings r
-      JOIN bot_messages m ON m.id = r.message_id
-      LEFT JOIN LATERAL (
-        SELECT content
+  let answerRows: { routed_to: string | null; count: bigint }[] = [];
+  let intentRows: { intent: string; count: bigint }[] = [];
+  let unansweredRows: { count: bigint }[] = [];
+  let lowRatedRows: {
+    message_id: string;
+    chat_id: bigint;
+    content: string;
+    stars: number;
+    reason: string | null;
+    status: string;
+    created_at: Date;
+  }[] = [];
+  let complaintRows: {
+    id: string;
+    chatId: bigint;
+    participantId: string | null;
+    messageText: string;
+    severity: string | null;
+    status: string;
+    createdAt: Date;
+    participant: { fullName: string } | null;
+  }[] = [];
+
+  try {
+    [answerRows, intentRows, unansweredRows, lowRatedRows, complaintRows] = await Promise.all([
+      prisma.$queryRaw<
+        { routed_to: string | null; count: bigint }[]
+      >`
+        SELECT routed_to, COUNT(*) AS count
         FROM bot_messages
-        WHERE chat_id = m.chat_id
-          AND role = 'user'
-          AND created_at <= m.created_at
-        ORDER BY created_at DESC
-        LIMIT 1
-      ) q ON true
-      WHERE r.stars <= 2
-      ORDER BY r.rated_at DESC
-      LIMIT 5
-    `,
-    prisma.studentFeedback.findMany({
-      where: { category: "COMPLAINT" },
-      select: {
-        id: true,
-        chatId: true,
-        participantId: true,
-        messageText: true,
-        severity: true,
-        status: true,
-        createdAt: true,
-        participant: { select: { fullName: true } },
-      },
-      orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
-      take: 5,
-    }),
-  ]);
+        WHERE role = 'assistant'
+          AND created_at >= ${windowStart}
+        GROUP BY routed_to
+      `,
+      prisma.$queryRaw<
+        { intent: string; count: bigint }[]
+      >`
+        SELECT intent, COUNT(*) AS count
+        FROM bot_messages
+        WHERE intent IS NOT NULL
+          AND created_at >= ${windowStart}
+        GROUP BY intent
+        ORDER BY COUNT(*) DESC
+        LIMIT 8
+      `,
+      prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(*) AS count
+        FROM bot_messages m
+        WHERE m.role = 'user'
+          AND m.created_at >= ${windowStart}
+          AND NOT EXISTS (
+            SELECT 1
+            FROM bot_messages a
+            WHERE a.chat_id = m.chat_id
+              AND a.role = 'assistant'
+              AND a.created_at > m.created_at
+          )
+      `,
+      prisma.$queryRaw<
+        {
+          message_id: string;
+          chat_id: bigint;
+          content: string;
+          stars: number;
+          reason: string | null;
+          status: string;
+          created_at: Date;
+        }[]
+      >`
+        SELECT
+          m.id AS message_id,
+          m.chat_id,
+          COALESCE(q.content, m.content) AS content,
+          r.stars,
+          r.reason,
+          r.status,
+          m.created_at
+        FROM bot_message_ratings r
+        JOIN bot_messages m ON m.id = r.message_id
+        LEFT JOIN LATERAL (
+          SELECT content
+          FROM bot_messages
+          WHERE chat_id = m.chat_id
+            AND role = 'user'
+            AND created_at <= m.created_at
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) q ON true
+        WHERE r.stars <= 2
+        ORDER BY r.rated_at DESC
+        LIMIT 5
+      `,
+      prisma.studentFeedback.findMany({
+        where: { category: "COMPLAINT" },
+        select: {
+          id: true,
+          chatId: true,
+          participantId: true,
+          messageText: true,
+          severity: true,
+          status: true,
+          createdAt: true,
+          participant: { select: { fullName: true } },
+        },
+        orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
+        take: 5,
+      }),
+    ]);
+  } catch (err) {
+    console.warn('[chatbot/overview] routing/intent/insights query failed', err);
+  }
 
   const routedCounts = answerRows.reduce<Record<string, number>>((acc, row) => {
     acc[row.routed_to ?? "unknown"] = Number(row.count);
@@ -282,31 +317,43 @@ export async function GET(request: Request) {
   }, {});
   const aiAnswered = routedCounts.ai ?? 0;
   const templateAnswered = (routedCounts.templated ?? 0) + (routedCounts.template ?? 0) + (routedCounts.lms ?? 0);
-  const fallbackRows = await prisma.$queryRaw<{ count: bigint }[]>`
-    SELECT COUNT(*) AS count
-    FROM bot_messages
-    WHERE role = 'assistant'
-      AND created_at >= ${windowStart}
-      AND (
-        content ILIKE '%AI yordamchim hozir band%'
-        OR content ILIKE '%fallback%'
-      )
-  `;
-  const fallbackCount = Number(fallbackRows[0]?.count ?? 0);
+
+  // ── Fallback count ────────────────────────────────────────────────────────
+  let fallbackCount = 0;
+  try {
+    const fallbackRows = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*) AS count
+      FROM bot_messages
+      WHERE role = 'assistant'
+        AND created_at >= ${windowStart}
+        AND (
+          content ILIKE '%AI yordamchim hozir band%'
+          OR content ILIKE '%fallback%'
+        )
+    `;
+    fallbackCount = Number(fallbackRows[0]?.count ?? 0);
+  } catch (err) {
+    console.warn('[chatbot/overview] fallback count query failed', err);
+  }
 
   // ── Timeline ──────────────────────────────────────────────────────────────
-  const timelineRows = await prisma.$queryRaw<
-    { date: string; message_count: bigint }[]
-  >`
-    SELECT
-      TO_CHAR(created_at AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD') AS date,
-      COUNT(*) AS message_count
-    FROM bot_messages
-    WHERE role = 'user'
-      AND created_at >= ${windowStart}
-    GROUP BY 1
-    ORDER BY 1
-  `;
+  let timelineRows: { date: string; message_count: bigint }[] = [];
+  try {
+    timelineRows = await prisma.$queryRaw<
+      { date: string; message_count: bigint }[]
+    >`
+      SELECT
+        TO_CHAR(created_at AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD') AS date,
+        COUNT(*) AS message_count
+      FROM bot_messages
+      WHERE role = 'user'
+        AND created_at >= ${windowStart}
+      GROUP BY 1
+      ORDER BY 1
+    `;
+  } catch (err) {
+    console.warn('[chatbot/overview] timeline query failed', err);
+  }
 
   const timelineCostMap: Record<string, number> = {};
   try {
@@ -323,8 +370,8 @@ export async function GET(request: Request) {
     for (const r of costTimeline) {
       timelineCostMap[r.date] = parseFloat(r.cost_usd ?? "0");
     }
-  } catch {
-    // table not yet migrated — leave costs as zero
+  } catch (err) {
+    console.warn('[chatbot/overview] timeline cost query failed', err);
   }
 
   const timeline = timelineRows.map((r) => ({

@@ -8,30 +8,39 @@ const RAG_URL = process.env.RAG_SERVICE_URL ?? "";
 const RAG_TOKEN = process.env.RAG_INTERNAL_TOKEN ?? "";
 
 export async function GET() {
-  const user = await getFullUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!hasPermission(user, "chatbot", "content")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  try {
+    const user = await getFullUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!hasPermission(user, "chatbot", "content")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-  if (!RAG_URL) {
-    return NextResponse.json({ error: "RAG_SERVICE_URL not configured" }, { status: 503 });
-  }
+    if (!RAG_URL) {
+      return NextResponse.json(
+        { ok: false, error: "RAG xizmati ishlamayapti", sources: [] },
+        { status: 200 }
+      );
+    }
 
-  const res = await fetch(`${RAG_URL}/content`, {
-    headers: { "X-Internal-Token": RAG_TOKEN },
-  });
+    const res = await fetch(`${RAG_URL}/content`, {
+      headers: { "X-Internal-Token": RAG_TOKEN },
+    });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
+    if (!res.ok) {
+      return NextResponse.json(
+        { ok: false, error: "RAG xizmati ishlamayapti", sources: [] },
+        { status: 200 }
+      );
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch {
     return NextResponse.json(
-      { error: `RAG service error: ${res.status}`, detail: text },
-      { status: res.status }
+      { ok: false, error: "RAG xizmati ishlamayapti", sources: [] },
+      { status: 200 }
     );
   }
-
-  const data = await res.json();
-  return NextResponse.json(data);
 }
 
 export async function DELETE(request: Request) {

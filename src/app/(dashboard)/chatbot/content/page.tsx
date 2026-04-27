@@ -23,6 +23,8 @@ type ContentSource = {
 };
 
 type ContentData = {
+  ok?: boolean;
+  error?: string;
   sources: ContentSource[];
   status?: string | null;
   embedding_cost?: number | string | null;
@@ -186,8 +188,12 @@ export default function ChatbotContentPage() {
     try {
       const res = await fetch("/api/chatbot/content");
       if (!res.ok) throw new Error(await readApiError(res));
-      const json = await res.json();
-      setData(json);
+      const json = (await res.json()) as ContentData;
+      if (json.ok === false) {
+        setError(json.error ?? "Noma'lum xatolik");
+      } else {
+        setData(json);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Xato yuz berdi");
     } finally {
@@ -373,8 +379,18 @@ export default function ChatbotContentPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
-          {error}
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex items-start gap-3">
+          <span className="text-red-500 mt-0.5">⚠️</span>
+          <div>
+            <p className="font-medium text-red-800">Bilim bazasiga ulanib bo&apos;lmadi</p>
+            <p className="text-sm text-red-600 mt-1">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-3 text-sm text-red-700 underline hover:no-underline"
+            >
+              Qayta urinish
+            </button>
+          </div>
         </div>
       )}
 

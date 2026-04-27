@@ -31,16 +31,14 @@ const mainNavItems: NavItem[] = [
   { label: "nav.participants", fallback: "Participants", href: "/participants", icon: Users,           page: "participants", action: "view" },
   { label: "nav.scanner",      fallback: "Scanner",      href: "/scanner",      icon: QrCode,          page: "scanner",      action: "view" },
   { label: "nav.reports",      fallback: "Reports",      href: "/reports",      icon: BarChart3,       page: "reports",      action: "view" },
-  { label: "nav.chat",         fallback: "Chat",         href: "/chat",         icon: MessageSquare,   page: "participants", action: "edit" },
 ];
 
-const chatbotNavItems = [
-  { label: "chatbot.tab_overview",       fallback: "Overview",       href: "/chatbot",               icon: LayoutDashboard, exact: true, actions: ["view"] },
-  { label: "chatbot.sidebar_content",    fallback: "Knowledge base", href: "/chatbot/content",       icon: Database,                    actions: ["content"] },
-  { label: "chatbot.tab_feedback",       fallback: "Feedback",       href: "/chatbot/feedback",      icon: MessageCircleWarning,        actions: ["conversations", "view"] },
-  { label: "chatbot.tab_broadcast",      fallback: "Broadcast",      href: "/chatbot/broadcast",     icon: Megaphone,                   actions: ["broadcast"] },
-  { label: "chatbot.sidebar_settings",   fallback: "Bot settings",   href: "/chatbot/settings",      icon: SlidersHorizontal,           actions: ["settings"] },
-  { label: "nav.bot_admins",             fallback: "Bot admins",     href: "/chatbot/admins",        icon: UserCog,                     actions: ["settings"] },
+const botNavItems = [
+  { label: "chatbot.tab_overview",  fallback: "Overview",       href: "/chatbot",          icon: LayoutDashboard,      exact: true, actions: ["view"] },
+  { label: "nav.chat",              fallback: "Chat",           href: "/chat",             icon: MessageSquare,                    actions: ["conversations", "view"] },
+  { label: "nav.knowledge_base",    fallback: "Knowledge base", href: "/chatbot/content",  icon: Database,                        actions: ["content"] },
+  { label: "nav.complaints",        fallback: "Feedback",       href: "/chatbot/feedback", icon: MessageCircleWarning,             actions: ["conversations", "view"] },
+  { label: "nav.bot_admins",        fallback: "Bot admins",     href: "/chatbot/admins",   icon: UserCog,                         actions: ["settings"] },
 ] satisfies Array<{
   label: string;
   fallback: string;
@@ -51,8 +49,8 @@ const chatbotNavItems = [
 }>;
 
 const chatbotEntry: NavItem = {
-  label: "nav.bot",
-  fallback: "Bot",
+  label: "nav.bot_workspace",
+  fallback: "Chat-bot",
   href: "/chatbot",
   icon: Bot,
   page: "chatbot",
@@ -87,7 +85,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, loading } = useAuth();
   const { t } = useTranslation();
-  const inChatbotWorkspace = pathname.startsWith("/chatbot");
+  const inBotWorkspace = pathname.startsWith("/chatbot") || pathname.startsWith("/bot");
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -104,7 +102,7 @@ export function Sidebar() {
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
-  const isChatbotSubnavActive = (href: string, exact?: boolean) =>
+  const isBotNavActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
 
   const toggle = () => {
@@ -126,6 +124,9 @@ export function Sidebar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const botSettingsActive = isActive("/chatbot/settings");
+  const lmsSettingsActive = isActive("/settings");
+
   return (
     <aside
       className={cn(
@@ -144,7 +145,9 @@ export function Sidebar() {
             collapsed ? "w-0 opacity-0" : "w-full opacity-100"
           )}
         >
-          <div className="text-sm font-bold text-gray-900">AttendTrack</div>
+          <div className="text-sm font-bold text-gray-900">
+            AttendTrack{inBotWorkspace ? " · Bot" : ""}
+          </div>
           <div className="text-xs text-gray-500">Training Attendance</div>
         </div>
       </div>
@@ -163,33 +166,13 @@ export function Sidebar() {
 
       {/* Main nav */}
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-        {inChatbotWorkspace ? (
-          <>
-            <Link
-              href="/"
-              title={collapsed ? t("nav.back_to_lms", "Back to LMS") : undefined}
-              className={cn(
-                "mb-3 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100",
-                collapsed ? "justify-center px-2 py-2.5" : "px-3 py-3"
-              )}
-            >
-              <ArrowLeft size={18} className="shrink-0 text-blue-600" />
-              <span
-                className={cn(
-                  "flex-1 overflow-hidden whitespace-nowrap transition-all duration-200",
-                  collapsed ? "w-0 opacity-0" : "opacity-100"
-                )}
-              >
-                {t("nav.back_to_lms", "Back to LMS")}
-              </span>
-            </Link>
-
-            {chatbotNavItems
+        {inBotWorkspace
+          ? botNavItems
               .filter((item) =>
                 item.actions.some((action) => hasPermission(user, "chatbot", action))
               )
               .map((item) => {
-                const active = isChatbotSubnavActive(item.href, item.exact);
+                const active = isBotNavActive(item.href, item.exact);
                 return (
                   <Link
                     key={item.href}
@@ -218,58 +201,77 @@ export function Sidebar() {
                     )}
                   </Link>
                 );
-              })}
-          </>
-        ) : mainNavItems.filter(canSee).map((item) => {
-          const active = isActive(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={collapsed ? t(item.label, item.fallback) : undefined}
-              className={cn(
-                "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
-                active ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
-                collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
-              )}
-            >
-              <item.icon
-                size={18}
-                className={cn("shrink-0", active ? "text-blue-600" : "text-gray-400")}
-              />
-              <span
-                className={cn(
-                  "flex-1 overflow-hidden whitespace-nowrap transition-all duration-200",
-                  collapsed ? "w-0 opacity-0" : "opacity-100"
-                )}
-              >
-                {t(item.label, item.fallback)}
-              </span>
-              {!collapsed && active && (
-                <ChevronRight size={14} className="ml-auto text-blue-400 shrink-0" />
-              )}
-            </Link>
-          );
-        })}
+              })
+          : mainNavItems.filter(canSee).map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={collapsed ? t(item.label, item.fallback) : undefined}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
+                    active ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                    collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
+                  )}
+                >
+                  <item.icon
+                    size={18}
+                    className={cn("shrink-0", active ? "text-blue-600" : "text-gray-400")}
+                  />
+                  <span
+                    className={cn(
+                      "flex-1 overflow-hidden whitespace-nowrap transition-all duration-200",
+                      collapsed ? "w-0 opacity-0" : "opacity-100"
+                    )}
+                  >
+                    {t(item.label, item.fallback)}
+                  </span>
+                  {!collapsed && active && (
+                    <ChevronRight size={14} className="ml-auto text-blue-400 shrink-0" />
+                  )}
+                </Link>
+              );
+            })
+        }
       </nav>
 
       {/* Lower links */}
       <div className="px-2 pb-1 border-t border-gray-100 pt-2">
-        {!inChatbotWorkspace && canSee(chatbotEntry) && (() => {
-          const active = isActive(chatbotEntry.href);
-          return (
+        {inBotWorkspace ? (
+          <>
+            {/* Workspace switcher: back to LMS */}
             <Link
-              href={chatbotEntry.href}
-              title={collapsed ? t(chatbotEntry.label, chatbotEntry.fallback) : undefined}
+              href="/"
+              title={collapsed ? t("nav.lms_workspace", "Back to LMS") : undefined}
               className={cn(
-                "mb-1 flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
-                active ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                "mb-1 flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900",
                 collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
               )}
             >
-              <chatbotEntry.icon
+              <ArrowLeft size={18} className="shrink-0 text-gray-400" />
+              <span
+                className={cn(
+                  "flex-1 overflow-hidden whitespace-nowrap transition-all duration-200",
+                  collapsed ? "w-0 opacity-0" : "opacity-100"
+                )}
+              >
+                {t("nav.lms_workspace", "Back to LMS")}
+              </span>
+            </Link>
+            {/* Bot settings */}
+            <Link
+              href="/chatbot/settings"
+              title={collapsed ? t("chatbot.sidebar_settings", "Bot settings") : undefined}
+              className={cn(
+                "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
+                botSettingsActive ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
+              )}
+            >
+              <SlidersHorizontal
                 size={18}
-                className={cn("shrink-0", active ? "text-blue-600" : "text-gray-400")}
+                className={cn("shrink-0", botSettingsActive ? "text-blue-600" : "text-gray-400")}
               />
               <span
                 className={cn(
@@ -277,29 +279,59 @@ export function Sidebar() {
                   collapsed ? "w-0 opacity-0" : "opacity-100"
                 )}
               >
-                {t(chatbotEntry.label, chatbotEntry.fallback)}
+                {t("chatbot.sidebar_settings", "Bot settings")}
               </span>
-              {!collapsed && active && (
+              {!collapsed && botSettingsActive && (
                 <ChevronRight size={14} className="ml-auto text-blue-400 shrink-0" />
               )}
             </Link>
-          );
-        })()}
-        {(() => {
-          const active = isActive("/settings");
-          return (
+          </>
+        ) : (
+          <>
+            {/* Workspace switcher: go to Bot */}
+            {canSee(chatbotEntry) && (() => {
+              const active = isActive(chatbotEntry.href);
+              return (
+                <Link
+                  href={chatbotEntry.href}
+                  title={collapsed ? t(chatbotEntry.label, chatbotEntry.fallback) : undefined}
+                  className={cn(
+                    "mb-1 flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900",
+                    active ? "border-blue-100 bg-blue-50 text-blue-700" : "",
+                    collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
+                  )}
+                >
+                  <chatbotEntry.icon
+                    size={18}
+                    className={cn("shrink-0", active ? "text-blue-600" : "text-gray-400")}
+                  />
+                  <span
+                    className={cn(
+                      "flex-1 overflow-hidden whitespace-nowrap transition-all duration-200",
+                      collapsed ? "w-0 opacity-0" : "opacity-100"
+                    )}
+                  >
+                    {t(chatbotEntry.label, chatbotEntry.fallback)}
+                  </span>
+                  {!collapsed && active && (
+                    <ChevronRight size={14} className="ml-auto text-blue-400 shrink-0" />
+                  )}
+                </Link>
+              );
+            })()}
+            {/* LMS settings */}
             <Link
               href="/settings"
               title={collapsed ? t("nav.settings") : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
-                active ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                lmsSettingsActive ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
                 collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
               )}
             >
               <Settings
                 size={18}
-                className={cn("shrink-0", active ? "text-blue-600" : "text-gray-400")}
+                className={cn("shrink-0", lmsSettingsActive ? "text-blue-600" : "text-gray-400")}
               />
               <span
                 className={cn(
@@ -309,12 +341,12 @@ export function Sidebar() {
               >
                 {t("nav.settings")}
               </span>
-              {!collapsed && active && (
+              {!collapsed && lmsSettingsActive && (
                 <ChevronRight size={14} className="ml-auto text-blue-400 shrink-0" />
               )}
             </Link>
-          );
-        })()}
+          </>
+        )}
       </div>
 
     </aside>
