@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "prestart": "npx prisma migrate resolve --rolled-back 20260427010000_staffuser_username || true && npx prisma migrate deploy",
+    "prestart": "npx prisma migrate resolve --rolled-back 20260427010000_staffuser_username; npx prisma migrate deploy",
     "start": "next start -p ${PORT:-3000}",
     "lint": "eslint",
     "seed": "npx tsx prisma/seed.ts",
