@@ -376,6 +376,8 @@
   "settings.users.role_required": "Role is required",
   "settings.users.password_required_when_username": "Password must be at least 6 characters when username is filled",
   "settings.users.username_required_when_password": "Enter a username to set a password",
+  "settings.users.password_min": "Password must be at least 6 characters",
+  "settings.users.password_change_hint": "Leave blank to keep current password",
   "settings.users.delete_title": "Delete user",
   "settings.users.delete_confirm": "Are you sure you want to delete {name}? This action cannot be undone.",
   "settings.users.deleted": "User deleted",

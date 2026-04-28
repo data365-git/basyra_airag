@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
@@ -20,6 +20,7 @@ export default function UsersPage() {
   const router = useRouter();
   const canCreate = usePermission("settings.users", "create");
   const canDelete = usePermission("settings.users", "delete");
+  const canEdit = usePermission("settings.users", "edit");
   const { t } = useTranslation();
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -40,6 +41,11 @@ export default function UsersPage() {
   const [addErrors, setAddErrors] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
 
+  const [editingUser, setEditingUser] = useState<StaffUser | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", phone: "", username: "", email: "", password: "", role_id: "", is_active: true });
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState(false);
+
   useEffect(() => {
     Promise.all([
       fetch("/api/users").then((r) => r.json()),
@@ -55,6 +61,20 @@ export default function UsersPage() {
     setAddForm({ name: "", phone: "", role_id: "", username: "", password: "", email: "" });
     setAddErrors({});
     setAddOpen(true);
+  }
+
+  function openEdit(user: StaffUser) {
+    setEditForm({
+      name: user.name,
+      phone: user.phone ?? "",
+      username: user.username ?? "",
+      email: user.email ?? "",
+      password: "",
+      role_id: user.role_id ?? "",
+      is_active: user.is_active,
+    });
+    setEditErrors({});
+    setEditingUser(user);
   }
 
   async function deleteUser() {
@@ -75,6 +95,50 @@ export default function UsersPage() {
       const err = await res.json().catch(() => ({}));
       toast.error(err.error ?? t("settings.users.delete_failed"));
       setDeletingUser(null);
+    }
+  }
+
+  async function handleEditUser(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingUser) return;
+    setEditErrors({});
+    const errors: Record<string, string> = {};
+    if (!editForm.name.trim()) errors.name = t("settings.users.name_required");
+    if (!editForm.phone.trim()) errors.phone = t("settings.users.phone_required");
+    if (!editForm.role_id) errors.role_id = t("settings.users.role_required");
+    if (editForm.password && editForm.password.length < 6) errors.password = t("settings.users.password_min");
+    if (Object.keys(errors).length > 0) { setEditErrors(errors); return; }
+    setEditing(true);
+    const payload: Record<string, unknown> = {
+      id: editingUser.id,
+      name: editForm.name.trim(),
+      phone: editForm.phone.trim(),
+      role_id: editForm.role_id,
+      is_active: editForm.is_active,
+      username: editForm.username.trim() || null,
+      email: editForm.email.trim() || null,
+    };
+    if (editForm.password) payload.password = editForm.password;
+    const res = await fetch("/api/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setEditing(false);
+    if (res.ok) {
+      const updated = await res.json();
+      setUsers((prev) => prev.map((u) => u.id === updated.id ? updated : u).sort((a, b) => a.name.localeCompare(b.name)));
+      toast.success(t("settings.users.updated"));
+      setEditingUser(null);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (err.fields) {
+        const flat: Record<string, string> = {};
+        for (const [k, v] of Object.entries(err.fields)) flat[k] = Array.isArray(v) ? v[0] : String(v);
+        setEditErrors(flat);
+      } else {
+        toast.error(err.error ?? t("settings.users.update_failed"));
+      }
     }
   }
 
@@ -205,11 +269,18 @@ export default function UsersPage() {
                     </Badge>
                   </Td>
                   <Td>
-                    {canDelete && (
-                      <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeletingUser(user)}>
-                        <Trash2 size={14} />
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {canEdit && (
+                        <Button size="sm" variant="ghost" className="text-gray-500 hover:text-blue-600" onClick={() => openEdit(user)}>
+                          <Pencil size={14} />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeletingUser(user)}>
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
+                    </div>
                   </Td>
                 </Tr>
               ))
@@ -299,6 +370,34 @@ export default function UsersPage() {
             onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))}
             error={addErrors.email}
           />
+        </form>
+      </Modal>
+      <Modal
+        open={!!editingUser}
+        onClose={() => setEditingUser(null)}
+        title={t("settings.users.edit_title")}
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEditingUser(null)}>{t("common.cancel")}</Button>
+            <Button form="edit-user-form" type="submit" loading={editing}>{t("common.save")}</Button>
+          </>
+        }
+      >
+        <form id="edit-user-form" onSubmit={handleEditUser} className="space-y-4">
+          <Input label={t("settings.users.full_name")} value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} error={editErrors.name} required />
+          <Input label={t("common.phone")} type="tel" value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} error={editErrors.phone} required />
+          <Select label={t("settings.users.role_label")} value={editForm.role_id} onChange={(e) => setEditForm((f) => ({ ...f, role_id: e.target.value }))} error={editErrors.role_id} required>
+            <option value="">{t("settings.users.select_role")}</option>
+            {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </Select>
+          <Input label={`${t("settings.users.username_label")} (${t("common.optional")})`} value={editForm.username} onChange={(e) => setEditForm((f) => ({ ...f, username: e.target.value }))} error={editErrors.username} />
+          <Input label={t("settings.users.password_label")} type="password" value={editForm.password} onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))} error={editErrors.password} hint={t("settings.users.password_change_hint")} />
+          <Input label={`${t("common.email")} (${t("common.optional")})`} type="email" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} error={editErrors.email} />
+          <Select label={t("common.status")} value={editForm.is_active ? "true" : "false"} onChange={(e) => setEditForm((f) => ({ ...f, is_active: e.target.value === "true" }))}>
+            <option value="true">{t("settings.users.active_label")}</option>
+            <option value="false">{t("settings.users.inactive")}</option>
+          </Select>
         </form>
       </Modal>
     </div>

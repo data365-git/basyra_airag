@@ -376,6 +376,8 @@
   "settings.users.role_required": "Роль обязательна",
   "settings.users.password_required_when_username": "Если указан username, пароль должен содержать минимум 6 символов",
   "settings.users.username_required_when_password": "Укажите username, чтобы задать пароль",
+  "settings.users.password_min": "Пароль должен содержать минимум 6 символов",
+  "settings.users.password_change_hint": "Оставьте пустым, чтобы не менять пароль",
   "settings.users.delete_title": "Удалить пользователя",
   "settings.users.delete_confirm": "Вы уверены, что хотите удалить {name}? Это действие нельзя отменить.",
   "settings.users.deleted": "Пользователь удалён",

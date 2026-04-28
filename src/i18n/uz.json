@@ -377,6 +377,8 @@
   "settings.users.role_required": "Rol majburiy",
   "settings.users.password_required_when_username": "Username kiritilganda parol kamida 6 belgi bo'lishi kerak",
   "settings.users.username_required_when_password": "Parol belgilash uchun username kiriting",
+  "settings.users.password_min": "Parol kamida 6 belgi bo'lishi kerak",
+  "settings.users.password_change_hint": "Bo'sh qoldiring — parol o'zgarmaydi",
   "settings.users.delete_title": "Foydalanuvchini o'chirish",
   "settings.users.delete_confirm": "{name} foydalanuvchisini o'chirishni tasdiqlaysizmi? Bu amalni ortga qaytarib bo'lmaydi.",
   "settings.users.deleted": "Foydalanuvchi o'chirildi",

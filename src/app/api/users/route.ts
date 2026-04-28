@@ -37,9 +37,13 @@ const CreateUserSchema = z.object({
 
 const PatchUserSchema = z.object({
   id: z.string().min(1),
+  name: z.string().trim().min(1).max(200).optional(),
+  phone: z.string().trim().min(1).max(30).optional(),
+  username: z.string().trim().min(3).max(80).nullable().optional(),
+  email: z.string().trim().email().max(200).nullable().optional(),
+  password: z.string().min(6).max(200).optional(),
   role_id: z.string().optional().nullable(),
   is_active: z.boolean().optional(),
-  name: z.string().min(1).max(200).optional(),
 });
 
 function mapUser(u: { id: string; name: string; username: string | null; phone: string | null; email: string | null; roleId: string | null; role: { id: string; name: string; description: string | null; color: string; isSuperadmin: boolean; permissions: unknown; createdAt: Date } | null; isActive: boolean; createdAt: Date }) {
@@ -232,7 +236,61 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const { id, role_id, is_active, name } = parsed.data;
+    const { id, role_id, is_active, name, phone: rawPhone, username, email, password } = parsed.data;
+
+    // --- phone conflict check ---
+    let normalizedPhone: string | undefined;
+    if (rawPhone !== undefined) {
+      try {
+        normalizedPhone = normalizePhone(rawPhone);
+      } catch {
+        return NextResponse.json(
+          { error: "Invalid phone", fields: { phone: ["Invalid phone number"] } },
+          { status: 400 }
+        );
+      }
+      const phoneConflict = await prisma.staffUser.findFirst({
+        where: { phone: normalizedPhone, NOT: { id } },
+        select: { id: true },
+      });
+      if (phoneConflict) {
+        return NextResponse.json(
+          { error: "A user with this phone number already exists", field: "phone" },
+          { status: 409 }
+        );
+      }
+    }
+
+    // --- username conflict check ---
+    if (username !== undefined && username !== null) {
+      const usernameConflict = await prisma.staffUser.findFirst({
+        where: { username, NOT: { id } },
+        select: { id: true },
+      });
+      if (usernameConflict) {
+        return NextResponse.json(
+          { error: "A user with this username already exists", field: "username" },
+          { status: 409 }
+        );
+      }
+    }
+
+    // --- email conflict check ---
+    if (email !== undefined && email !== null) {
+      const emailConflict = await prisma.staffUser.findFirst({
+        where: { email, NOT: { id } },
+        select: { id: true },
+      });
+      if (emailConflict) {
+        return NextResponse.json(
+          { error: "A user with this email already exists", field: "email" },
+          { status: 409 }
+        );
+      }
+    }
+
+    // --- hash password if provided ---
+    const hashedPassword = password !== undefined ? await hashPassword(password) : undefined;
 
     const user = await prisma.staffUser.update({
       where: { id },
@@ -240,6 +298,10 @@ export async function PATCH(request: Request) {
         ...(role_id !== undefined ? { roleId: role_id } : {}),
         ...(is_active !== undefined ? { isActive: is_active } : {}),
         ...(name !== undefined ? { name } : {}),
+        ...(normalizedPhone !== undefined ? { phone: normalizedPhone } : {}),
+        ...(username !== undefined ? { username } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(hashedPassword !== undefined ? { password: hashedPassword } : {}),
       },
       include: { role: true },
     });
