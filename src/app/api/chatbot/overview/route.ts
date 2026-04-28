@@ -61,6 +61,8 @@ export async function GET(request: Request) {
   const day30Start = dateNDaysAgo(30);
   const windowStart = dateNDaysAgo(days);
 
+  const errors: string[] = [];
+
   // ── Active users ──────────────────────────────────────────────────────────
   let dauRaw: { count: bigint }[] = [];
   let wauRaw: { count: bigint }[] = [];
@@ -91,7 +93,8 @@ export async function GET(request: Request) {
       prisma.botMessage.count(),
     ]);
   } catch (err) {
-    console.warn('[chatbot/overview] active users query failed', err);
+    console.error("overview section failed:", err);
+    errors.push("active_users");
   }
 
   // ── Quality ───────────────────────────────────────────────────────────────
@@ -101,7 +104,8 @@ export async function GET(request: Request) {
       select: { stars: true },
     });
   } catch (err) {
-    console.warn('[chatbot/overview] quality ratings query failed', err);
+    console.error("overview section failed:", err);
+    errors.push("quality");
   }
 
   const distribution: Record<string, number> = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
@@ -240,7 +244,8 @@ export async function GET(request: Request) {
       .sort((a, b) => b.cost_usd - a.cost_usd)
       .slice(0, 10) as typeof topExpensiveUsers;
   } catch (err) {
-    console.warn('[chatbot/overview] cost/usage query failed', err);
+    console.error("overview section failed:", err);
+    errors.push("cost_usage");
   }
 
   // ── Answer routing / intent richness ──────────────────────────────────────
@@ -353,7 +358,8 @@ export async function GET(request: Request) {
       }),
     ]);
   } catch (err) {
-    console.warn('[chatbot/overview] routing/intent/insights query failed', err);
+    console.error("overview section failed:", err);
+    errors.push("routing_intent_insights");
   }
 
   const routedCounts = answerRows.reduce<Record<string, number>>((acc, row) => {
@@ -378,7 +384,8 @@ export async function GET(request: Request) {
     `;
     fallbackCount = Number(fallbackRows[0]?.count ?? 0);
   } catch (err) {
-    console.warn('[chatbot/overview] fallback count query failed', err);
+    console.error("overview section failed:", err);
+    errors.push("fallback_count");
   }
 
   // ── Timeline ──────────────────────────────────────────────────────────────
@@ -397,7 +404,8 @@ export async function GET(request: Request) {
       ORDER BY 1
     `;
   } catch (err) {
-    console.warn('[chatbot/overview] timeline query failed', err);
+    console.error("overview section failed:", err);
+    errors.push("timeline");
   }
 
   const timelineCostMap: Record<string, number> = {};
@@ -416,7 +424,8 @@ export async function GET(request: Request) {
       timelineCostMap[r.date] = parseFloat(r.cost_usd ?? "0");
     }
   } catch (err) {
-    console.warn('[chatbot/overview] timeline cost query failed', err);
+    console.error("overview section failed:", err);
+    errors.push("timeline_cost");
   }
 
   const timeline = timelineRows.map((r) => ({
@@ -426,6 +435,9 @@ export async function GET(request: Request) {
   }));
 
   return NextResponse.json({
+    ok: true,
+    partial: errors.length > 0,
+    errors,
     active: {
       dau: Number(dauRaw[0]?.count ?? 0),
       wau: Number(wauRaw[0]?.count ?? 0),

@@ -130,10 +130,24 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "relative hidden lg:flex flex-col bg-white border-r border-gray-200 h-screen sticky top-0 transition-all duration-200 overflow-hidden",
+        "relative hidden lg:flex flex-col bg-white border-r border-gray-200 h-screen sticky top-0 transition-all duration-200",
         collapsed ? "w-16" : "w-64"
       )}
     >
+      {/* Floating edge toggle button — OUTSIDE the overflow-hidden wrapper */}
+      <button
+        onClick={toggle}
+        title={collapsed ? "Ochish (⌘B)" : "Yopish (⌘B)"}
+        className="absolute right-[-12px] top-[72px] z-20 flex w-6 h-6 items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+      >
+        {collapsed
+          ? <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+          : <ChevronLeft className="w-3.5 h-3.5 text-gray-500" />
+        }
+      </button>
+
+      {/* Everything else inside an overflow-hidden wrapper */}
+      <div className="flex flex-col h-full overflow-hidden w-full">
       {/* Logo */}
       <div className="flex items-center gap-3 px-3 py-4 border-b border-gray-100">
         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
@@ -151,18 +165,6 @@ export function Sidebar() {
           <div className="text-xs text-gray-500">Training Attendance</div>
         </div>
       </div>
-
-      {/* Floating edge toggle button */}
-      <button
-        onClick={toggle}
-        title={collapsed ? "Ochish (⌘B)" : "Yopish (⌘B)"}
-        className="absolute right-[-12px] top-[72px] z-20 flex w-6 h-6 items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-      >
-        {collapsed
-          ? <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
-          : <ChevronLeft className="w-3.5 h-3.5 text-gray-500" />
-        }
-      </button>
 
       {/* Main nav */}
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
@@ -347,6 +349,7 @@ export function Sidebar() {
             </Link>
           </>
         )}
+      </div>
       </div>
 
     </aside>
