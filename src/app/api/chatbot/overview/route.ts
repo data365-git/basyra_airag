@@ -118,10 +118,12 @@ export async function GET(request: Request) {
 
   let llmUsd = 0;
   let ttsUsd = 0;
+  let embedUsd = 0;
   let tokensIn = 0;
   let tokensOut = 0;
   let avgResponseTimeMs: number | null = null;
   let ttsCount = 0;
+  let embedCount = 0;
   let topExpensiveUsers: Array<{
     chat_id: string;
     participant_id: string | null;
@@ -147,6 +149,9 @@ export async function GET(request: Request) {
       if (row.kind === "tts") {
         ttsUsd += usd;
         ttsCount += row._count.id;
+      } else if (row.kind === "embed") {
+        embedUsd += usd;
+        embedCount += row._count.id;
       } else {
         llmUsd += usd;
         tokensIn += row._sum.tokensIn ?? 0;
@@ -391,7 +396,8 @@ export async function GET(request: Request) {
     cost: {
       llm_usd: llmUsd,
       tts_usd: ttsUsd,
-      total_usd: llmUsd + ttsUsd,
+      embed_usd: embedUsd,
+      total_usd: llmUsd + ttsUsd + embedUsd,
       month_start: today.slice(0, 7) + "-01",
     },
     usage: {
@@ -399,6 +405,7 @@ export async function GET(request: Request) {
       tokens_out: tokensOut,
       avg_response_time_ms: avgResponseTimeMs,
       tts_count: ttsCount,
+      embed_count: embedCount,
       top_expensive_users: topExpensiveUsers,
     },
     answers: {
