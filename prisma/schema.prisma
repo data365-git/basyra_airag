@@ -42,6 +42,7 @@ model StaffUser {
   activityScores     ActivityScore[]
   supervisorLinks    SupervisorLink[]
   telegramLink       StaffTelegramLink?
+  inboxItems         InboxItem[]
 
   @@map("staff_users")
 }
@@ -150,6 +151,7 @@ model Participant {
   botMessageRatings    BotMessageRating[]
   studentFeedback      StudentFeedback[]
   longAnswers          LongAnswer[]
+  inboxItems           InboxItem[]
 
   @@map("participants")
 }
@@ -607,4 +609,29 @@ model ChatbotBroadcastHistory {
 
   @@index([createdAt])
   @@map("chatbot_broadcast_history")
+}
+
+model InboxItem {
+  id              String       @id @default(cuid())
+  chatId          BigInt       @map("chat_id")
+  participantId   String?      @map("participant_id")
+  participant     Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  sourceMessageId String?      @map("source_message_id")
+  kind            String       // "complaint" | "offer" | "lead" | "question"
+  status          String       @default("new")   // "new" | "in_review" | "resolved" | "dismissed"
+  priority        String       @default("normal")
+  summary         String
+  body            String
+  classifierScore Float?       @map("classifier_score")
+  assignedToId    String?      @map("assigned_to")
+  assignedTo      StaffUser?   @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  resolvedAt      DateTime?    @map("resolved_at")
+  resolutionNote  String?      @map("resolution_note")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([kind, status])
+  @@index([chatId])
+  @@index([participantId])
+  @@map("inbox_items")
 }

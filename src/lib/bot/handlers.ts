@@ -21,6 +21,7 @@ import { requireParticipant } from "@/lib/botAuth";
 import { linkedKeyboard, logMessage, reply } from "./ui";
 import { pendingSubmissions, pendingFiles, pendingRatingComment } from "./state";
 import { classifyMessage, extractFeedbackMeta } from "@/lib/intentRouter";
+import { classifyMessage as inboxClassify } from "@/lib/inboxClassifier";
 import { askRag, checkBudget, logBotMessage, logUsage } from "@/lib/aiClient";
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
@@ -980,6 +981,27 @@ export function registerCommandHandlers(b: Bot) {
       replyToMessageId: replyContext?.assistantMessageId ?? null,
     });
 
+    // Fire-and-forget inbox classification
+    inboxClassify(text).then(async (result) => {
+      if (!result) return;
+      try {
+        await (prisma as any).inboxItem.create({
+          data: {
+            chatId: BigInt(chatId),
+            participantId: participantId ?? null,
+            sourceMessageId: String(telegramMsgId ?? ""),
+            kind: result.kind,
+            status: "new",
+            summary: result.summary,
+            body: text,
+            classifierScore: result.score,
+          },
+        });
+      } catch (e) {
+        console.error("inbox classify save failed:", e);
+      }
+    }).catch(() => {});
+
     let intent: string;
     try {
       const result = await classifyMessage(text);
@@ -1151,20 +1173,39 @@ export function registerCommandHandlers(b: Bot) {
           await setBotMessageTelegramMsgId(msgId, sentTelegramMsgId);
         }
 
-        // Message 2: rating prompt — separate message so it has context
-        const ratingKb = new InlineKeyboard()
-          .text("1", `rate_${msgId ?? "0"}_1`)
-          .text("2", `rate_${msgId ?? "0"}_2`)
-          .text("3", `rate_${msgId ?? "0"}_3`)
-          .text("4", `rate_${msgId ?? "0"}_4`)
-          .text("5", `rate_${msgId ?? "0"}_5`);
-        try {
-          await ctx.reply(
-            "⭐ *Iltimos AI\\-yordamchi javobini baholang*\n\n_Bu bizga AI\\-yordamchi ustida ishlashga yordam beradi_ 🙏",
-            { parse_mode: "MarkdownV2", reply_markup: ratingKb }
-          );
-        } catch {
-          // Non-critical — answer already delivered
+        // Message 2: rating prompt — frequency-capped
+        // Always show when cost > $0.005 (expensive answer worth rating),
+        // otherwise only show if > 6 h since last rating prompt for this chat.
+        const costUsd = raw?.cost_usd ?? 0;
+        let showRating = costUsd > 0.005;
+        if (!showRating && msgId) {
+          try {
+            const lastRating = await (prisma as any).botMessageRating?.findFirst({
+              where: { message: { chatId } },
+              orderBy: { ratedAt: "desc" },
+              select: { ratedAt: true },
+            });
+            const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+            showRating = !lastRating || lastRating.ratedAt < sixHoursAgo;
+          } catch {
+            showRating = true; // on error, default to showing
+          }
+        }
+        if (showRating) {
+          const ratingKb = new InlineKeyboard()
+            .text("1", `rate_${msgId ?? "0"}_1`)
+            .text("2", `rate_${msgId ?? "0"}_2`)
+            .text("3", `rate_${msgId ?? "0"}_3`)
+            .text("4", `rate_${msgId ?? "0"}_4`)
+            .text("5", `rate_${msgId ?? "0"}_5`);
+          try {
+            await ctx.reply(
+              "⭐ Bu javob foydali bo'ldimi?",
+              { reply_markup: ratingKb }
+            );
+          } catch {
+            // Non-critical — answer already delivered
+          }
         }
 
         // CTA frequency cap — show at most once every 3 bot replies
@@ -1546,15 +1587,21 @@ export function registerCommandHandlers(b: Bot) {
 
     // Edit the rating message in place — buttons disappear, confirmation appears
     try {
-      await ctx.editMessageText(`✅ Rahmat! Sizning bahoyingiz: ${stars}⭐`);
+      if (stars >= 4) {
+        await ctx.editMessageText(`Rahmat! ${"⭐".repeat(stars)}`);
+      } else {
+        await ctx.editMessageText("Rahmat!");
+      }
     } catch { /* message too old or already edited — ignore */ }
 
-    if (stars <= 3) {
-      // Ask for reason on 1–3⭐ only — 4–5⭐ users are happy, leave them alone
-      await ctx.reply(
-        "Yordam bering — nima xato edi? Buni o'qib, AI'ni yaxshilashga harakat qilaman 🙏",
-        { reply_markup: reasonKeyboard(msgId) },
-      );
+    if (stars <= 2) {
+      // Ask for reason on 1–2⭐ only
+      try {
+        await ctx.reply(
+          "Yordam bering — nima xato edi? Buni o'qib, AI'ni yaxshilashga harakat qilaman 🙏",
+          { reply_markup: reasonKeyboard(msgId) },
+        );
+      } catch { /* non-critical */ }
     }
   });
 

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Users, QrCode, BarChart3,
   Settings, ChevronRight, ChevronLeft, ClipboardList, Bot,
   ArrowLeft, MessageSquare, Database, MessageCircleWarning,
-  Megaphone, SlidersHorizontal, Star,
+  Megaphone, SlidersHorizontal, Star, Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,6 +39,7 @@ const botNavItems = [
   { label: "nav.knowledge_base",    fallback: "Knowledge base", href: "/chatbot/content",  icon: Database,                        actions: ["content"] },
   { label: "nav.complaints",        fallback: "Feedback",       href: "/chatbot/feedback", icon: MessageCircleWarning,             actions: ["conversations", "view"] },
   { label: "nav.ratings",           fallback: "Ratings",        href: "/chatbot/ratings",  icon: Star,                                actions: ["conversations", "view"] },
+  { label: "nav.inbox",             fallback: "Inbox",          href: "/chatbot/inbox",    icon: Inbox,                               actions: ["conversations", "view"] },
 ] satisfies Array<{
   label: string;
   fallback: string;
