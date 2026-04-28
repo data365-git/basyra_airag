@@ -23,6 +23,7 @@ model StaffUser {
   id                 String             @id @default(uuid())
   name               String
   username           String?            @unique
+  phone              String?            @unique
   email              String?            @unique
   password           String
   avatarUrl          String?            @map("avatar_url")
@@ -40,6 +41,7 @@ model StaffUser {
   homeworkMaterials  HomeworkMaterial[]
   activityScores     ActivityScore[]
   supervisorLinks    SupervisorLink[]
+  telegramLink       StaffTelegramLink?
 
   @@map("staff_users")
 }
@@ -393,6 +395,23 @@ model TelegramLink {
   linkedAt          DateTime    @default(now()) @map("linked_at")
 
   @@map("telegram_links")
+}
+
+model StaffTelegramLink {
+  id                String    @id @default(uuid())
+  staffUserId       String    @unique @map("staff_user_id")
+  staffUser         StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+  telegramUserId    BigInt    @unique @map("telegram_user_id")
+  chatId            BigInt    @map("chat_id")
+  username          String?
+  firstName         String?   @map("first_name")
+  verifiedPhone     String?   @map("verified_phone")
+  verifiedByContact Boolean   @default(false) @map("verified_by_contact")
+  linkedAt          DateTime  @default(now()) @map("linked_at")
+
+  @@index([chatId])
+  @@index([verifiedPhone])
+  @@map("staff_telegram_links")
 }
 
 model BotAuthLog {

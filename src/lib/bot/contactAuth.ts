@@ -50,6 +50,23 @@ export function registerContactAuthHandlers(b: Bot) {
         return;
       }
 
+      const existingStaff = await prisma.staffTelegramLink.findFirst({
+        where:   { chatId },
+        include: { staffUser: { select: { name: true, isActive: true } } },
+      });
+      if (existingStaff) {
+        if (!existingStaff.staffUser.isActive) {
+          await reply(ctx, "🚫 Staff akkauntingiz nofaol. Administrator bilan bog'laning.");
+          return;
+        }
+        await reply(ctx,
+          `Salom, <b>${existingStaff.staffUser.name}</b>! 👋\n\n` +
+          "Staff Telegram akkauntingiz ulangan. Savol yozishingiz yoki admin imkoniyatlardan foydalanishingiz mumkin.",
+          { reply_markup: { remove_keyboard: true } }
+        );
+        return;
+      }
+
       // Not linked — show login button
       const loginMenu = new InlineKeyboard()
         .text("📲 Hisobga kirish", "auth_login");
@@ -121,6 +138,19 @@ export function registerContactAuthHandlers(b: Bot) {
       return;
     }
 
+    const existingStaff = await prisma.staffTelegramLink.findFirst({
+      where:   { chatId },
+      include: { staffUser: { select: { isActive: true } } },
+    });
+    if (existingStaff) {
+      if (!existingStaff.staffUser.isActive) {
+        await ctx.reply("🚫 Staff akkauntingiz nofaol. Administrator bilan bog'laning.");
+        return;
+      }
+      await reply(ctx, "✅ Staff Telegram akkauntingiz allaqachon ulangan.");
+      return;
+    }
+
     await promptLogin(ctx);
   });
 
@@ -129,11 +159,13 @@ export function registerContactAuthHandlers(b: Bot) {
     await logMessage(ctx, "in", ctx.message?.text);
     const chatId = BigInt(ctx.chat!.id);
     const link   = await prisma.telegramLink.findFirst({ where: { chatId } });
-    if (!link) {
+    const staffLink = await prisma.staffTelegramLink.findFirst({ where: { chatId } });
+    if (!link && !staffLink) {
       await reply(ctx, "Hisob hali ulanmagan.");
       return;
     }
-    await prisma.telegramLink.delete({ where: { id: link.id } }).catch(() => null);
+    if (link) await prisma.telegramLink.delete({ where: { id: link.id } }).catch(() => null);
+    if (staffLink) await prisma.staffTelegramLink.delete({ where: { id: staffLink.id } }).catch(() => null);
     await logAuth(ctx, "logout");
     await reply(ctx,
       "✅ Telegram akkauntingiz uzildi.\n\nQayta ulash uchun /login yuboring.",
@@ -176,9 +208,14 @@ export function registerContactAuthHandlers(b: Bot) {
     await ctx.answerCallbackQuery();
     const chatId = BigInt(ctx.chat!.id);
     const link   = await prisma.telegramLink.findFirst({ where: { chatId } });
+    const staffLink = await prisma.staffTelegramLink.findFirst({ where: { chatId } });
     if (link) {
       await prisma.telegramLink.delete({ where: { id: link.id } }).catch(() => null);
       await logAuth(ctx, "self_delete");
+    }
+    if (staffLink) {
+      await prisma.staffTelegramLink.delete({ where: { id: staffLink.id } }).catch(() => null);
+      await logAuth(ctx, "staff_self_delete");
     }
     await reply(ctx,
       "✅ Telegram akkauntingiz tizimdan uzildi.\n\nMa'lumotlaringiz administratorlar uchun saqlanib qoldi.",
@@ -238,7 +275,81 @@ export function registerContactAuthHandlers(b: Bot) {
       return;
     }
 
-    // ── Rule 4: look up by canonical E.164 phone ─────────────────────────────
+    // ── Rule 4: staff lookup first — phone is the universal identity anchor ──
+    const staffUser = await prisma.staffUser.findUnique({
+      where: { phone },
+      select: { id: true, name: true, isActive: true },
+    });
+
+    if (staffUser) {
+      if (!staffUser.isActive) {
+        await logAuth(ctx, "staff_blocked_attempt", { phone, staffUserId: staffUser.id });
+        await ctx.reply(
+          "🚫 Bu staff akkaunt nofaol. Administrator bilan bog'laning.",
+          { reply_markup: { remove_keyboard: true } }
+        );
+        return;
+      }
+
+      const [existingStaffForUser, existingStaffForTelegram] = await Promise.all([
+        prisma.staffTelegramLink.findUnique({ where: { staffUserId: staffUser.id } }),
+        prisma.staffTelegramLink.findUnique({ where: { telegramUserId: BigInt(fromId) } }),
+      ]);
+
+      if (existingStaffForUser && existingStaffForUser.chatId !== chatId) {
+        await logAuth(ctx, "staff_duplicate_rejected", { phone, staffUserId: staffUser.id });
+        await ctx.reply(
+          "⚠️ Bu staff raqam boshqa Telegram akkauntiga bog'langan.\n\n" +
+          "Eski akkauntda /logout yuboring yoki administrator bilan bog'laning.",
+          { reply_markup: { remove_keyboard: true } }
+        );
+        return;
+      }
+
+      if (existingStaffForTelegram && existingStaffForTelegram.staffUserId !== staffUser.id) {
+        await logAuth(ctx, "staff_telegram_duplicate_rejected", { phone, staffUserId: staffUser.id });
+        await ctx.reply(
+          "⚠️ Bu Telegram akkaunt boshqa staff foydalanuvchiga bog'langan.\n\n" +
+          "/logout yuborib qayta urinib ko'ring yoki administrator bilan bog'laning.",
+          { reply_markup: { remove_keyboard: true } }
+        );
+        return;
+      }
+
+      await prisma.staffTelegramLink.upsert({
+        where: { staffUserId: staffUser.id },
+        update: {
+          telegramUserId: BigInt(fromId),
+          chatId,
+          username:          ctx.from?.username   ?? null,
+          firstName:         ctx.from?.first_name ?? null,
+          verifiedPhone:     phone,
+          verifiedByContact: true,
+        },
+        create: {
+          staffUserId:       staffUser.id,
+          telegramUserId:    BigInt(fromId),
+          chatId,
+          username:          ctx.from?.username   ?? null,
+          firstName:         ctx.from?.first_name ?? null,
+          verifiedPhone:     phone,
+          verifiedByContact: true,
+        },
+      });
+
+      await logAuth(ctx, existingStaffForUser ? "staff_link_updated" : "staff_link_created", { phone, staffUserId: staffUser.id });
+
+      await ctx.reply(
+        `✅ <b>Staff akkaunt tasdiqlandi!</b>\n\n` +
+        `Xush kelibsiz, <b>${staffUser.name}</b>!\n` +
+        `Raqam: <code>${phone}</code>`,
+        { parse_mode: "HTML", reply_markup: { remove_keyboard: true } }
+      );
+      await logMessage(ctx, "out", `✅ Staff ${staffUser.name} — link ${existingStaffForUser ? "updated" : "created"}`);
+      return;
+    }
+
+    // ── Rule 5: participant lookup by canonical E.164 phone ─────────────────
     // Step 1 — fast exact match
     let participant = await prisma.participant.findFirst({
       where:  { phone },
@@ -289,7 +400,7 @@ export function registerContactAuthHandlers(b: Bot) {
       return;
     }
 
-    // ── Rule 5: duplicate check ─────────────────────────────────────────────
+    // ── Rule 6: duplicate check ─────────────────────────────────────────────
     const existingLink = await prisma.telegramLink.findUnique({
       where: { participantId: participant.id },
     });
@@ -303,7 +414,7 @@ export function registerContactAuthHandlers(b: Bot) {
       return;
     }
 
-    // ── Rule 6: upsert TelegramLink + update participant ───────────────────
+    // ── Rule 7: upsert TelegramLink + update participant ───────────────────
     await prisma.telegramLink.upsert({
       where:  { participantId: participant.id },
       update: {
@@ -331,7 +442,7 @@ export function registerContactAuthHandlers(b: Bot) {
     const isNewLink = !existingLink;
     await logAuth(ctx, isNewLink ? "link_created" : "link_updated", { phone, participantId: participant.id });
 
-    // ── Rule 7: issue portal token ──────────────────────────────────────────
+    // ── Rule 8: issue portal token ──────────────────────────────────────────
     const token     = randomUUID();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await prisma.phoneLoginToken.create({
@@ -364,8 +475,11 @@ export function registerContactAuthHandlers(b: Bot) {
     if (text.startsWith("/")) return next(); // commands always pass through
 
     const chatId = BigInt(ctx.chat!.id);
-    const linked = await prisma.telegramLink.findFirst({ where: { chatId }, select: { id: true } });
-    if (linked) return next(); // authenticated users pass through
+    const [linked, staffLinked] = await Promise.all([
+      prisma.telegramLink.findFirst({ where: { chatId }, select: { id: true } }),
+      prisma.staffTelegramLink.findFirst({ where: { chatId }, select: { id: true } }),
+    ]);
+    if (linked || staffLinked) return next(); // authenticated users pass through
 
     // Looks like a phone number (≥9 consecutive digits)
     const digits = text.replace(/\D/g, "");

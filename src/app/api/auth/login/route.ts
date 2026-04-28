@@ -1,22 +1,33 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { signJWT, comparePassword, COOKIE_NAME } from "@/lib/auth";
+import { tryNormalizePhone } from "@/lib/phone";
 
 export async function POST(request: Request) {
   const { usernameOrEmail, password } = await request.json();
 
   if (!usernameOrEmail || !password) {
-    return NextResponse.json({ error: "Username/email and password required" }, { status: 400 });
+    return NextResponse.json({ error: "Username/email/phone and password required" }, { status: 400 });
   }
 
+  const credential = String(usernameOrEmail).trim();
+  const normalizedPhone = tryNormalizePhone(credential);
+
   let user = await prisma.staffUser.findUnique({
-    where: { username: usernameOrEmail },
+    where: { username: credential },
     include: { role: true },
   });
 
   if (!user) {
     user = await prisma.staffUser.findUnique({
-      where: { email: usernameOrEmail },
+      where: { email: credential },
+      include: { role: true },
+    });
+  }
+
+  if (!user && normalizedPhone) {
+    user = await prisma.staffUser.findUnique({
+      where: { phone: normalizedPhone },
       include: { role: true },
     });
   }
@@ -39,6 +50,7 @@ export async function POST(request: Request) {
   const response = NextResponse.json({
     id: user.id,
     name: user.name,
+    phone: user.phone,
     email: user.email,
     roleId: user.roleId,
     role: user.role,

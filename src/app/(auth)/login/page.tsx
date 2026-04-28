@@ -46,11 +46,11 @@ function LoginForm() {
     <div className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
-          label="Username or email"
+          label={t("auth.username_or_phone")}
           type="text"
           value={usernameOrEmail}
           onChange={(e) => setUsernameOrEmail(e.target.value)}
-          placeholder="username or you@example.com"
+          placeholder={t("auth.username_or_phone_placeholder")}
           required
           autoComplete="username"
         />

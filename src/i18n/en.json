@@ -365,9 +365,17 @@
   "settings.users.add_title": "Add Staff User",
   "settings.users.active_account": "Active account",
   "settings.users.no_role_option": "No role (no permissions)",
+  "settings.users.select_role": "Select a role",
   "settings.users.create_user": "Create User",
   "settings.users.full_name": "Full Name",
   "settings.users.password_hint": "Minimum 6 characters",
+  "settings.users.password_optional_hint": "Required only when username is filled",
+  "settings.users.username_label": "Username",
+  "settings.users.name_required": "Full name is required",
+  "settings.users.phone_required": "Phone is required",
+  "settings.users.role_required": "Role is required",
+  "settings.users.password_required_when_username": "Password must be at least 6 characters when username is filled",
+  "settings.users.username_required_when_password": "Enter a username to set a password",
   "settings.users.delete_title": "Delete user",
   "settings.users.delete_confirm": "Are you sure you want to delete {name}? This action cannot be undone.",
   "settings.users.deleted": "User deleted",
@@ -481,5 +489,7 @@
   "portal.team_member.viewing_as_supervisor": "Supervisor view",
   "portal.team_member.attendance_history": "Attendance history",
   "portal.team_member.homework_history": "Homework history",
-  "portal.team_member.no_homeworks": "No homeworks yet"
+  "portal.team_member.no_homeworks": "No homeworks yet",
+  "auth.username_or_phone": "Username or phone number",
+  "auth.username_or_phone_placeholder": "username or +998901234567"
 }

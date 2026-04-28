@@ -28,6 +28,7 @@ export async function GET() {
   return NextResponse.json({
     id: user.id,
     name: user.name,
+    phone: user.phone,
     email: user.email,
     avatar_url: user.avatarUrl ?? null,
     role_id: user.roleId,
@@ -98,6 +99,7 @@ export async function PATCH(request: Request) {
   return NextResponse.json({
     id: updated.id,
     name: updated.name,
+    phone: updated.phone,
     email: updated.email,
     avatar_url: updated.avatarUrl ?? null,
     role_id: updated.roleId,

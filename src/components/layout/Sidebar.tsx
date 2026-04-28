@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Users, QrCode, BarChart3,
   Settings, ChevronRight, ChevronLeft, ClipboardList, Bot,
   ArrowLeft, MessageSquare, Database, MessageCircleWarning,
-  Megaphone, SlidersHorizontal, UserCog,
+  Megaphone, SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,7 +38,6 @@ const botNavItems = [
   { label: "nav.chat",              fallback: "Chat",           href: "/chat",             icon: MessageSquare,                    actions: ["conversations", "view"] },
   { label: "nav.knowledge_base",    fallback: "Knowledge base", href: "/chatbot/content",  icon: Database,                        actions: ["content"] },
   { label: "nav.complaints",        fallback: "Feedback",       href: "/chatbot/feedback", icon: MessageCircleWarning,             actions: ["conversations", "view"] },
-  { label: "nav.bot_admins",        fallback: "Bot admins",     href: "/chatbot/admins",   icon: UserCog,                         actions: ["settings"] },
 ] satisfies Array<{
   label: string;
   fallback: string;
@@ -92,19 +91,6 @@ export function Sidebar() {
     return localStorage.getItem("sidebar_collapsed") === "true";
   });
 
-  if (loading) return <SidebarSkeleton />;
-
-  function canSee(item: NavItem): boolean {
-    if (!item.page) return true;
-    return hasPermission(user, item.page, item.action);
-  }
-
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
-
-  const isBotNavActive = (href: string, exact?: boolean) =>
-    exact ? pathname === href : pathname.startsWith(href);
-
   const toggle = () => {
     setCollapsed((prev) => {
       localStorage.setItem("sidebar_collapsed", String(!prev));
@@ -123,6 +109,19 @@ export function Sidebar() {
     return () => window.removeEventListener("keydown", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (loading) return <SidebarSkeleton />;
+
+  function canSee(item: NavItem): boolean {
+    if (!item.page) return true;
+    return hasPermission(user, item.page, item.action);
+  }
+
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname.startsWith(href);
+
+  const isBotNavActive = (href: string, exact?: boolean) =>
+    exact ? pathname === href : pathname.startsWith(href);
 
   const botSettingsActive = isActive("/chatbot/settings");
   const lmsSettingsActive = isActive("/settings");

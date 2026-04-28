@@ -366,9 +366,17 @@
   "settings.users.add_title": "Foydalanuvchi qo'shish",
   "settings.users.active_account": "Faol hisob",
   "settings.users.no_role_option": "Rol yo'q (ruxsatlar yo'q)",
+  "settings.users.select_role": "Rolni tanlang",
   "settings.users.create_user": "Yaratish",
   "settings.users.full_name": "To'liq ism",
   "settings.users.password_hint": "Kamida 6 belgi",
+  "settings.users.password_optional_hint": "Username kiritilganda majburiy",
+  "settings.users.username_label": "Username",
+  "settings.users.name_required": "To'liq ism majburiy",
+  "settings.users.phone_required": "Telefon majburiy",
+  "settings.users.role_required": "Rol majburiy",
+  "settings.users.password_required_when_username": "Username kiritilganda parol kamida 6 belgi bo'lishi kerak",
+  "settings.users.username_required_when_password": "Parol belgilash uchun username kiriting",
   "settings.users.delete_title": "Foydalanuvchini o'chirish",
   "settings.users.delete_confirm": "{name} foydalanuvchisini o'chirishni tasdiqlaysizmi? Bu amalni ortga qaytarib bo'lmaydi.",
   "settings.users.deleted": "Foydalanuvchi o'chirildi",
@@ -482,5 +490,7 @@
   "portal.team_member.viewing_as_supervisor": "Supervayzer ko'rinishida",
   "portal.team_member.attendance_history": "Davomat tarixi",
   "portal.team_member.homework_history": "Vazifalar tarixi",
-  "portal.team_member.no_homeworks": "Hali vazifa yo'q"
+  "portal.team_member.no_homeworks": "Hali vazifa yo'q",
+  "auth.username_or_phone": "Username yoki telefon raqami",
+  "auth.username_or_phone_placeholder": "username yoki +998901234567"
 }

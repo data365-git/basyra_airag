@@ -365,9 +365,17 @@
   "settings.users.add_title": "Добавить пользователя",
   "settings.users.active_account": "Активный аккаунт",
   "settings.users.no_role_option": "Без роли (нет прав)",
+  "settings.users.select_role": "Выберите роль",
   "settings.users.create_user": "Создать",
   "settings.users.full_name": "Полное имя",
   "settings.users.password_hint": "Минимум 6 символов",
+  "settings.users.password_optional_hint": "Обязателен только если указан username",
+  "settings.users.username_label": "Username",
+  "settings.users.name_required": "Полное имя обязательно",
+  "settings.users.phone_required": "Телефон обязателен",
+  "settings.users.role_required": "Роль обязательна",
+  "settings.users.password_required_when_username": "Если указан username, пароль должен содержать минимум 6 символов",
+  "settings.users.username_required_when_password": "Укажите username, чтобы задать пароль",
   "settings.users.delete_title": "Удалить пользователя",
   "settings.users.delete_confirm": "Вы уверены, что хотите удалить {name}? Это действие нельзя отменить.",
   "settings.users.deleted": "Пользователь удалён",
@@ -481,5 +489,7 @@
   "portal.team_member.viewing_as_supervisor": "Вид руководителя",
   "portal.team_member.attendance_history": "История посещаемости",
   "portal.team_member.homework_history": "История заданий",
-  "portal.team_member.no_homeworks": "Пока нет заданий"
+  "portal.team_member.no_homeworks": "Пока нет заданий",
+  "auth.username_or_phone": "Username или номер телефона",
+  "auth.username_or_phone_placeholder": "username или +998901234567"
 }

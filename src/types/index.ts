@@ -69,6 +69,7 @@ export interface StaffUser {
   name: string;
   username: string | null;
   email: string | null;
+  phone?: string | null;
   avatar_url: string | null;
   role_id: string | null;
   role: Role | null;
