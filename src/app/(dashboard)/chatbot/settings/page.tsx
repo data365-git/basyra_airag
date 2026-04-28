@@ -74,6 +74,25 @@ export default function ChatbotSettingsPage() {
   const [testLoading, setTestLoading] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
 
+  const [terms, setTerms] = useState<Array<{ id: number; term: string; replacement: string; case_sensitive: boolean; notes: string | null }>>([]);
+  const [newTerm, setNewTerm]               = useState("");
+  const [newReplacement, setNewReplacement] = useState("bir mijozimizda");
+  const [newCaseSensitive, setNewCaseSensitive] = useState(false);
+  const [newNotes, setNewNotes]             = useState("");
+  const [addingTerm, setAddingTerm]         = useState(false);
+
+  async function loadTerms() {
+    const res = await fetch("/api/chatbot/redaction-terms");
+    if (res.ok) {
+      const data = await res.json();
+      setTerms(data.terms ?? []);
+    }
+  }
+
+  useEffect(() => {
+    loadTerms();
+  }, []);
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSave({ saving: true, error: null, success: false });
@@ -474,6 +493,136 @@ export default function ChatbotSettingsPage() {
             </div>
           )}
         </form>
+      </section>
+
+      {/* Maxfiy nomlar — redaction terms */}
+      <section className="mt-8">
+        <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+          <span>🔒</span> Maxfiy nomlar (Layer 3 redaction)
+        </h2>
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-4">
+          {/* Existing terms table */}
+          {terms.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                    <th className="pb-2 pr-3 font-medium">Term</th>
+                    <th className="pb-2 pr-3 font-medium">Replacement</th>
+                    <th className="pb-2 pr-3 font-medium">Case-sensitive</th>
+                    <th className="pb-2 pr-3 font-medium">Notes</th>
+                    <th className="pb-2 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {terms.map((t) => (
+                    <tr key={t.id} className="border-b border-gray-50 last:border-0">
+                      <td className="py-2 pr-3 text-gray-800 font-mono">{t.term}</td>
+                      <td className="py-2 pr-3 text-gray-600">{t.replacement}</td>
+                      <td className="py-2 pr-3 text-gray-500">{t.case_sensitive ? "Ha" : "Yo'q"}</td>
+                      <td className="py-2 pr-3 text-gray-400 text-xs">{t.notes ?? ""}</td>
+                      <td className="py-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await fetch("/api/chatbot/redaction-terms", {
+                              method: "DELETE",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ id: t.id }),
+                            });
+                            await loadTerms();
+                          }}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          O'chirish
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">Hech qanday term yo'q.</p>
+          )}
+
+          {/* Add term form */}
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!newTerm.trim()) return;
+              setAddingTerm(true);
+              try {
+                await fetch("/api/chatbot/redaction-terms", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    term: newTerm.trim(),
+                    replacement: newReplacement,
+                    case_sensitive: newCaseSensitive,
+                    notes: newNotes.trim() || null,
+                  }),
+                });
+                setNewTerm("");
+                setNewReplacement("bir mijozimizda");
+                setNewCaseSensitive(false);
+                setNewNotes("");
+                await loadTerms();
+              } finally {
+                setAddingTerm(false);
+              }
+            }}
+            className="border-t border-gray-100 pt-4 space-y-3"
+          >
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Yangi term qo'shish</p>
+            <FieldRow label="Term">
+              <input
+                type="text"
+                value={newTerm}
+                onChange={(e) => setNewTerm(e.target.value)}
+                className={inputCls}
+                placeholder="Mijoz nomi yoki maxfiy so'z"
+                required
+              />
+            </FieldRow>
+            <FieldRow label="Replacement">
+              <input
+                type="text"
+                value={newReplacement}
+                onChange={(e) => setNewReplacement(e.target.value)}
+                className={inputCls}
+                placeholder="bir mijozimizda"
+              />
+            </FieldRow>
+            <FieldRow label="Notes (ixtiyoriy)">
+              <input
+                type="text"
+                value={newNotes}
+                onChange={(e) => setNewNotes(e.target.value)}
+                className={inputCls}
+                placeholder=""
+              />
+            </FieldRow>
+            <FieldRow label="Case-sensitive">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newCaseSensitive}
+                  onChange={(e) => setNewCaseSensitive(e.target.checked)}
+                  className="accent-indigo-600 w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">Ha</span>
+              </label>
+            </FieldRow>
+            <button
+              type="submit"
+              disabled={addingTerm}
+              className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-800 disabled:bg-gray-400"
+            >
+              {addingTerm ? "Qo'shilmoqda..." : "Qo'shish"}
+            </button>
+          </form>
+        </div>
       </section>
     </div>
   );

@@ -459,6 +459,48 @@ function stripBannedOpener(text: string): string {
   return text;
 }
 
+// ── Layer 3: output redaction filter ─────────────────────────────────────────
+
+let _redactionTermsCache: Array<{ term: string; replacement: string; case_sensitive: boolean }> = [];
+let _redactionCacheTs = 0;
+const REDACTION_CACHE_TTL = 60_000; // 1 min
+
+async function loadRedactionTerms(): Promise<typeof _redactionTermsCache> {
+  if (Date.now() - _redactionCacheTs < REDACTION_CACHE_TTL) return _redactionTermsCache;
+  try {
+    const ragBase = process.env.RAG_SERVICE_URL ?? "";
+    const token   = process.env.RAG_INTERNAL_TOKEN ?? "";
+    const res = await fetch(`${ragBase}/redaction-terms`, {
+      headers: { "X-Internal-Token": token },
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      _redactionTermsCache = (data.terms ?? []) as typeof _redactionTermsCache;
+      _redactionCacheTs = Date.now();
+    }
+  } catch { /* stale cache on error */ }
+  return _redactionTermsCache;
+}
+
+async function applyRedactionTerms(text: string): Promise<string> {
+  const terms = await loadRedactionTerms();
+  if (!terms.length) return text;
+  let result = text;
+  for (const t of terms) {
+    try {
+      const flags = t.case_sensitive ? "g" : "gi";
+      result = result.replace(new RegExp(escapeRegex(t.term), flags), t.replacement);
+    } catch { /* skip invalid term */ }
+  }
+  return result;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+
 function appendFinalSentenceCompletion(answer: string, completion: string): string {
   const suffix = removePrefixOverlap(answer, completion).trim();
   if (!suffix) return answer;
@@ -553,7 +595,7 @@ export async function askRag(req: AskRequest): Promise<AskRagResult> {
       finishReasons.push(extractFinishReason(continuation));
     }
 
-    let answer = stripBannedOpener(dedupeResponse(joinAnswerParts(parts)));
+    let answer = await applyRedactionTerms(stripBannedOpener(dedupeResponse(joinAnswerParts(parts))));
     let incompleteEndingDetected = appearsIncompleteEnding(answer);
     let completionAttempted = false;
 
