@@ -11,7 +11,18 @@ export function parseChatId(value: string): bigint | null {
 }
 
 export function previewText(value: string | null | undefined, fallback = ""): string {
-  const text = (value ?? fallback).replace(/\s+/g, " ").trim();
+  const text = (value ?? fallback)
+    // strip Telegram-flavored HTML tags
+    .replace(/<\/?(?:i|b|u|s|em|strong|code|pre|a)[^>]*>/gi, "")
+    // unescape HTML entities
+    .replace(/&(amp|lt|gt|quot|#39);/g, (_m, e: string) => {
+      const map: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" };
+      return map[e] ?? "";
+    })
+    // translate contact-share auth markers
+    .replace(/^\[contact:\s*\d+\]$/, "📱 Telefon raqam ulashdi")
+    .replace(/\s+/g, " ")
+    .trim();
   if (text.length <= 160) return text;
   return `${text.slice(0, 157)}...`;
 }
@@ -84,7 +95,16 @@ export function serializeTelegramMessage(message: TelegramMessage) {
   };
 }
 
-export function serializeBotMessage(message: BotMessage & { rating: BotMessageRating | null }) {
+type UsageSummary = {
+  costUsd: number | null;
+  responseTimeMs: number | null;
+  model: string | null;
+};
+
+export function serializeBotMessage(
+  message: BotMessage & { rating: BotMessageRating | null },
+  usage?: UsageSummary
+) {
   return {
     id: message.id,
     chat_id: message.chatId.toString(),
@@ -111,6 +131,9 @@ export function serializeBotMessage(message: BotMessage & { rating: BotMessageRa
           rated_at: message.rating.ratedAt.toISOString(),
         }
       : null,
+    cost_usd: usage?.costUsd ?? null,
+    latency_ms: usage?.responseTimeMs ?? null,
+    model: usage?.model ?? null,
     created_at: message.createdAt.toISOString(),
   };
 }
