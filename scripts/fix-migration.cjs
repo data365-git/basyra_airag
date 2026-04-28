@@ -125,12 +125,20 @@ async function main() {
       console.log('[fix-migration] phone column missing despite migration status — applying DDL directly...');
       await MIGRATIONS[1].apply(client);
       // Ensure the migration row is marked finished
-      await client.query(`
-        INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
-        VALUES (gen_random_uuid()::text, 'manual', NOW(), '20260428010000_add_staff_phone_identity', NULL, NULL, NOW(), 8)
-        ON CONFLICT (migration_name) DO UPDATE
-          SET finished_at = NOW(), applied_steps_count = 8, logs = NULL, rolled_back_at = NULL
-      `);
+      // Upsert the migration row (update if exists, insert if not)
+      const { rows: existing } = await client.query(
+        `SELECT id FROM "_prisma_migrations" WHERE migration_name = '20260428010000_add_staff_phone_identity'`
+      );
+      if (existing.length > 0) {
+        await client.query(
+          `UPDATE "_prisma_migrations" SET finished_at = NOW(), applied_steps_count = 8, logs = NULL, rolled_back_at = NULL WHERE migration_name = '20260428010000_add_staff_phone_identity'`
+        );
+      } else {
+        await client.query(
+          `INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+           VALUES (gen_random_uuid()::text, 'manual', NOW(), '20260428010000_add_staff_phone_identity', NULL, NULL, NOW(), 8)`
+        );
+      }
       console.log('[fix-migration] phone column applied and migration row upserted.');
     }
   } finally {
