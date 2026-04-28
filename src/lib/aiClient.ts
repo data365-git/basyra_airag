@@ -35,6 +35,11 @@ export interface AskResponse {
   stopReason?:      string | null;
   metadata?:        Record<string, unknown> | null;
   top_timestamp?:   string | null;
+  structured_sources?: Array<{
+    course: string;
+    lesson_number: number | null;
+    lesson_title: string | null;
+  }> | null;
 }
 
 const FALLBACK_MESSAGE =
@@ -85,6 +90,7 @@ type BotMessageDelegate = {
       routedTo:             string | null;
       tokenCount:           number | null;
       metadata?:            Record<string, unknown> | null;
+      sources?:             unknown;
       telegramMsgId?:       number | null;
       replyToTelegramMsgId?: number | null;
       replyToMessageId?:    string | null;
@@ -437,6 +443,22 @@ function dedupeResponse(text: string): string {
     .join("\n\n");
 }
 
+const BANNED_OPENERS = [
+  /^xo['']?p,?\s*(qaranglar|tushuntiraman|mana|gap\s+shunda)/i,
+  /^mana,?\s*qaranglar/i,
+];
+
+function stripBannedOpener(text: string): string {
+  for (const pattern of BANNED_OPENERS) {
+    if (pattern.test(text.trimStart())) {
+      // Drop everything up to and including the first sentence
+      const rest = text.replace(/^[^\n.!?]*[.!?]?\s*/u, "");
+      return rest.trim() || text;
+    }
+  }
+  return text;
+}
+
 function appendFinalSentenceCompletion(answer: string, completion: string): string {
   const suffix = removePrefixOverlap(answer, completion).trim();
   if (!suffix) return answer;
@@ -531,7 +553,7 @@ export async function askRag(req: AskRequest): Promise<AskRagResult> {
       finishReasons.push(extractFinishReason(continuation));
     }
 
-    let answer = dedupeResponse(joinAnswerParts(parts));
+    let answer = stripBannedOpener(dedupeResponse(joinAnswerParts(parts)));
     let incompleteEndingDetected = appearsIncompleteEnding(answer);
     let completionAttempted = false;
 
@@ -614,6 +636,7 @@ export async function logBotMessage(params: {
   routedTo?:     string;
   tokenCount?:   number;
   metadata?:     Record<string, unknown> | null;
+  sources?:      unknown;
   telegramMsgId?: number | null;
   replyToTelegramMsgId?: number | null;
   replyToMessageId?: string | null;
@@ -630,6 +653,7 @@ export async function logBotMessage(params: {
       routedTo:      params.routedTo ?? null,
       tokenCount:    params.tokenCount ?? null,
       metadata:      params.metadata ?? null,
+      sources:       params.sources ?? null,
       telegramMsgId: params.telegramMsgId ?? null,
       replyToTelegramMsgId: params.replyToTelegramMsgId ?? null,
       replyToMessageId: params.replyToMessageId ?? null,

@@ -1057,6 +1057,7 @@ export function registerCommandHandlers(b: Bot) {
             incomplete_ending_detected: metadata.incompleteEndingDetected,
             completion_attempted: metadata.completionAttempted,
           },
+          sources: raw?.structured_sources ?? null,
           replyToTelegramMsgId: telegramMsgId,
           replyToMessageId: userMsgId,
         });
@@ -1093,6 +1094,7 @@ export function registerCommandHandlers(b: Bot) {
 
           const kb = new InlineKeyboard()
             .url("📖 To'liq o'qish", `${appUrl}/article/${longAnswer.id}`)
+            .text("📚 Manba", `manba_${msgId ?? "0"}`)
             .text("🔊 Ovozda tinglash", `tts_${msgId ?? "0"}`)
             .url("📄 PDF yuklab olish", `${appUrl}/article/${longAnswer.id}?print=1`);
 
@@ -1111,7 +1113,9 @@ export function registerCommandHandlers(b: Bot) {
             const prefix = splitParts.length > 1 ? `💡 ${index + 1}/${splitParts.length}\n\n` : "💡 ";
             const isLast = index === splitParts.length - 1;
             const kb = isLast
-              ? new InlineKeyboard().text("🔊 Tinglash", `tts_${msgId ?? "0"}`)
+              ? new InlineKeyboard()
+                  .text("📚 Manba", `manba_${msgId ?? "0"}`)
+                  .text("🔊 Tinglash", `tts_${msgId ?? "0"}`)
               : undefined;
             const sanitized = sanitizeMarkdown(`${prefix}${part}`);
             let sent: number | null = null;
@@ -1130,7 +1134,9 @@ export function registerCommandHandlers(b: Bot) {
           await mergeBotMessageMetadata(msgId, { telegram_message_count: splitParts.length });
         } else {
           // Send direct answers when they fit Telegram's message limit.
-          const ttsKb = new InlineKeyboard().text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
+          const ttsKb = new InlineKeyboard()
+            .text("📚 Manba", `manba_${msgId ?? "0"}`)
+            .text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
           const sanitized = sanitizeMarkdown(`💡 ${answer}`);
           let sentTelegramMsgId: number | null = null;
           try {
@@ -1159,14 +1165,6 @@ export function registerCommandHandlers(b: Bot) {
           );
         } catch {
           // Non-critical — answer already delivered
-        }
-
-        // Timestamp deep-link
-        const topTs = raw?.top_timestamp;
-        if (topTs) {
-          try {
-            await reply(ctx, `🎬 Bu mavzu videoda <b>${topTs}</b> vaqtida muhokama qilingan`);
-          } catch { /* non-critical */ }
         }
 
         // CTA frequency cap — show at most once every 3 bot replies
@@ -1306,6 +1304,39 @@ export function registerCommandHandlers(b: Bot) {
       `📎 <b>${fileName}</b>${sizeLabel}\n\nBu faylni topshiriqqa qo'shaylikmi?`,
       { reply_markup: confirmKb }
     );
+  });
+
+  // ── Manba (sources) button ────────────────────────────────────────────────
+  b.callbackQuery(/^manba_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const msgId = ctx.match[1];
+    if (!msgId || msgId === "0") {
+      await ctx.reply("📚 Manba topilmadi.");
+      return;
+    }
+    try {
+      const msg = await (prisma as any).botMessage.findUnique({
+        where: { id: msgId },
+        select: { sources: true },
+      });
+      const sources = (msg?.sources ?? null) as Array<{ course: string; lesson_number: number | null; lesson_title: string | null }> | null;
+      if (!sources || sources.length === 0) {
+        await ctx.reply("📚 Manba topilmadi.");
+        return;
+      }
+      const lines = sources
+        .slice(0, 5)
+        .map((s) => {
+          const parts = [s.course, s.lesson_number != null ? `Dars ${s.lesson_number}` : null, s.lesson_title]
+            .filter(Boolean);
+          return `• ${parts.join(" · ")}`;
+        });
+      if (sources.length > 5) lines.push(`+ ${sources.length - 5} ta ko'proq`);
+      await ctx.reply(`📚 Manbalar:\n\n${lines.join("\n")}`);
+    } catch (err) {
+      console.error("[BOT] manba callback error:", err);
+      await ctx.reply("📚 Manba topilmadi.");
+    }
   });
 
   // ── TTS — voice playback of AI answer ─────────────────────────────────────

@@ -476,6 +476,7 @@ model BotMessage {
   routedTo             String?           @map("routed_to") // "lms" | "ai" | "templated"
   tokenCount           Int?              @map("token_count")
   metadata             Json?
+  sources              Json?             @map("sources")
   telegramMsgId        Int?              @map("telegram_msg_id")
   replyToTelegramMsgId Int?              @map("reply_to_telegram_msg_id")
   replyToMessageId     String?           @map("reply_to_message_id")
