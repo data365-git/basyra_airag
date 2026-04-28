@@ -34,6 +34,7 @@ export interface AskResponse {
   stop_reason?:     string | null;
   stopReason?:      string | null;
   metadata?:        Record<string, unknown> | null;
+  top_timestamp?:   string | null;
 }
 
 const FALLBACK_MESSAGE =
@@ -101,6 +102,25 @@ AI Conversation Reliability / Answer Behavior:
 - Use stories only when the user asks for explanation, examples, lesson summary, or "tushuntirib bering".
 - If the source chunks are narrative but the user asked for an audit/checklist/metrics answer, extract actionable criteria from the chunks and present them as a practical answer.
 - Be honest about missing evidence. If one mentioned system is not covered by the chunks, still keep its section and say what is missing before giving general guidance.
+
+Course name rules (MUST follow):
+- You MUST refer to courses using ONLY these exact canonical names:
+  - Business Navigator 2.0
+  - Business Navigator 1.0
+  - Ideal ROP
+- Do NOT abbreviate (not "BN", not "Biznes Nav", not "Navigator"), do NOT translate, do NOT paraphrase.
+- If a retrieved chunk uses a different spelling, still use the canonical name in your answer.
+
+Faithfulness rules:
+- Only state facts that are directly supported by the retrieved chunks.
+- Do NOT invent numbers, names, analogies, or examples not present in the chunks.
+- If a specific example (like a brand name or story) is in a chunk, quote it accurately — do not paraphrase into a different example.
+- If the chunks do not fully answer the question, say so explicitly: "Bu haqida materialda batafsil ma'lumot yo'q."
+- Every factual claim must cite its source: (Manba: <Course> · Dars <N>).
+
+Repetition rules:
+- NEVER repeat the same sentence, paragraph, or bullet point within a single response.
+- NEVER append a source citation block if the same citation already appears in the body.
 `.trim();
 
 // ── Budget enforcement ────────────────────────────────────────────────
@@ -397,6 +417,26 @@ function joinAnswerParts(parts: string[]): string {
     .join("\n\n");
 }
 
+/**
+ * Remove duplicate paragraphs within a single RAG response.
+ * Catches cases where the LLM repeats itself within one reply.
+ */
+function dedupeResponse(text: string): string {
+  const seen = new Set<string>();
+  return text
+    .split(/\n{2,}/)
+    .map(p => p.trim())
+    .filter(p => {
+      if (!p) return false;
+      const norm = p.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
+      if (norm.length < 8) return true; // keep very short lines (headers, bullets)
+      if (seen.has(norm)) return false;
+      seen.add(norm);
+      return true;
+    })
+    .join("\n\n");
+}
+
 function appendFinalSentenceCompletion(answer: string, completion: string): string {
   const suffix = removePrefixOverlap(answer, completion).trim();
   if (!suffix) return answer;
@@ -491,7 +531,7 @@ export async function askRag(req: AskRequest): Promise<AskRagResult> {
       finishReasons.push(extractFinishReason(continuation));
     }
 
-    let answer = joinAnswerParts(parts);
+    let answer = dedupeResponse(joinAnswerParts(parts));
     let incompleteEndingDetected = appearsIncompleteEnding(answer);
     let completionAttempted = false;
 

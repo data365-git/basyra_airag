@@ -21,7 +21,7 @@ import { requireParticipant } from "@/lib/botAuth";
 import { linkedKeyboard, logMessage, reply } from "./ui";
 import { pendingSubmissions, pendingFiles, pendingRatingComment } from "./state";
 import { classifyMessage, extractFeedbackMeta } from "@/lib/intentRouter";
-import { askRag, logBotMessage, logUsage } from "@/lib/aiClient";
+import { askRag, checkBudget, logBotMessage, logUsage } from "@/lib/aiClient";
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
 const DEFAULT_TTS_CHUNK_CHARS = 400;
@@ -889,8 +889,7 @@ export function registerCommandHandlers(b: Bot) {
     const pending = pendingSubmissions.get(chatKey);
 
     // ── Anonymous gate ────────────────────────────────────────────────────
-    const chatId = BigInt(ctx.chat.id);
-    const linkCheck = await prisma.telegramLink.findFirst({ where: { chatId } });
+    const linkCheck = await prisma.telegramLink.findFirst({ where: { chatId: BigInt(ctx.chat.id) } });
     if (!linkCheck) {
       await reply(ctx,
         "🔒 Botdan foydalanish uchun avval ro'yxatdan o'ting.\n\n" +
@@ -1020,6 +1019,11 @@ export function registerCommandHandlers(b: Bot) {
     if (intent === "AI_COURSE_QUESTION" || intent === "BUSINESS_CONSULTING" || intent === "UNCLEAR") {
       await ctx.replyWithChatAction("typing");
       try {
+        const budgetBlock = await checkBudget(participantId);
+        if (budgetBlock) {
+          await reply(ctx, budgetBlock);
+          return;
+        }
         const memory = await loadConversationMemory(chatId, userMsgId);
         const { text: answer, raw, metadata } = await askRag({
           chat_id:        ctx.chat!.id,
@@ -1157,7 +1161,29 @@ export function registerCommandHandlers(b: Bot) {
           // Non-critical — answer already delivered
         }
 
-        if (!participantId) {
+        // Timestamp deep-link
+        const topTs = raw?.top_timestamp;
+        if (topTs) {
+          try {
+            await reply(ctx, `🎬 Bu mavzu videoda <b>${topTs}</b> vaqtida muhokama qilingan`);
+          } catch { /* non-critical */ }
+        }
+
+        // CTA frequency cap — show at most once every 3 bot replies
+        let showCta = !participantId;
+        if (showCta) {
+          const recentBotMsgs = await prisma.botMessage.findMany({
+            where: { chatId, role: "assistant" },
+            orderBy: { createdAt: "desc" },
+            take: 3,
+            select: { content: true },
+          });
+          if (recentBotMsgs.some(m => m.content.includes("Kursga yozilish"))) {
+            showCta = false;
+          }
+        }
+
+        if (showCta) {
           const cta = new InlineKeyboard().text("📲 Kursga yozilish", "auth_login");
           await reply(ctx, "<i>Jadval, baholar va vazifalaringizni ko'rish uchun ro'yxatdan o'ting</i>", {
             reply_markup: cta,
