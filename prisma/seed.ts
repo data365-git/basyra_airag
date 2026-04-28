@@ -168,6 +168,22 @@ async function main() {
     });
   }
 
+  const budgetDefaults = [
+    { key: "chatbot.daily_cost_cap_usd",       value: "5.00"   },
+    { key: "chatbot.monthly_cost_cap_usd",     value: "100.00" },
+    { key: "chatbot.per_user_daily_cap_usd",   value: "0.20"   },
+    { key: "chatbot.per_user_monthly_cap_usd", value: "5.00"   },
+    { key: "chatbot.enforce_caps_mode",        value: "block"  },
+    { key: "chatbot.last_alert_threshold_pct", value: "0"      },
+  ];
+  for (const { key, value } of budgetDefaults) {
+    await prisma.systemSetting.upsert({
+      where:  { key },
+      update: {},  // don't overwrite existing values
+      create: { key, value },
+    });
+  }
+
   console.log("System settings seeded.");
   console.log("Seed complete!");
 }

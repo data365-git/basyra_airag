@@ -888,6 +888,18 @@ export function registerCommandHandlers(b: Bot) {
     const text    = ctx.message.text.trim();
     const pending = pendingSubmissions.get(chatKey);
 
+    // ── Anonymous gate ────────────────────────────────────────────────────
+    const chatId = BigInt(ctx.chat.id);
+    const linkCheck = await prisma.telegramLink.findFirst({ where: { chatId } });
+    if (!linkCheck) {
+      await reply(ctx,
+        "🔒 Botdan foydalanish uchun avval ro'yxatdan o'ting.\n\n" +
+        "Telefon raqamingizni ulash uchun /login buyrug'ini bosing."
+      );
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // "done" fallback (typed instead of button)
     if (pending && pending.submissionId && text.toLowerCase() === "done") {
       pendingSubmissions.delete(chatKey);
@@ -1173,6 +1185,19 @@ export function registerCommandHandlers(b: Bot) {
   // ── File messages (document, audio, video, voice, photo) ──────────────────
   b.on(["message:document", "message:audio", "message:video", "message:voice", "message:photo"], async (ctx) => {
     const chatKey = String(ctx.chat.id);
+
+    // ── Anonymous gate ────────────────────────────────────────────────────
+    const chatIdBig = BigInt(ctx.chat.id);
+    const fileLinkCheck = await prisma.telegramLink.findFirst({ where: { chatId: chatIdBig } });
+    if (!fileLinkCheck) {
+      await reply(ctx,
+        "🔒 Botdan foydalanish uchun avval ro'yxatdan o'ting.\n\n" +
+        "Telefon raqamingizni ulash uchun /login buyrug'ini bosing."
+      );
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     let   pending = pendingSubmissions.get(chatKey);
 
     const msg = ctx.message;

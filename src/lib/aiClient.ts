@@ -7,6 +7,8 @@
  * Falls back gracefully if the service is down — never throws to callers.
  */
 
+import prisma from "@/lib/prisma";
+
 const RAG_URL   = process.env.RAG_SERVICE_URL ?? "";
 const RAG_TOKEN = process.env.RAG_INTERNAL_TOKEN ?? "";
 
@@ -100,6 +102,130 @@ AI Conversation Reliability / Answer Behavior:
 - If the source chunks are narrative but the user asked for an audit/checklist/metrics answer, extract actionable criteria from the chunks and present them as a practical answer.
 - Be honest about missing evidence. If one mentioned system is not covered by the chunks, still keep its section and say what is missing before giving general guidance.
 `.trim();
+
+// ── Budget enforcement ────────────────────────────────────────────────
+let _budgetCache: { daily: number; monthly: number; ts: number } | null = null;
+
+async function getCurrentSpend(): Promise<{ daily: number; monthly: number }> {
+  const now = Date.now();
+  if (_budgetCache && now - _budgetCache.ts < 30_000) {
+    return { daily: _budgetCache.daily, monthly: _budgetCache.monthly };
+  }
+  const tz = "Asia/Tashkent";
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: tz });
+  const monthStr = todayStr.slice(0, 7); // "YYYY-MM"
+  const [daily, monthly] = await Promise.all([
+    (prisma as any).botUsageLog?.aggregate({
+      _sum: { costUsd: true },
+      where: { createdAt: { gte: new Date(`${todayStr}T00:00:00+05:00`) } },
+    }),
+    (prisma as any).botUsageLog?.aggregate({
+      _sum: { costUsd: true },
+      where: { createdAt: { gte: new Date(`${monthStr}-01T00:00:00+05:00`) } },
+    }),
+  ]);
+  const d = Number(daily?._sum?.costUsd ?? 0);
+  const m = Number(monthly?._sum?.costUsd ?? 0);
+  _budgetCache = { daily: d, monthly: m, ts: now };
+  return { daily: d, monthly: m };
+}
+
+async function getUserSpend(participantId: string): Promise<{ daily: number; monthly: number }> {
+  const tz = "Asia/Tashkent";
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: tz });
+  const monthStr = todayStr.slice(0, 7);
+  const [daily, monthly] = await Promise.all([
+    (prisma as any).botUsageLog?.aggregate({
+      _sum: { costUsd: true },
+      where: { participantId, createdAt: { gte: new Date(`${todayStr}T00:00:00+05:00`) } },
+    }),
+    (prisma as any).botUsageLog?.aggregate({
+      _sum: { costUsd: true },
+      where: { participantId, createdAt: { gte: new Date(`${monthStr}-01T00:00:00+05:00`) } },
+    }),
+  ]);
+  return { daily: Number(daily?._sum?.costUsd ?? 0), monthly: Number(monthly?._sum?.costUsd ?? 0) };
+}
+
+async function getCaps(): Promise<{
+  dailyCap: number; monthlyCap: number;
+  perUserDailyCap: number; perUserMonthlyCap: number;
+  mode: string;
+}> {
+  const keys = [
+    "chatbot.daily_cost_cap_usd",
+    "chatbot.monthly_cost_cap_usd",
+    "chatbot.per_user_daily_cap_usd",
+    "chatbot.per_user_monthly_cap_usd",
+    "chatbot.enforce_caps_mode",
+  ];
+  const rows = await (prisma as any).systemSetting?.findMany({ where: { key: { in: keys } } }) ?? [];
+  const get = (k: string, def: number) => {
+    const r = rows.find((r: { key: string; value: string }) => r.key === k);
+    return r ? parseFloat(r.value) || def : def;
+  };
+  const getStr = (k: string, def: string) =>
+    rows.find((r: { key: string; value: string }) => r.key === k)?.value ?? def;
+  return {
+    dailyCap:          get("chatbot.daily_cost_cap_usd", 5),
+    monthlyCap:        get("chatbot.monthly_cost_cap_usd", 100),
+    perUserDailyCap:   get("chatbot.per_user_daily_cap_usd", 0.20),
+    perUserMonthlyCap: get("chatbot.per_user_monthly_cap_usd", 5),
+    mode:              getStr("chatbot.enforce_caps_mode", "block"),
+  };
+}
+
+export async function checkBudget(participantId?: string | null): Promise<string | null> {
+  try {
+    const [spend, caps] = await Promise.all([getCurrentSpend(), getCaps()]);
+    if (caps.mode !== "block") return null;
+    if (spend.monthly >= caps.monthlyCap) {
+      return "⚠️ Bot bu oy uchun belgilangan limitga yetdi. Iltimos, keyingi oy yana urinib ko'ring.";
+    }
+    if (spend.daily >= caps.dailyCap) {
+      return "⚠️ Bot bugungi limitga yetdi. Ertaga qaytadan urinib ko'ring.";
+    }
+    if (participantId) {
+      const userSpend = await getUserSpend(participantId);
+      const { perUserDailyCap, perUserMonthlyCap } = caps;
+      if (userSpend.monthly >= perUserMonthlyCap) {
+        return "⚠️ Sizning oylik AI limitingiz tugadi. Keyingi oy yana foydalanishingiz mumkin.";
+      }
+      if (userSpend.daily >= perUserDailyCap) {
+        return "⚠️ Sizning kunlik AI limitingiz tugadi. Ertaga qaytadan urinib ko'ring.";
+      }
+    }
+    return null; // all good
+  } catch {
+    return null; // budget check failure must not block the user
+  }
+}
+
+// Alert thresholds — fire once per threshold crossing per month
+async function checkAndFireAlerts(): Promise<void> {
+  try {
+    const [spend, caps] = await Promise.all([getCurrentSpend(), getCaps()]);
+    if (caps.monthlyCap <= 0) return;
+    const pct = Math.floor((spend.monthly / caps.monthlyCap) * 100);
+    const lastRow = await (prisma as any).systemSetting?.findUnique({ where: { key: "chatbot.last_alert_threshold_pct" } });
+    const lastPct = parseInt(lastRow?.value ?? "0", 10);
+    for (const threshold of [50, 80, 100]) {
+      if (pct >= threshold && lastPct < threshold) {
+        await (prisma as any).systemSetting?.upsert({
+          where: { key: "chatbot.last_alert_threshold_pct" },
+          update: { value: String(threshold) },
+          create: { key: "chatbot.last_alert_threshold_pct", value: String(threshold) },
+        });
+        console.warn(`[BUDGET] Alert: ${threshold}% of monthly budget reached ($${spend.monthly.toFixed(4)} / $${caps.monthlyCap})`);
+        // TODO: send Telegram DM to bot admins
+        break;
+      }
+    }
+  } catch {
+    // alerts must never throw
+  }
+}
+// ─────────────────────────────────────────────────────────────────────
 
 function buildRagQuestion(question: string): string {
   const trimmed = question.trim();
@@ -429,6 +555,7 @@ export async function logUsage(params: {
       costUsd:        params.costUsd ?? 0,
       responseTimeMs: params.responseTimeMs ?? 0,
     }});
+    void checkAndFireAlerts();
   } catch {
     // non-critical — never throw
   }

@@ -125,12 +125,13 @@ export async function GET(request: Request) {
   let ttsCount = 0;
   let embedCount = 0;
   let topExpensiveUsers: Array<{
-    chat_id: string;
+    chat_id: string | null;
     participant_id: string | null;
     full_name: string | null;
     cost_usd: number;
     tokens_in: number;
     tokens_out: number;
+    is_anonymous?: boolean;
   }> = [];
 
   try {
@@ -166,39 +167,78 @@ export async function GET(request: Request) {
       ? Math.round(responseTimeSum / responseTimeCount)
       : null;
 
-    const expensiveRows = await prisma.$queryRaw<
+    // Known users: grouped by participant, named rows only
+    const knownRows = await prisma.$queryRaw<
       {
-        chat_id: bigint;
-        participant_id: string | null;
-        full_name: string | null;
+        participant_id: string;
+        full_name: string;
         cost_usd: string;
         tokens_in: bigint;
         tokens_out: bigint;
       }[]
     >`
       SELECT
-        u.chat_id,
         u.participant_id,
         p.full_name,
         SUM(u.cost_usd)::text AS cost_usd,
         SUM(u.tokens_in) AS tokens_in,
         SUM(u.tokens_out) AS tokens_out
       FROM bot_usage_log u
-      LEFT JOIN participants p ON p.id = u.participant_id
+      JOIN participants p ON p.id = u.participant_id
       WHERE u.created_at >= ${monthStart}
-      GROUP BY u.chat_id, u.participant_id, p.full_name
+      GROUP BY u.participant_id, p.full_name
       HAVING SUM(u.cost_usd) > 0
       ORDER BY SUM(u.cost_usd) DESC
-      LIMIT 5
+      LIMIT 10
     `;
-    topExpensiveUsers = expensiveRows.map((r) => ({
-      chat_id: r.chat_id.toString(),
+
+    // Anonymous users: collapse all unlinked chat_ids into one row
+    const anonRows = await prisma.$queryRaw<
+      { cost_usd: string; tokens_in: bigint; tokens_out: bigint }[]
+    >`
+      SELECT
+        SUM(u.cost_usd)::text AS cost_usd,
+        SUM(u.tokens_in) AS tokens_in,
+        SUM(u.tokens_out) AS tokens_out
+      FROM bot_usage_log u
+      WHERE u.created_at >= ${monthStart}
+        AND u.participant_id IS NULL
+      HAVING SUM(u.cost_usd) > 0
+    `;
+
+    const known: Array<{
+      chat_id: string | null;
+      participant_id: string | null;
+      full_name: string | null;
+      cost_usd: number;
+      tokens_in: number;
+      tokens_out: number;
+      is_anonymous: boolean;
+    }> = knownRows.map((r) => ({
+      chat_id: null,
       participant_id: r.participant_id,
       full_name: r.full_name,
       cost_usd: toNumber(r.cost_usd),
       tokens_in: Number(r.tokens_in),
       tokens_out: Number(r.tokens_out),
+      is_anonymous: false,
     }));
+
+    if (anonRows.length > 0 && toNumber(anonRows[0].cost_usd) > 0) {
+      known.push({
+        chat_id: null,
+        participant_id: null,
+        full_name: "Anonymous",
+        cost_usd: toNumber(anonRows[0].cost_usd),
+        tokens_in: Number(anonRows[0].tokens_in),
+        tokens_out: Number(anonRows[0].tokens_out),
+        is_anonymous: true,
+      });
+    }
+
+    topExpensiveUsers = known
+      .sort((a, b) => b.cost_usd - a.cost_usd)
+      .slice(0, 10) as typeof topExpensiveUsers;
   } catch (err) {
     console.warn('[chatbot/overview] cost/usage query failed', err);
   }
