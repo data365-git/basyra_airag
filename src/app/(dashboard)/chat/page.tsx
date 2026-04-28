@@ -502,9 +502,9 @@ export default function UnifiedChatPage() {
         </div>
       )}
 
-      <div className="grid min-h-[calc(100vh-190px)] grid-cols-1 gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <Card padding="none" className="flex min-h-[360px] flex-col overflow-hidden">
-          <div className="border-b border-gray-100 p-4">
+      <div className="grid h-[calc(100vh-190px)] grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[360px_minmax(0,1fr)]">
+        <Card padding="none" className="flex min-h-0 flex-col overflow-hidden">
+          <div className="sticky top-0 z-10 border-b border-gray-100 bg-white p-4">
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -556,10 +556,10 @@ export default function UnifiedChatPage() {
           </div>
         </Card>
 
-        <Card padding="none" className="flex min-h-[520px] flex-col overflow-hidden">
+        <Card padding="none" className="flex min-h-0 flex-col overflow-hidden">
           {selectedChatId ? (
             <>
-              <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+              <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-100 bg-white px-5 py-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="rounded-2xl bg-blue-100 p-2.5">
                     <Bot className="h-5 w-5 text-blue-700" />
@@ -590,7 +590,7 @@ export default function UnifiedChatPage() {
                 </div>
               )}
 
-              <form onSubmit={handleSend} className="border-t border-gray-100 bg-white p-4">
+              <form onSubmit={handleSend} className="sticky bottom-0 border-t border-gray-100 bg-white p-4">
                 <div className="flex gap-3">
                   <Textarea
                     value={reply}
