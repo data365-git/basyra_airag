@@ -296,24 +296,28 @@ export function registerContactAuthHandlers(b: Bot) {
         prisma.staffTelegramLink.findUnique({ where: { telegramUserId: BigInt(fromId) } }),
       ]);
 
+      // Self-verified takeover: Telegram already proved (line above: contact.user_id === fromId)
+      // that the sender owns this phone. If a stale link exists for a different Telegram
+      // account, the legitimate owner is switching devices/accounts — overwrite it.
       if (existingStaffForUser && existingStaffForUser.chatId !== chatId) {
-        await logAuth(ctx, "staff_duplicate_rejected", { phone, staffUserId: staffUser.id });
-        await ctx.reply(
-          "⚠️ Bu staff raqam boshqa Telegram akkauntiga bog'langan.\n\n" +
-          "Eski akkauntda /logout yuboring yoki administrator bilan bog'laning.",
-          { reply_markup: { remove_keyboard: true } }
-        );
-        return;
+        await logAuth(ctx, "staff_link_takeover", {
+          phone,
+          staffUserId:    staffUser.id,
+          previousChatId: existingStaffForUser.chatId.toString(),
+        });
       }
 
+      // If this Telegram account was previously linked as a different staff user,
+      // drop that stale link before re-linking it to the new staff user.
       if (existingStaffForTelegram && existingStaffForTelegram.staffUserId !== staffUser.id) {
-        await logAuth(ctx, "staff_telegram_duplicate_rejected", { phone, staffUserId: staffUser.id });
-        await ctx.reply(
-          "⚠️ Bu Telegram akkaunt boshqa staff foydalanuvchiga bog'langan.\n\n" +
-          "/logout yuborib qayta urinib ko'ring yoki administrator bilan bog'laning.",
-          { reply_markup: { remove_keyboard: true } }
-        );
-        return;
+        await prisma.staffTelegramLink.delete({
+          where: { id: existingStaffForTelegram.id },
+        }).catch(() => null);
+        await logAuth(ctx, "staff_telegram_reassigned", {
+          phone,
+          newStaffUserId:      staffUser.id,
+          previousStaffUserId: existingStaffForTelegram.staffUserId,
+        });
       }
 
       await prisma.staffTelegramLink.upsert({
@@ -400,18 +404,19 @@ export function registerContactAuthHandlers(b: Bot) {
       return;
     }
 
-    // ── Rule 6: duplicate check ─────────────────────────────────────────────
+    // ── Rule 6: self-verified takeover ──────────────────────────────────────
+    // Telegram already proved (Rule 1) that the sender owns this phone. If a stale
+    // link exists for a different Telegram account, the legitimate owner is
+    // switching devices/accounts — overwrite it via the upsert below.
     const existingLink = await prisma.telegramLink.findUnique({
       where: { participantId: participant.id },
     });
     if (existingLink && existingLink.chatId !== chatId) {
-      await logAuth(ctx, "duplicate_rejected", { phone, participantId: participant.id });
-      await ctx.reply(
-        "⚠️ Bu raqam boshqa Telegram akkauntiga bog'langan.\n\n" +
-        "Eski akkauntda /logout yuboring yoki administratoringiz bilan bog'laning.",
-        { reply_markup: { remove_keyboard: true } }
-      );
-      return;
+      await logAuth(ctx, "link_takeover", {
+        phone,
+        participantId:  participant.id,
+        previousChatId: existingLink.chatId.toString(),
+      });
     }
 
     // ── Rule 7: upsert TelegramLink + update participant ───────────────────

@@ -22,7 +22,10 @@ export type BotAuthEvent =
   | "contact_empty_phone"
   | "contact_invalid_phone"
   | "not_found"                   // phone not in DB
-  | "duplicate_rejected"          // phone already linked to different chatId
+  | "duplicate_rejected"          // phone already linked to different chatId (legacy — no longer emitted)
+  | "link_takeover"               // participant link reassigned to a new Telegram account
+  | "staff_link_takeover"         // staff link reassigned to a new Telegram account
+  | "staff_telegram_reassigned"   // Telegram account moved from one staff user to another
   | "blocked_attempt"
   | "manual_number_trap"          // unauthenticated user typed digits
   | "link_created"
