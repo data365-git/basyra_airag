@@ -16,8 +16,8 @@ const prisma = new PrismaClient({
 });
 
 const PHONE           = "+998904044431";
-const NEW_TG_USER_ID  = 555111222n;
-const NEW_CHAT_ID     = 555111222n;
+const NEW_TG_USER_ID  = BigInt(555111222);
+const NEW_CHAT_ID     = BigInt(555111222);
 
 const stringify = (v: unknown) =>
   JSON.stringify(v, (_, x) => (typeof x === "bigint" ? x.toString() : x), 2);

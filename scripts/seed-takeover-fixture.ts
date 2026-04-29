@@ -30,7 +30,7 @@ const prisma = new PrismaClient({ adapter });
 
 const PHONE        = "+998904044431";
 const STAFF_NAME   = "Takeover Test";
-const FAKE_OLD_TG  = 999000001n;
+const FAKE_OLD_TG  = BigInt(999000001);
 
 async function main() {
   const passwordHash = await bcrypt.hash("test-takeover", 10);

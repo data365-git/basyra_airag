@@ -947,7 +947,6 @@ export function registerCommandHandlers(b: Bot) {
     }
 
     // ── Check if awaiting a rating comment ────────────────────────────────
-    const chatId = BigInt(ctx.chat!.id);
     const pendingRatingMsgId = pendingRatingComment.get(chatId.toString());
     if (pendingRatingMsgId) {
       pendingRatingComment.delete(chatId.toString());
