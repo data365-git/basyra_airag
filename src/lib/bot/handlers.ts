@@ -889,9 +889,15 @@ export function registerCommandHandlers(b: Bot) {
     const pending = pendingSubmissions.get(chatKey);
 
     // ── Anonymous gate ────────────────────────────────────────────────────
+    // Accept either a participant link OR a staff link — the contact-share
+    // handler creates whichever one matches the phone, so both count as
+    // "registered" for the purpose of this gate.
     const chatId = BigInt(ctx.chat.id);
-    const linkCheck = await prisma.telegramLink.findFirst({ where: { chatId } });
-    if (!linkCheck) {
+    const [participantLink, staffLink] = await Promise.all([
+      prisma.telegramLink.findFirst({ where: { chatId }, select: { id: true } }),
+      prisma.staffTelegramLink.findFirst({ where: { chatId }, select: { id: true } }),
+    ]);
+    if (!participantLink && !staffLink) {
       await reply(ctx,
         "🔒 Botdan foydalanish uchun avval ro'yxatdan o'ting.\n\n" +
         "Telefon raqamingizni ulash uchun /login buyrug'ini bosing."
