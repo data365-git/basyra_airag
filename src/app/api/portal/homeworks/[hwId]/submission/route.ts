@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getPortalUser } from "@/lib/portalAuth";
-import { getTodayInTashkent } from "@/lib/sessionWindow";
 import { deleteR2ObjectByPublicUrl } from "@/lib/r2Upload";
 import prisma from "@/lib/prisma";
 
@@ -38,15 +37,15 @@ export async function DELETE(
     );
   }
 
-  // Cannot delete if due date has passed
-  if (hw.dueDate) {
-    const today = getTodayInTashkent();
-    if (hw.dueDate < today) {
-      return NextResponse.json(
-        { error: "Muddati o'tgan topshiriqni o'chirib bo'lmaydi" },
-        { status: 403 }
-      );
-    }
+  if (!hw.acceptingSubmissions) {
+    return NextResponse.json(
+      {
+        error: "This homework is closed and no longer accepting submission changes.",
+        code: "submissions_closed",
+        closed_at: hw.closedAt,
+      },
+      { status: 403 }
+    );
   }
 
   // Collect R2 URLs to clean up AFTER the cascade delete succeeds

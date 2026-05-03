@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BookOpen, Search, Users, Star, ChevronRight, AlertCircle, Clock, Pencil, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
+import { HomeworkAcceptingBadge, getHomeworkAcceptingHint } from "@/components/homework/HomeworkAcceptingStatus";
 
 interface Training { id: string; name: string }
 
@@ -16,6 +17,7 @@ interface Homework {
   start_date:            string | null;
   hard_close_at:         string | null;
   allow_late_submission: boolean;
+  accepting_submissions?: boolean | null;
   late_penalty_percent:  number | null;
   max_score:             number;
   created_at:            string;
@@ -208,11 +210,7 @@ export default function HomeworksCommandCenter() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-gray-900 truncate">{hw.title}</p>
-                      {hw.is_overdue && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-red-50 text-red-600 px-1.5 py-0.5 rounded-full shrink-0">
-                          <AlertCircle size={10} /> muddati o&apos;tgan
-                        </span>
-                      )}
+                      <HomeworkAcceptingBadge homework={hw} />
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 flex-wrap">
                       <span className="truncate">{hw.training.name}</span>
@@ -221,6 +219,9 @@ export default function HomeworksCommandCenter() {
                           <Clock size={11} /> {hw.due_date}
                         </span>
                       )}
+                      <span className="flex items-center gap-1">
+                        <AlertCircle size={11} /> {getHomeworkAcceptingHint(hw)}
+                      </span>
                       <span className="flex items-center gap-1">
                         <Users size={11} /> {hw.submission_count}
                       </span>

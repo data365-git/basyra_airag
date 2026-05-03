@@ -30,6 +30,7 @@ const DEFAULT_TTS_FIRST_CHUNK_CHARS = 350;
 const DEFAULT_TTS_CONCURRENCY = 2;
 const TELEGRAM_TEXT_LIMIT = 3900;
 const MEDIUM_ANSWER_SPLIT_LIMIT = 9000;
+const SHORT_ANSWER_LIMIT = 600;
 
 type LongAnswerDelegate = {
   create(args: {
@@ -74,6 +75,39 @@ function fmtUzDate(d: string | Date | null | undefined): string {
   if (!d) return "";
   const dt = typeof d === "string" ? new Date(d + "T00:00:00") : d;
   return `${dt.getDate()} ${UZ_MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
+}
+
+type HomeworkSubmissionGate = {
+  title: string;
+  dueDate: string | null;
+  acceptingSubmissions?: boolean | null;
+};
+
+function isHomeworkAcceptingSubmissions(hw: HomeworkSubmissionGate): boolean {
+  return hw.acceptingSubmissions !== false;
+}
+
+function getLateByDays(dueDate: string | null | undefined, todayStr: string): number {
+  if (!dueDate || dueDate >= todayStr) return 0;
+  return Math.round(
+    (new Date(todayStr + "T00:00:00Z").getTime() - new Date(dueDate + "T00:00:00Z").getTime()) / 86400000
+  );
+}
+
+function closedHomeworkMessage(hw: HomeworkSubmissionGate): string {
+  return `🔒 <b>${hw.title}</b>\n\nBu vazifa uchun topshiriq qabul qilish yopilgan. Fayl yoki matn yuborib bo'lmaydi.`;
+}
+
+function lateOpenHomeworkMessage(lateByDays: number): string {
+  return `\n\n⏰ <i>Muddat ${lateByDays} kun oldin o'tgan, lekin topshiriq qabul qilish hali ochiq. Kechikkan holda yuborishingiz mumkin.</i>`;
+}
+
+async function findSubmissionHomeworkGate(submissionId: string): Promise<HomeworkSubmissionGate | null> {
+  const sub = await prisma.homeworkSubmission.findUnique({
+    where:   { id: submissionId },
+    include: { homework: true },
+  });
+  return sub?.homework ?? null;
 }
 
 /** Extract first sentence as title (max 80 chars) */
@@ -405,10 +439,10 @@ async function resolveLongAnswerLimit(): Promise<number> {
       },
       orderBy: { updatedAt: "desc" },
     });
-    return parseBoundedInt(row?.value, 3900, 800, 3900);
+    return parseBoundedInt(row?.value, 1800, 800, 1800);
   } catch (error) {
     console.warn("[Bot] long-answer config lookup failed; using default", error);
-      return 3900;
+      return 1800;
   }
 }
 
@@ -592,19 +626,12 @@ export function registerCommandHandlers(b: Bot) {
         return;
       }
 
-      // Late-submission guards
       const todayStr  = new Date().toISOString().slice(0, 10);
       const isOverdue = !!(hw.dueDate && hw.dueDate < todayStr);
-      const lateByDays = isOverdue && hw.dueDate ? Math.round(
-        (new Date(todayStr + "T00:00:00Z").getTime() - new Date(hw.dueDate + "T00:00:00Z").getTime()) / 86400000
-      ) : 0;
+      const lateByDays = getLateByDays(hw.dueDate, todayStr);
 
-      if (isOverdue && !hw.allowLateSubmission) {
-        await reply(ctx, `⏰ <b>${hw.title}</b>\n\nBu vazifa muddati tugagan va kech topshirish ruxsat etilmaydi.`);
-        return;
-      }
-      if (isOverdue && hw.hardCloseAt && hw.hardCloseAt < todayStr) {
-        await reply(ctx, `⏰ <b>${hw.title}</b>\n\nBu vazifaning qabul qilish muddati ham o'tdi (${fmtUzDate(hw.hardCloseAt)}).`);
+      if (!isHomeworkAcceptingSubmissions(hw)) {
+        await reply(ctx, closedHomeworkMessage(hw));
         return;
       }
 
@@ -633,7 +660,7 @@ export function registerCommandHandlers(b: Bot) {
       const doneKb    = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
 
       let prompt = `📎 <b>${hw.title}</b>`;
-      if (isOverdue) prompt += `\n\n⏰ <i>Bu vazifa muddati ${lateByDays} kun oldin o'tdi — kechikkan holda topshiriladi.</i>`;
+      if (isOverdue) prompt += lateOpenHomeworkMessage(lateByDays);
       prompt += "\n\n";
       if (existingSub && fileCount > 0) {
         prompt += `Allaqachon ${fileCount} ta fayl yuborilgan.\n\n`;
@@ -678,6 +705,14 @@ export function registerCommandHandlers(b: Bot) {
 
     if (!pf) {
       await reply(ctx, "Tasdiqlanadigan fayl topilmadi.");
+      return;
+    }
+
+    const hw = await findSubmissionHomeworkGate(pf.submissionId);
+    if (hw && !isHomeworkAcceptingSubmissions(hw)) {
+      pendingFiles.delete(chatKey);
+      pendingSubmissions.delete(chatKey);
+      await reply(ctx, closedHomeworkMessage(hw));
       return;
     }
 
@@ -799,17 +834,6 @@ export function registerCommandHandlers(b: Bot) {
     const homeworks   = await prisma.homework.findMany({
       where: {
         trainingId: { in: trainingIds },
-        OR: [
-          { dueDate: null },
-          { dueDate: { gte: today } },
-          {
-            AND: [
-              { dueDate: { lt: today } },
-              { allowLateSubmission: true },
-              { OR: [{ hardCloseAt: null }, { hardCloseAt: { gte: today } }] },
-            ],
-          },
-        ],
       },
       include: {
         training:    { select: { name: true } },
@@ -825,7 +849,7 @@ export function registerCommandHandlers(b: Bot) {
     });
 
     if (homeworks.length === 0) {
-      await reply(ctx, "📭 Hozircha ochiq vazifa yo'q.");
+      await reply(ctx, "📭 Hozircha vazifa yo'q.");
       return;
     }
 
@@ -836,25 +860,27 @@ export function registerCommandHandlers(b: Bot) {
       const sub    = hw.submissions[0];
       const graded = sub?.grade;
       const isOverdue = hw.dueDate && hw.dueDate < today;
-      const icon   = graded ? "✅" : sub ? "📤" : (isOverdue ? "⏰" : "⏳");
+      const accepting = isHomeworkAcceptingSubmissions(hw);
+      const icon   = graded ? "✅" : !accepting ? "🔒" : sub ? "📤" : (isOverdue ? "⏰" : "⏳");
 
       text +=
         `${icon} <b>${hw.title}</b>` +
-        (isOverdue && !sub ? " <i>(kechikkan)</i>" : "") + "\n" +
+        (isOverdue && accepting && !graded ? " <i>(kech topshirish ochiq)</i>" : "") + "\n" +
         `   📚 ${hw.training.name}\n` +
         (hw.dueDate ? `   📅 Muddat: ${fmtUzDate(hw.dueDate)}\n`    : "") +
+        (!accepting && !graded ? "   🔒 Qabul yopilgan\n" : "") +
         (graded     ? `   ⭐ Baho: ${graded.score}/${hw.maxScore}\n` : "") +
         (sub && !graded && sub.files.length > 0
           ? `   📎 ${sub.files.length} ta fayl topshirilgan\n`       : "") +
         "\n";
 
-      if (!graded) {
+      if (!graded && accepting) {
         ungradedBtns.push({ label: `${i + 1}`, data: `hw_select:${hw.id}` });
       }
     });
 
     if (ungradedBtns.length === 0) {
-      text += "\n✅ Barcha vazifalar baholangan!";
+      text += "\n✅ Barcha vazifalar baholangan yoki qabul yopilgan!";
       await reply(ctx, text, { reply_markup: linkedKeyboard() });
       return;
     }
@@ -909,6 +935,14 @@ export function registerCommandHandlers(b: Bot) {
 
     // Plain text submission
     if (pending && pending.submissionId) {
+      const hw = await findSubmissionHomeworkGate(pending.submissionId);
+      if (hw && !isHomeworkAcceptingSubmissions(hw)) {
+        pendingSubmissions.delete(chatKey);
+        pendingFiles.delete(chatKey);
+        await reply(ctx, closedHomeworkMessage(hw));
+        return;
+      }
+
       const updatedSub = await prisma.homeworkSubmission.update({
         where:   { id: pending.submissionId },
         data:    { text },
@@ -1156,16 +1190,18 @@ export function registerCommandHandlers(b: Bot) {
           await mergeBotMessageMetadata(msgId, { telegram_message_count: splitParts.length });
         } else {
           // Send direct answers when they fit Telegram's message limit.
-          const ttsKb = new InlineKeyboard()
-            .text("📚 Manba", `manba_${msgId ?? "0"}`)
-            .text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
+          const replyMarkup = answer.length > SHORT_ANSWER_LIMIT
+            ? new InlineKeyboard()
+                .text("📚 Manba", `manba_${msgId ?? "0"}`)
+                .text("🔊 Tinglash", `tts_${msgId ?? "0"}`)
+            : undefined;
           const sanitized = sanitizeMarkdown(`💡 ${answer}`);
           let sentTelegramMsgId: number | null = null;
           try {
-            sentTelegramMsgId = await reply(ctx, sanitized, { parse_mode: "Markdown", reply_markup: ttsKb });
+            sentTelegramMsgId = await reply(ctx, sanitized, { parse_mode: "Markdown", ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
           } catch (mdErr) {
             if (String(mdErr).includes("can't parse")) {
-              sentTelegramMsgId = await reply(ctx, `💡 ${answer}`, { reply_markup: ttsKb });
+              sentTelegramMsgId = await reply(ctx, `💡 ${answer}`, replyMarkup ? { reply_markup: replyMarkup } : undefined);
             } else {
               throw mdErr;
             }
@@ -1325,6 +1361,14 @@ export function registerCommandHandlers(b: Bot) {
 
     if (!pending || !pending.submissionId) {
       await reply(ctx, "📎 Fayl qabul qilindi, lekin hozirda topshiriq tanlanmagan.\n\n/homework — vazifani tanlang.");
+      return;
+    }
+
+    const hw = await findSubmissionHomeworkGate(pending.submissionId);
+    if (hw && !isHomeworkAcceptingSubmissions(hw)) {
+      pendingSubmissions.delete(chatKey);
+      pendingFiles.delete(chatKey);
+      await reply(ctx, closedHomeworkMessage(hw));
       return;
     }
 

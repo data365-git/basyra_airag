@@ -15,6 +15,11 @@ function serializeHw(hw: {
   hardCloseAt: string | null;
   allowLateSubmission: boolean;
   latePenaltyPercent: number | null;
+  acceptingSubmissions: boolean;
+  closedAt: Date | null;
+  closedById: string | null;
+  reopenedAt: Date | null;
+  reopenedById: string | null;
   maxScore: number;
   createdAt: Date;
   trainingId: string;
@@ -28,6 +33,11 @@ function serializeHw(hw: {
     hard_close_at: hw.hardCloseAt,
     allow_late_submission: hw.allowLateSubmission,
     late_penalty_percent: hw.latePenaltyPercent,
+    accepting_submissions: hw.acceptingSubmissions,
+    closed_at: hw.closedAt,
+    closed_by_id: hw.closedById,
+    reopened_at: hw.reopenedAt,
+    reopened_by_id: hw.reopenedById,
     max_score: hw.maxScore,
     created_at: hw.createdAt,
     training_id: hw.trainingId,
@@ -75,6 +85,12 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
 
+  const current = await prisma.homework.findUnique({
+    where:  { id },
+    select: { acceptingSubmissions: true },
+  });
+  if (!current) return NextResponse.json({ error: "Homework not found" }, { status: 404 });
+
   const data: Record<string, unknown> = {};
   if (body.title                !== undefined) data.title               = String(body.title).trim();
   if (body.description          !== undefined) data.description         = body.description?.trim() || null;
@@ -84,6 +100,22 @@ export async function PATCH(
   if (body.allow_late_submission !== undefined) data.allowLateSubmission = Boolean(body.allow_late_submission);
   if (body.late_penalty_percent !== undefined) data.latePenaltyPercent  = body.late_penalty_percent === null ? null : Number(body.late_penalty_percent);
   if (body.max_score            !== undefined) data.maxScore            = Number(body.max_score);
+  if (body.accepting_submissions !== undefined) {
+    const acceptingSubmissions = Boolean(body.accepting_submissions);
+    data.acceptingSubmissions = acceptingSubmissions;
+
+    if (acceptingSubmissions !== current.acceptingSubmissions) {
+      if (acceptingSubmissions) {
+        data.closedAt = null;
+        data.closedById = null;
+        data.reopenedAt = new Date();
+        data.reopenedById = user.id;
+      } else {
+        data.closedAt = new Date();
+        data.closedById = user.id;
+      }
+    }
+  }
 
   const updated = await prisma.homework.update({ where: { id }, data });
 
