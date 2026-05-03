@@ -13,19 +13,19 @@
 ## 2. Tech Stack
 
 | Layer | Technology |
-|---|---|
+|-------|-----------|
 | Framework | Next.js 16.2 (App Router, React 19) |
 | Language | TypeScript 5 |
 | Database | PostgreSQL via Prisma 7 |
 | Styling | Tailwind CSS 4 (no UI library — custom components in `src/components/ui/`) |
-| Telegram Bot | grammy 1.42 (webhook-based) |
 | Auth | JWT via `jose` (bcryptjs for passwords) |
+| Hosting | Railway (`railway up --detach`) |
+| Telegram Bot | grammy 1.42 (webhook-based) |
 | File Storage | Cloudflare R2 (`@aws-sdk/client-s3`) with local disk fallback |
 | Offline | Dexie.js (IndexedDB) for queueing scans when network is down |
 | AI / RAG | Separate Python FastAPI service (`../Basyra/Basyra AI chatbot/`), called via HTTP |
 | Vector DB | pgvector on Railway — cohorts/lessons/chunks schema |
 | Testing | Vitest |
-| Deployment | Railway (`railway up`); migrations run via `preDeployCommand` in `railway.toml` |
 | i18n | Custom JSON files (`uz` / `en` / `ru`) in `src/i18n/` via `LanguageProvider` context |
 
 ---
@@ -101,20 +101,83 @@ src/
 
 ---
 
-## 4. Conventions & Patterns
+## 4. Environment Variables
+
+```bash
+# Required — LMS
+DATABASE_URL=          # PostgreSQL connection string (Railway)
+JWT_SECRET=            # Staff auth token signing key
+TELEGRAM_BOT_TOKEN=    # grammy webhook bot token
+RAG_SERVICE_URL=       # URL of the Python FastAPI RAG service
+GEMINI_API_KEY=        # Used by intentRouter + inboxClassifier fallback
+OPENAI_API_KEY=        # Used for TTS
+
+# Required — File storage (Cloudflare R2)
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=
+R2_PUBLIC_URL=         # Public base URL for stored files
+
+# Required — Python RAG service (separate .env in Basyra AI chatbot/)
+DATABASE_URL=          # Same Railway pgvector DB
+GEMINI_API_KEY=
+RAG_SECRET_TOKEN=      # Shared secret for internal API calls (redaction terms etc.)
+```
+
+---
+
+## 5. Running the Project
+
+```bash
+# Install
+npm install
+
+# Development
+npm run dev
+
+# Build (runs prisma generate first, then next build)
+npm run build
+
+# Production start
+npm start
+
+# Tests
+npm test
+npm run test:watch
+
+# Seed database
+npm run seed
+
+# Deploy LMS to Railway
+railway up --detach
+
+# Deploy RAG service (run from its own directory)
+cd "../Basyra/Basyra AI chatbot" && railway up --detach
+```
+
+---
+
+## 6. Conventions & Patterns
 
 ### API serialization boundary
 All HTTP responses use **`snake_case`** keys. Prisma models use `camelCase` internally.
-Per-route serializer functions (`mapUser`, `serializeMaterial`, `mapHw`, `serializeHw`, etc.) handle conversion.
+Per-route serializer functions (`mapUser`, `serializeMaterial`, `serializeHw`, etc.) handle conversion.
 **Never return a raw Prisma object from a route.** Always serialize explicitly — prevents field leakage.
 
 ### Timezone — always Asia/Tashkent (UTC+5, no DST)
 Use `getTodayInTashkent()` from `src/lib/sessionWindow.ts` on the server.
 Never use `new Date().toISOString().slice(0, 10)` — that gives UTC date, 5 hours behind.
 
-### Session dates are plain strings
-`Session.sessionDate` stored as `"YYYY-MM-DD"` text, not `DateTime`.
-Query with string equality: `where: { sessionDate: "2026-04-12" }`.
+### Homework date fields are plain strings
+`dueDate`, `startDate`, `hardCloseAt` all stored as `"YYYY-MM-DD"` text, not `DateTime`.
+Compare with string inequality: `today > homework.hardCloseAt`.
+
+### Homework submission gate (three layers)
+1. `acceptingSubmissions = false` → 403 (manual admin close)
+2. `hardCloseAt` passed → 403 (absolute cutoff, no exceptions)
+3. `allowLateSubmission = false` AND `dueDate` passed → 403 (soft deadline, no late allowed)
+If `allowLateSubmission = true` and past `dueDate`, submission is accepted and marked `isLate = true`.
 
 ### No time-based scan window
 A session is scannable any time on its calendar day. `getSessionState()` returns `active` when today === sessionDate regardless of clock time. `Training.scanWindowBefore` / `scanWindowAfter` exist in schema but are **not enforced**.
@@ -146,7 +209,7 @@ All user-facing strings go through `t()` from `LanguageProvider`. Missing keys r
 ### Bot message pipeline (aiClient.ts)
 After RAG returns, response goes through:
 `joinAnswerParts → dedupeResponse → stripBannedOpener → await applyRedactionTerms`
-Each step is independently tested. Don't short-circuit this chain.
+Don't short-circuit this chain.
 
 ### Bot cost logging
 After every `askRag` or TTS call, call `logUsage()` from `src/lib/aiClient.ts` fire-and-forget. Writes to `BotUsageLog`.
@@ -159,37 +222,7 @@ The sidebar has two modes — LMS and Bot workspace — toggled by `inBotWorkspa
 
 ---
 
-## 5. Running the Project
-
-```bash
-# Development
-npm run dev
-
-# Build (runs prisma generate first, then next build)
-npm run build
-
-# Production start
-npm start
-
-# Tests
-npm test
-npm run test:watch
-
-# Seed database
-npm run seed
-
-# Deploy LMS to Railway
-railway up --detach
-
-# Deploy RAG service (from its own directory)
-cd "../Basyra/Basyra AI chatbot" && railway up --detach
-```
-
-**Environment variables needed:** `DATABASE_URL`, `JWT_SECRET`, `TELEGRAM_BOT_TOKEN`, `RAG_SERVICE_URL`, `R2_*` bucket keys, `GEMINI_API_KEY`, `OPENAI_API_KEY`.
-
----
-
-## 6. Important Notes
+## 7. Important Notes
 
 1. **`prisma generate` before `next build`** — the build script does this, but run it manually if you see "model not found" in `tsc --noEmit`.
 
@@ -207,43 +240,42 @@ cd "../Basyra/Basyra AI chatbot" && railway up --detach
 
 8. **TelegramLink sync** — participants get a `TelegramLink` row on `/login`. If missing, they get "Telegram akkauntingiz ulanmagan". The portal calls `/api/portal/ensure-telegram-link` fire-and-forget on every load.
 
-9. **RAG vector DB** — cohorts/lessons/chunks live in a pgvector schema on Railway. All cohorts must have `course_id` set or the RAG won't associate answers with a course. Use the `courses` + `cohorts` + `lessons` + `chunks` tables.
+9. **RAG vector DB** — cohorts/lessons/chunks live in a pgvector schema on Railway. All cohorts must have `course_id` set or the RAG won't associate answers with a course.
 
 10. **No time-based session gating** — never add clock-time checks for scan eligibility.
 
 ---
 
-## Updating This File
+## Keeping This File Current
 
-Review changes made. **Only update CLAUDE.md if something structurally meaningful changed** — new feature area, new dependency, changed convention, new folder.
+Update CLAUDE.md when something **structurally meaningful** changes:
+- New feature area or major dependency added
+- Folder structure or naming convention changed
+- New required environment variable
+- Deployment process changed
 
-Do NOT update for:
-- Minor bug fixes or small tweaks
-- Styling or copy changes
-- Anything that wouldn't matter to someone understanding the project for the first time
-
-Keep this file clean and focused on what actually matters.
-
----
-
-## Parallel Agents
-
-When making independent changes across multiple files, launch multiple subagents in parallel by including **ALL Task tool calls in a single message**. Do not serialize independent edits — spawn one subagent per independent change and run them simultaneously.
+**Do NOT update for:** bug fixes, style changes, copy tweaks, or anything that wouldn't matter to someone reading the project for the first time.
 
 ---
 
-## Behavioral Guidelines (Karpathy Rules)
+## Working in Parallel
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+When making **independent** changes across multiple files, launch all Agent tool calls in a **single message** so they run concurrently. Do not serialize work that can be parallelized — one agent per independent change, all dispatched at once.
+
+---
+
+## Behavioral Guidelines
+
+These rules reduce common LLM coding mistakes. They bias toward caution — use judgment on trivial tasks.
 
 ### 1. Think Before Coding
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+**Don't assume. Surface tradeoffs. Ask when unclear.**
 
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them — don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+- State your assumptions explicitly before implementing.
+- If multiple interpretations exist, name them — don't pick silently.
+- If a simpler approach exists, say so and push back.
+- If something is genuinely unclear, stop and ask. Don't guess.
 
 ### 2. Simplicity First
 
@@ -251,37 +283,41 @@ When making independent changes across multiple files, launch multiple subagents
 
 - No features beyond what was asked.
 - No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
+- No "flexibility" or "extensibility" that wasn't requested.
+- No error handling for scenarios that can't happen.
+- If you wrote 200 lines and it could be 50, rewrite it.
 
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+> Ask: "Would a senior engineer call this overcomplicated?" If yes — simplify.
 
 ### 3. Surgical Changes
 
-**Touch only what you must. Clean up only your own mess.**
+**Touch only what you must.**
 
-- Don't "improve" adjacent code, comments, or formatting.
+When editing existing code:
+- Don't improve adjacent code, comments, or formatting unless asked.
 - Don't refactor things that aren't broken.
 - Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it — don't delete it.
-- Remove imports/variables/functions that YOUR changes made unused.
+- If you spot unrelated dead code, mention it — don't delete it.
 
-The test: Every changed line should trace directly to the user's request.
+When your changes create orphans:
+- Remove imports, variables, and functions that **your** changes made unused.
+- Don't remove pre-existing dead code unless explicitly asked.
 
-### 4. Goal-Driven Execution
+> Test: every changed line should trace directly to the user's request.
 
-**Define success criteria. Loop until verified.**
+### 4. Verify Before Reporting Done
 
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+**Define success criteria upfront. Loop until verified.**
 
-For multi-step tasks, state a brief plan:
+For multi-step tasks, state a brief plan first:
 ```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+1. [What] → verify: [how to confirm it worked]
+2. [What] → verify: [how to confirm it worked]
+3. [What] → verify: [how to confirm it worked]
 ```
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+Run the check before saying "done." If you can't verify (e.g. needs a browser), say so explicitly and describe what the user should check.
+
+---
+
+**These guidelines are working when:** diffs are clean, rewrites are rare, and questions come before implementation — not after.
