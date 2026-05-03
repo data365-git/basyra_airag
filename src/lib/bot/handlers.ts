@@ -916,8 +916,15 @@ export function registerCommandHandlers(b: Bot) {
     const pending = pendingSubmissions.get(chatKey);
 
     // ── Anonymous gate ────────────────────────────────────────────────────
-    const linkCheck = await prisma.telegramLink.findFirst({ where: { chatId: BigInt(ctx.chat.id) } });
-    if (!linkCheck) {
+    // Accept either a participant link OR a staff link — the contact-share
+    // handler creates whichever one matches the phone, so both count as
+    // "registered" for the purpose of this gate.
+    const chatId = BigInt(ctx.chat.id);
+    const [participantLink, staffLink] = await Promise.all([
+      prisma.telegramLink.findFirst({ where: { chatId }, select: { participantId: true } }),
+      prisma.staffTelegramLink.findFirst({ where: { chatId }, select: { id: true } }),
+    ]);
+    if (!participantLink && !staffLink) {
       await reply(ctx,
         "🔒 Botdan foydalanish uchun avval ro'yxatdan o'ting.\n\n" +
         "Telefon raqamingizni ulash uchun /login buyrug'ini bosing."
@@ -981,7 +988,6 @@ export function registerCommandHandlers(b: Bot) {
     }
 
     // ── Check if awaiting a rating comment ────────────────────────────────
-    const chatId = BigInt(ctx.chat!.id);
     const pendingRatingMsgId = pendingRatingComment.get(chatId.toString());
     if (pendingRatingMsgId) {
       pendingRatingComment.delete(chatId.toString());
@@ -1002,8 +1008,8 @@ export function registerCommandHandlers(b: Bot) {
     // ── Intent routing ─────────────────────────────────────────────────────
     const telegramMsgId = ctx.message?.message_id;
     const replyToTelegramMsgId = ctx.message?.reply_to_message?.message_id;
-    const linkRow = await prisma.telegramLink.findFirst({ where: { chatId }, select: { participantId: true } });
-    const participantId = linkRow?.participantId ?? undefined;
+    const participantId = participantLink?.participantId ?? undefined;
+    const isStaff = !!staffLink;
     const replyContext = await resolveReplyContext(chatId, replyToTelegramMsgId);
     const userMsgId = await logBotMessage({
       chatId,
@@ -1051,7 +1057,7 @@ export function registerCommandHandlers(b: Bot) {
         await prisma.studentFeedback.create({
           data: {
             chatId,
-            participantId: linkRow?.participantId ?? null,
+            participantId: participantLink?.participantId ?? null,
             category:      intent,
             severity:      severity ?? null,
             tags,
@@ -1244,8 +1250,8 @@ export function registerCommandHandlers(b: Bot) {
           }
         }
 
-        // CTA frequency cap — show at most once every 3 bot replies
-        let showCta = !participantId;
+        // CTA frequency cap — show at most once every 3 bot replies, never to staff
+        let showCta = !participantId && !isStaff;
         if (showCta) {
           const recentBotMsgs = await prisma.botMessage.findMany({
             where: { chatId, role: "assistant" },
@@ -1288,9 +1294,14 @@ export function registerCommandHandlers(b: Bot) {
     const chatKey = String(ctx.chat.id);
 
     // ── Anonymous gate ────────────────────────────────────────────────────
+    // Accept either a participant link OR a staff link — same dual-table
+    // check as the text gate above.
     const chatIdBig = BigInt(ctx.chat.id);
-    const fileLinkCheck = await prisma.telegramLink.findFirst({ where: { chatId: chatIdBig } });
-    if (!fileLinkCheck) {
+    const [fileParticipantLink, fileStaffLink] = await Promise.all([
+      prisma.telegramLink.findFirst({ where: { chatId: chatIdBig }, select: { id: true } }),
+      prisma.staffTelegramLink.findFirst({ where: { chatId: chatIdBig }, select: { id: true } }),
+    ]);
+    if (!fileParticipantLink && !fileStaffLink) {
       await reply(ctx,
         "🔒 Botdan foydalanish uchun avval ro'yxatdan o'ting.\n\n" +
         "Telefon raqamingizni ulash uchun /login buyrug'ini bosing."
