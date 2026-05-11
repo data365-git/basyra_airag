@@ -59,6 +59,50 @@ const prismaBotModels = prisma as typeof prisma & {
   botTtsChunk: BotTtsChunkDelegate;
 };
 
+const CYR_TO_LAT = new Map<string, string>([
+  ['Ш','Sh'],['ш','sh'],['Щ','Sh'],['щ','sh'],
+  ['Ч','Ch'],['ч','ch'],['Ц','Ts'],['ц','ts'],
+  ['Ю','Yu'],['ю','yu'],['Я','Ya'],['я','ya'],
+  ['Ё','Yo'],['ё','yo'],['Е','Ye'],['е','ye'],
+  ['Ж','J'], ['ж','j'], ['Ң','Ng'],['ң','ng'],
+  ['Ғ',"G'"],['ғ',"g'"],['Ў',"O'"],['ў',"o'"],
+  ['А','A'],['а','a'],['Б','B'],['б','b'],['В','V'],['в','v'],
+  ['Г','G'],['г','g'],['Д','D'],['д','d'],['З','Z'],['з','z'],
+  ['И','I'],['и','i'],['Й','Y'],['й','y'],['К','K'],['к','k'],
+  ['Л','L'],['л','l'],['М','M'],['м','m'],['Н','N'],['н','n'],
+  ['О','O'],['о','o'],['П','P'],['п','p'],['Р','R'],['р','r'],
+  ['С','S'],['с','s'],['Т','T'],['т','t'],['У','U'],['у','u'],
+  ['Ф','F'],['ф','f'],['Х','X'],['х','x'],['Ъ',"'"],['ъ',"'"],
+  ['Ы','I'],['ы','i'],['Ь',''], ['ь',''], ['Э','E'],['э','e'],
+  ['Ҳ','H'],['ҳ','h'],['Қ','Q'],['қ','q'],
+]);
+
+/** Transliterate Uzbek Cyrillic → Latin so RAG embeddings match indexed content. */
+function cyrillicToLatin(text: string): string {
+  if (!/[Ѐ-ӿ]/.test(text)) return text;
+  return [...text].map(ch => CYR_TO_LAT.get(ch) ?? ch).join('');
+}
+
+/**
+ * Expand known business abbreviations in-place so the RAG embedding gets
+ * enough context to retrieve the right chunks. The expansion is appended in
+ * parentheses so the original term is preserved for exact-match too.
+ */
+const ABBR_EXPANSIONS: Array<[RegExp, string]> = [
+  [/\bRNP\b/gi, "RNP (Расчет Недельного Плана, haftaliy reja hisob-kitobi, weekly plan dashboard)"],
+  [/\bKPI\b/gi, "KPI (key performance indicators, asosiy samaradorlik ko'rsatkichlari)"],
+  [/\bROP\b/gi, "ROP (sotuv bo'limi rahbari, rukovoditel otdela prodaj)"],
+  [/\bCRM\b/gi, "CRM (customer relationship management, mijozlar bilan munosabatlar tizimi)"],
+];
+
+function expandAbbreviations(text: string): string {
+  let result = text;
+  for (const [pattern, expansion] of ABBR_EXPANSIONS) {
+    result = result.replace(pattern, expansion);
+  }
+  return result;
+}
+
 /** Repair unbalanced Markdown delimiters that cause Telegram to silently drop formatting */
 function sanitizeMarkdown(text: string): string {
   let result = text;
@@ -1087,10 +1131,11 @@ export function registerCommandHandlers(b: Bot) {
           return;
         }
         const memory = await loadConversationMemory(chatId, userMsgId);
+        const ragText = expandAbbreviations(cyrillicToLatin(text));
         const { text: answer, raw, metadata } = await askRag({
           chat_id:        ctx.chat!.id,
           participant_id: participantId,
-          question:       buildConversationAwareQuestion(text, replyContext, memory),
+          question:       buildConversationAwareQuestion(ragText, replyContext, memory),
         });
 
         const DIRECT_ANSWER_LIMIT = await resolveLongAnswerLimit();
@@ -1157,7 +1202,6 @@ export function registerCommandHandlers(b: Bot) {
           const kb = new InlineKeyboard()
             .url("📖 To'liq o'qish", `${appUrl}/article/${longAnswer.id}`)
             .text("📚 Manba", `manba_${msgId ?? "0"}`)
-            .text("🔊 Ovozda tinglash", `tts_${msgId ?? "0"}`)
             .url("📄 PDF yuklab olish", `${appUrl}/article/${longAnswer.id}?print=1`);
 
           const summaryText = sanitizeMarkdown(makeLongAnswerPreview(summary));
@@ -1177,7 +1221,6 @@ export function registerCommandHandlers(b: Bot) {
             const kb = isLast
               ? new InlineKeyboard()
                   .text("📚 Manba", `manba_${msgId ?? "0"}`)
-                  .text("🔊 Tinglash", `tts_${msgId ?? "0"}`)
               : undefined;
             const sanitized = sanitizeMarkdown(`${prefix}${part}`);
             let sent: number | null = null;

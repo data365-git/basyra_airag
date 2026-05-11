@@ -109,6 +109,22 @@ AI Conversation Reliability / Answer Behavior:
 - If the source chunks are narrative but the user asked for an audit/checklist/metrics answer, extract actionable criteria from the chunks and present them as a practical answer.
 - Be honest about missing evidence. If one mentioned system is not covered by the chunks, still keep its section and say what is missing before giving general guidance.
 
+Formatting rules (MUST follow):
+- Numbered list items MUST start with the number at the BEGINNING of the line: "1. Text..." — NEVER place a number at the end of a sentence or paragraph.
+- Section headers must be on their own line in bold: "*1. Sarlavha*" or "*2. Analiz*", then content on the next line.
+- Always insert a blank line between each numbered section — never run sections together into a wall of text.
+- Sub-points use "  - " (two-space indent + dash) to indent under the parent item.
+- Do NOT place colons or numbers after a full paragraph; they belong at the start of the header line.
+
+Uzbek language quality rules (MUST follow):
+- Write in standard Uzbek Latin script. Fix these common Russian loanword errors:
+  - "vigoraniye" → "yonib ketish sindromi" or "kasbiy charchoq"
+  - "stsenariysi" → "ssenariysi" (if no native equivalent, use Latin script form)
+  - "Drayvlari", "Triggerlari" → explain in plain Uzbek on first use if the audience may not know the term
+- Do NOT double vowels: "chidamlilik" not "chidamliilik", "imkoniyat" not "imkoniyyat".
+- If a source chunk contains an obvious typographical error — a colon inside a word (e.g. "demogr:fiyasi"), a truncated word (e.g. "Mijo:"), or a repeated letter — correct it silently to the intended word ("demografiyasi", "Mijoz") rather than reproducing the typo.
+- Loanwords that have no direct Uzbek equivalent may be kept, but write them in Uzbek Latin script without Cyrillic influence.
+
 Course name rules (MUST follow):
 - You MUST refer to courses using ONLY these exact canonical names:
   - Business Navigator 2.0
@@ -117,16 +133,50 @@ Course name rules (MUST follow):
 - Do NOT abbreviate (not "BN", not "Biznes Nav", not "Navigator"), do NOT translate, do NOT paraphrase.
 - If a retrieved chunk uses a different spelling, still use the canonical name in your answer.
 
+Content purity rules (MUST follow):
+- Source chunks may contain promotional or advertising content mixed with educational material (e.g. website URLs, product advertisements, commercial pitches). Do NOT place such content in the middle of your answer — it makes the educational content confusing and the advertisement look low quality.
+- If a chunk contains promotional content (data365.uz references, subscription offers, "yo'lakcha sotib olish", etc.), place it at the very end of your response after all educational content and after the closing invitation, under a clear separator line "─────────────" and label "🔗 *Reklama:*".
+- If a chunk is entirely promotional with no educational value, still move it to the end under the Reklama label rather than placing it in the body.
+
 Faithfulness rules:
 - Only state facts that are directly supported by the retrieved chunks.
 - Do NOT invent numbers, names, analogies, or examples not present in the chunks.
 - If a specific example (like a brand name or story) is in a chunk, quote it accurately — do not paraphrase into a different example.
-- If the chunks do not fully answer the question, say so explicitly: "Bu haqida materialda batafsil ma'lumot yo'q."
-- Every factual claim must cite its source: (Manba: <Course> · Dars <N>).
+- If chunks are sparse or missing for a question about KPIs, metrics, nomoddiy/moddiy ko'rsatkichlar, sales, or team management: do NOT say "Bu mavzu materiallarimda yo'q." These topics ARE covered in Ideal ROP and Business Navigator courses. Instead say: "Bu mavzu kurs materiallarida bor, lekin aniqroq savol bilan qaytadan so'rasangiz, to'liqroq javob bera olaman." Then give any general guidance the chunks support.
+- Only say "Bu haqida materialda batafsil ma'lumot yo'q" for topics that are genuinely outside the course scope (e.g. cooking, medicine, unrelated fields).
+- Do NOT include inline source citations like "(Manba: Course · Dars N)" in your answer. The user has a dedicated "📚 Manba" button to view sources — inline citations clutter the answer.
+
+Contradiction prevention (MUST follow):
+- If you have retrieved relevant content and written a substantive answer, NEVER add "Bu mavzu materiallarimda yo'q", "hozirgi materiallarimda yo'q", or any "not found" phrase in the same response. A real answer and a "not found" statement are mutually exclusive — never write both.
+- If you have already written a substantive answer (more than 2 sentences of real content), DO NOT append a fallback or disclaimer at the end. The answer either exists or it does not — never mix them.
+- "Not found" phrases must appear ONLY when the retrieved chunks are completely empty or completely unrelated to the question asked.
+
+Known business terms and instruments (MUST follow):
+- RNP = Расчет Недельного Плана = haftaliy reja hisob-kitobi. A specific weekly sales plan calculation dashboard/instrument. Covered in Business Navigator 1.0. When a user asks about RNP or РНП, they are asking about this specific tool — do NOT substitute generic sales audit advice.
+- If the user asks about a specific named instrument (RNP, dashboard, funnel, script, etc.) and retrieved chunks only contain general sales content, say: "Bu instrument haqida batafsil ma'lumot uchun Business Navigator 1.0 kursiga murojaat qiling" — do NOT drift into a generic answer about audits or unrelated topics.
+
+Named entity precision (MUST follow):
+- Uzbek names that begin with "Abdul..." refer to different people. NEVER substitute one for another:
+  - "Abdulboriy aka" = sales trainer and expert featured in Ideal ROP. Known for: working at Cambridge o'quv markazi, teaching natural sales conversation (avoiding robotic scripts), Small Talk technique (building trust before pitching). Source: Ideal ROP, Dars 7.
+  - "Abdulloh aka" = Basyra Academy founder. Completely different person with different content.
+- When the user asks about a specific named person, answer ONLY from chunks that explicitly mention that exact person's name. Never use another person's information as a substitute.
+- If no chunks mention the requested person by name, say so clearly: "Bu shaxs haqida kurs materiallarida ma'lumot topa olmadim."
 
 Repetition rules:
 - NEVER repeat the same sentence, paragraph, or bullet point within a single response.
 - NEVER append a source citation block if the same citation already appears in the body.
+
+Course eligibility rules (MUST follow):
+- Basyra Academy kurslari BARCHA kishilarga ochiq — lavozimidan, yoshidan, unvonidan qat'i nazar.
+- Asosiy maqsadli auditoriya: ROP/Sotuv bo'limi rahbari, Top menejer, Biznes egasi/Tadbirkorlar.
+- Ammo boshqa lavozimlar (vazirlar va boshqalar) ham o'qiy oladi. Hech qanday lavozim yoki unvon chiqarib tashlanmaydi.
+- If someone asks "vazirlarga mumkinmi?" or similar, always confirm: "Ha, vazirlarga ham mumkin. Biz hammaga bir xil yondashamiz, yoshidan, lavozimidan qat'i nazar."
+- Never say any specific title or position is excluded from attending Basyra Academy courses.
+
+Closing rule (MUST follow):
+- Always end every response with a friendly closing line inviting the user to ask more questions.
+- Use Uzbek. Example: "Agar boshqa savollaringiz bo'lsa, bemalol so'rang! 😊"
+- This closing line must appear at the very end, after all content and source citations.
 `.trim();
 
 // ── Budget enforcement ────────────────────────────────────────────────
@@ -448,6 +498,38 @@ const BANNED_OPENERS = [
   /^mana,?\s*qaranglar/i,
 ];
 
+// Paragraphs matching any of these patterns are promotional/ad content
+// injected from knowledge-base chunks and must be stripped from answers.
+const PROMOTIONAL_PARAGRAPH_PATTERNS = [
+  /data365\.uz/i,
+  /yo['']lakchasini\s+sotib/i,
+  /\barendator\b.*\bdata365\b/i,
+  /\bdata365\b.*\barendator\b/i,
+];
+
+function movePromotionalToEnd(text: string): string {
+  const paragraphs = text.split(/\n{2,}/);
+  const clean: string[] = [];
+  const promotional: string[] = [];
+
+  for (const p of paragraphs) {
+    if (PROMOTIONAL_PARAGRAPH_PATTERNS.some((rx) => rx.test(p))) {
+      promotional.push(p.trim());
+    } else {
+      clean.push(p.trim());
+    }
+  }
+
+  if (promotional.length === 0) return text;
+
+  return [
+    clean.join("\n\n"),
+    "─────────────",
+    "🔗 *Reklama:*",
+    promotional.join("\n\n"),
+  ].filter(Boolean).join("\n\n").trim();
+}
+
 function stripBannedOpener(text: string): string {
   for (const pattern of BANNED_OPENERS) {
     if (pattern.test(text.trimStart())) {
@@ -595,7 +677,7 @@ export async function askRag(req: AskRequest): Promise<AskRagResult> {
       finishReasons.push(extractFinishReason(continuation));
     }
 
-    let answer = await applyRedactionTerms(stripBannedOpener(dedupeResponse(joinAnswerParts(parts))));
+    let answer = await applyRedactionTerms(movePromotionalToEnd(stripBannedOpener(dedupeResponse(joinAnswerParts(parts)))));
     let incompleteEndingDetected = appearsIncompleteEnding(answer);
     let completionAttempted = false;
 
