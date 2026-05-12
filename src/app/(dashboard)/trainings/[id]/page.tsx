@@ -1,0 +1,792 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { Edit, Download, Plus, Trash2, UserMinus, Search, CalendarPlus, Clock, CheckCircle, XCircle, AlertTriangle, Zap, BookOpen, Trophy, Loader2 } from "lucide-react";
+import { PageHeader } from "@/components/layout/Header";
+import { TrainingStatusBadge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
+import { CardSkeleton } from "@/components/ui/Skeleton";
+import { ConfirmModal, Modal } from "@/components/ui/Modal";
+import { formatDate, formatTime, getAttendanceColorClass, formatScheduleDays } from "@/lib/utils";
+import { usePermission } from "@/hooks/usePermission";
+import { useTranslation } from "@/providers/LanguageProvider";
+import { getSessionState } from "@/lib/sessionWindow";
+import type { SessionState } from "@/types";
+import toast from "react-hot-toast";
+
+// ─── Session state indicator ────────────────────────────────────────────────
+
+function SessionStateBadge({
+  session,
+}: {
+  session: { session_date: string; session_time: string; is_cancelled?: boolean; force_closed?: boolean };
+}) {
+  const [state, setState] = useState<SessionState | null>(null);
+
+  useEffect(() => {
+    const compute = () => {
+      const s = getSessionState({
+        sessionDate: session.session_date,
+        sessionTime: session.session_time,
+        isCancelled: session.is_cancelled ?? false,
+        forceClosed: session.force_closed ?? false,
+      });
+      setState(s);
+    };
+    compute();
+    const interval = setInterval(compute, 60_000);
+    return () => clearInterval(interval);
+  }, [session.session_date, session.session_time, session.is_cancelled, session.force_closed]);
+
+  if (!state) return null;
+
+  switch (state) {
+    case "active":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+          </span>
+          Live
+        </span>
+      );
+    case "upcoming":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
+          <Clock size={10} />
+          {formatTime(session.session_time)}
+        </span>
+      );
+    case "ended":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5">
+          <CheckCircle size={10} />
+          Done
+        </span>
+      );
+    case "cancelled":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+          <XCircle size={10} />
+          Cancelled
+        </span>
+      );
+    case "force_closed":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5">
+          <AlertTriangle size={10} />
+          Closed
+        </span>
+      );
+    default:
+      return null;
+  }
+}
+
+interface LeaderboardEntry {
+  rank:            number;
+  participant_id:  string;
+  name:            string;
+  overall_score:   number;
+  attendance_rate: number;
+  hw_avg:          number | null;
+  deadline_rate:   number | null;
+  activity_avg:    number | null;
+  sessions_total:  number;
+  hw_submitted:    number;
+  hw_total:        number;
+}
+
+export default function TrainingDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const canManage = usePermission("trainings", "edit");
+  const canManageParticipants = usePermission("participants", "view");
+  const { t } = useTranslation();
+  const [training, setTraining] = useState<any>(null);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [participants, setParticipants] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Delete session state
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ id: string; sessionNumber: number; attendanceCount: number } | null>(null);
+  const [deletingSession, setDeletingSession] = useState(false);
+
+  // Add session modal state
+  const [addSessionOpen, setAddSessionOpen] = useState(false);
+  const [addSessionForm, setAddSessionForm] = useState({ session_date: "", session_time: training?.schedule_time || "09:00" });
+  const [addingSession, setAddingSession] = useState(false);
+
+  // Leaderboard state
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [leaderboard,     setLeaderboard]     = useState<LeaderboardEntry[] | null>(null);
+  const [lbLoading,       setLbLoading]       = useState(false);
+  const [showActivity,    setShowActivity]    = useState(false);
+
+  // Enrollment modal state
+  const [enrollOpen, setEnrollOpen] = useState(false);
+  const [enrollTab, setEnrollTab] = useState<"existing" | "new">("existing");
+  const [enrollSearch, setEnrollSearch] = useState("");
+  const [allParticipants, setAllParticipants] = useState<any[]>([]);
+  const [enrolling, setEnrolling] = useState<Set<string>>(new Set());
+  const [unenrolling, setUnenrolling] = useState<Set<string>>(new Set());
+  const [unenrollConfirm, setUnenrollConfirm] = useState<{ participantId: string; name: string; attendanceCount: number } | null>(null);
+  const [newParticipantForm, setNewParticipantForm] = useState({ full_name: "", phone: "", email: "" });
+  const [creatingAndEnrolling, setCreatingAndEnrolling] = useState(false);
+
+  async function openLeaderboard() {
+    setLeaderboardOpen(true);
+    if (leaderboard) return; // already loaded
+    setLbLoading(true);
+    const res = await fetch(`/api/trainings/${id}/leaderboard`);
+    if (res.ok) setLeaderboard(await res.json());
+    setLbLoading(false);
+  }
+
+  useEffect(() => { if (id) load(); }, [id]);
+
+  async function load() {
+    const [trainingRes, attendanceRes] = await Promise.all([
+      fetch(`/api/trainings/${id}`).then((r) => r.json()),
+      fetch(`/api/attendance?training_id=${id}`).then((r) => r.json()),
+    ]);
+
+    setTraining(trainingRes);
+    setSessions(trainingRes.sessions || []);
+    setParticipants((trainingRes.participants || []).map((tp: any) => tp.participant));
+    setAttendance(Array.isArray(attendanceRes) ? attendanceRes : []);
+    setLoading(false);
+  }
+
+  async function handleAddSession(e: React.FormEvent) {
+    e.preventDefault();
+    setAddingSession(true);
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ training_id: id, ...addSessionForm }),
+    });
+    setAddingSession(false);
+    if (res.ok) {
+      toast.success(t("trainings.session_added"));
+      setAddSessionOpen(false);
+      await load();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Failed to add session");
+    }
+  }
+
+  async function openEnrollModal() {
+    const data = await fetch("/api/participants").then((r) => r.json());
+    setAllParticipants(Array.isArray(data) ? data : []);
+    setEnrollSearch("");
+    setEnrollTab("existing");
+    setNewParticipantForm({ full_name: "", phone: "", email: "" });
+    setEnrollOpen(true);
+  }
+
+  async function handleCreateAndEnroll(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newParticipantForm.full_name.trim()) return;
+    setCreatingAndEnrolling(true);
+
+    const createRes = await fetch("/api/participants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        full_name: newParticipantForm.full_name.trim(),
+        phone: newParticipantForm.phone || null,
+        email: newParticipantForm.email || null,
+      }),
+    });
+
+    if (!createRes.ok) {
+      const err = await createRes.json().catch(() => ({}));
+      toast.error(err.error ?? "Failed to create participant");
+      setCreatingAndEnrolling(false);
+      return;
+    }
+
+    const participant = await createRes.json();
+
+    const enrollRes = await fetch(`/api/trainings/${id}/enroll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participant_id: participant.id }),
+    });
+
+    setCreatingAndEnrolling(false);
+
+    if (enrollRes.ok) {
+      toast.success(`${newParticipantForm.full_name.trim()} — ${t("trainings.participant_enrolled")}`);
+      setNewParticipantForm({ full_name: "", phone: "", email: "" });
+      await load();
+    } else {
+      toast.error(t("trainings.enroll_created_not_enrolled"));
+      await load();
+    }
+  }
+
+  const enrolledIds = new Set(participants.map((p) => p.id));
+
+  const filteredForEnroll = allParticipants.filter(
+    (p) =>
+      !enrolledIds.has(p.id) &&
+      p.full_name.toLowerCase().includes(enrollSearch.toLowerCase())
+  );
+
+  async function handleEnroll(participantId: string) {
+    setEnrolling((s) => new Set(s).add(participantId));
+    const res = await fetch(`/api/trainings/${id}/enroll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participant_id: participantId }),
+    });
+    setEnrolling((s) => { const n = new Set(s); n.delete(participantId); return n; });
+    if (res.ok) {
+      toast.success(t("trainings.participant_enrolled"));
+      await load();
+    } else {
+      toast.error(t("trainings.enroll_failed"));
+    }
+  }
+
+  async function confirmUnenroll() {
+    if (!unenrollConfirm) return;
+    const { participantId } = unenrollConfirm;
+    setUnenrollConfirm(null);
+    setUnenrolling((s) => new Set(s).add(participantId));
+    const res = await fetch(`/api/trainings/${id}/enroll`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participant_id: participantId }),
+    });
+    setUnenrolling((s) => { const n = new Set(s); n.delete(participantId); return n; });
+    if (res.ok) {
+      toast.success(t("trainings.participant_removed"));
+      await load();
+    } else {
+      toast.error(t("trainings.unenroll_failed"));
+    }
+  }
+
+  function handleUnenroll(participantId: string, name: string) {
+    const attendanceCount = attendance.filter((a) => a.participant_id === participantId).length;
+    setUnenrollConfirm({ participantId, name, attendanceCount });
+  }
+
+  function getParticipantRate(participantId: string) {
+    const closedSessions = sessions.filter((s) => s.status === "closed");
+    if (!closedSessions.length) return null;
+    const records = attendance.filter((a) => a.participant_id === participantId && closedSessions.some((s) => s.id === a.session_id));
+    const present = records.filter((r) => r.status === "present" || r.status === "late").length;
+    return Math.round((present / closedSessions.length) * 100);
+  }
+
+  function getSessionStats(sessionId: string) {
+    const recs = attendance.filter((a) => a.session_id === sessionId);
+    return {
+      present: recs.filter((r) => r.status === "present").length,
+      late: recs.filter((r) => r.status === "late").length,
+      absent: recs.filter((r) => r.status === "absent").length,
+      total: participants.length,
+    };
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    await fetch(`/api/trainings/${id}`, { method: "DELETE" });
+    toast.success(t("trainings.deleted"));
+    router.refresh();
+    router.push("/trainings");
+  }
+
+  async function openDeleteSession(sessionId: string, sessionNumber: number) {
+    const recs = attendance.filter((a) => a.session_id === sessionId);
+    setDeleteSessionTarget({ id: sessionId, sessionNumber, attendanceCount: recs.length });
+  }
+
+  async function handleDeleteSession() {
+    if (!deleteSessionTarget) return;
+    setDeletingSession(true);
+    const res = await fetch(`/api/sessions/${deleteSessionTarget.id}`, { method: "DELETE" });
+    setDeletingSession(false);
+    setDeleteSessionTarget(null);
+    if (res.ok) {
+      toast.success(t("sessions.deleted"));
+      await load();
+      router.refresh();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Failed to delete session");
+    }
+  }
+
+  if (loading) return <div className="space-y-4"><CardSkeleton /><CardSkeleton /></div>;
+  if (!training) return <div className="text-center py-16 text-gray-400">{t("trainings.not_found")}</div>;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={training.name}
+        subtitle={t("trainings.schedule_subtitle", { days: formatScheduleDays(training.schedule_days), time: formatTime(training.schedule_time) })}
+        back
+        backHref="/trainings"
+        actions={
+          <>
+            <Link href={`/trainings/${id}/homeworks`}>
+              <Button variant="outline" size="sm">
+                <BookOpen size={14} /> Vazifalar
+              </Button>
+            </Link>
+            {canManage && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(`/api/export/attendance?training_id=${id}`, "_blank")}
+                >
+                  <Download size={14} /> {t("common.export")}
+                </Button>
+                <Link href={`/trainings/${id}/edit`}>
+                  <Button variant="outline" size="sm"><Edit size={14} /> {t("common.edit")}</Button>
+                </Link>
+                <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 size={14} />
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
+
+      {/* Info card */}
+      <Card>
+        <div className="flex flex-wrap gap-6">
+          <div>
+            <p className="text-xs text-gray-500">{t("common.status")}</p>
+            <TrainingStatusBadge status={training.status} />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">{t("trainings.duration_label")}</p>
+            <p className="text-sm font-medium">{formatDate(training.start_date)} — {formatDate(training.end_date)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">{t("trainings.participants_section")}</p>
+            <p className="text-sm font-medium">{participants.length}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">{t("trainings.sessions_section")}</p>
+            <p className="text-sm font-medium">{sessions.length} total</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">{t("trainings.alert_threshold")}</p>
+            <p className="text-sm font-medium">{training.attendance_threshold}%</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Sessions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("trainings.sessions_section")} ({sessions.length})</CardTitle>
+          {canManage && (
+            <Button size="sm" variant="outline" onClick={() => {
+              setAddSessionForm({ session_date: "", session_time: training.schedule_time || "09:00" });
+              setAddSessionOpen(true);
+            }}>
+              <CalendarPlus size={14} /> {t("trainings.add_session")}
+            </Button>
+          )}
+        </CardHeader>
+        <Table>
+          <Thead>
+            <tr>
+              <Th>#</Th>
+              <Th>{t("common.date")}</Th>
+              <Th>{t("trainings.present_col")}</Th>
+              <Th>{t("trainings.absent_col")}</Th>
+              <Th></Th>
+            </tr>
+          </Thead>
+          <Tbody>
+            {sessions.length === 0 ? <EmptyRow cols={5} message={t("trainings.no_sessions")} /> : sessions.map((s) => {
+              const stats = getSessionStats(s.id);
+              return (
+                <Tr key={s.id}>
+                  <Td className="font-medium">
+                    <div className="flex items-center gap-2">
+                      {t("trainings.session_number", { n: s.session_number })}
+                      <SessionStateBadge session={s} />
+                    </div>
+                  </Td>
+                  <Td>{formatDate(s.session_date)}</Td>
+                  <Td className="text-green-600">{stats.present + stats.late} / {stats.total}</Td>
+                  <Td className="text-red-500">{stats.absent}</Td>
+                  <Td>
+                    <div className="flex items-center gap-1">
+                      <Link href={`/trainings/${id}/sessions/${s.id}`}>
+                        <Button size="sm" variant="ghost">{t("common.view")}</Button>
+                      </Link>
+                      {canManage && (
+                        <button
+                          onClick={() => openDeleteSession(s.id, s.session_number)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title={t("sessions.delete_session")}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </Td>
+                </Tr>
+              );
+            })}
+          </Tbody>
+        </Table>
+      </Card>
+
+      {/* Participant roster */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("trainings.participants_section")} ({participants.length})</CardTitle>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => window.open(`/api/export/qr-bulk?training_id=${id}`, "_blank")}
+            >
+              <Download size={14} /> {t("trainings.export_qr")}
+            </Button>
+            {canManage && (
+              <Button size="sm" onClick={openEnrollModal}>
+                <Plus size={14} /> {t("common.add")}
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <Table>
+          <Thead>
+            <tr>
+              <Th>{t("common.name")}</Th>
+              <Th>{t("common.phone")}</Th>
+              <Th>{t("participants.attendance_rate")}</Th>
+              <Th></Th>
+            </tr>
+          </Thead>
+          <Tbody>
+            {participants.length === 0 ? (
+              <EmptyRow cols={4} message={t("trainings.no_enrolled")} />
+            ) : participants.map((p) => {
+              const rate = getParticipantRate(p.id);
+              return (
+                <Tr key={p.id} onClick={() => router.push(`/participants/${p.id}`)}>
+                  <Td className="font-medium">{p.full_name}</Td>
+                  <Td className="text-gray-500">{p.phone || "—"}</Td>
+                  <Td>
+                    {rate !== null ? (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${getAttendanceColorClass(rate)}`}>
+                        {rate}%
+                      </span>
+                    ) : "—"}
+                  </Td>
+                  <Td>
+                    <div className="flex items-center gap-1">
+                      <Link href={`/participants/${p.id}`} className="text-blue-600 text-xs hover:underline" onClick={(e) => e.stopPropagation()}>
+                        {t("common.view")}
+                      </Link>
+                      {canManage && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleUnenroll(p.id, p.full_name); }}
+                          disabled={unenrolling.has(p.id)}
+                          className="ml-2 p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 disabled:opacity-50"
+                          title="Remove from training"
+                        >
+                          <UserMinus size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </Td>
+                </Tr>
+              );
+            })}
+          </Tbody>
+        </Table>
+      </Card>
+
+      {/* Leaderboard */}
+      <Card className="mt-6">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Trophy size={16} className="text-amber-500" />
+            Leaderboard
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {leaderboardOpen && (
+              <button
+                onClick={() => setShowActivity(!showActivity)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                  showActivity ? "bg-indigo-50 border-indigo-200 text-indigo-600" : "border-gray-200 text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                ⚡ Activity
+              </button>
+            )}
+            <Button variant="secondary" size="sm" onClick={leaderboardOpen ? () => setLeaderboardOpen(false) : openLeaderboard}>
+              {leaderboardOpen ? "Hide" : "Show leaderboard"}
+            </Button>
+          </div>
+        </CardHeader>
+
+        {leaderboardOpen && (
+          <div className="px-6 pb-6">
+            {lbLoading || !leaderboard ? (
+              <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>
+            ) : leaderboard.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">No participants yet</p>
+            ) : (
+              <Table>
+                <Thead>
+                  <tr>
+                    <Th>#</Th>
+                    <Th>Name</Th>
+                    <Th>Overall</Th>
+                    <Th>Attendance</Th>
+                    <Th>Tasks</Th>
+                    <Th>Deadline</Th>
+                    {showActivity && <Th>⚡ Activity</Th>}
+                  </tr>
+                </Thead>
+                <Tbody>
+                  {leaderboard.map((entry) => (
+                    <Tr key={entry.participant_id}>
+                      <Td className="text-gray-400 font-mono text-xs">{entry.rank}</Td>
+                      <Td>
+                        <Link href={`/participants/${entry.participant_id}`} className="hover:underline font-medium text-gray-900">
+                          {entry.name}
+                        </Link>
+                      </Td>
+                      <Td>
+                        <span className={`font-bold text-sm ${
+                          entry.overall_score >= 80 ? "text-green-600" :
+                          entry.overall_score >= 60 ? "text-amber-600" : "text-red-600"
+                        }`}>{entry.overall_score}%</span>
+                      </Td>
+                      <Td className="text-gray-600">{entry.attendance_rate}%</Td>
+                      <Td className="text-gray-600">{entry.hw_avg !== null ? `${entry.hw_avg}%` : "—"}</Td>
+                      <Td className="text-gray-600">{entry.deadline_rate !== null ? `${entry.deadline_rate}%` : "—"}</Td>
+                      {showActivity && (
+                        <Td className="text-gray-600">{entry.activity_avg !== null ? `${entry.activity_avg}%` : "—"}</Td>
+                      )}
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Delete session modal */}
+      <ConfirmModal
+        open={!!deleteSessionTarget}
+        onClose={() => setDeleteSessionTarget(null)}
+        onConfirm={handleDeleteSession}
+        loading={deletingSession}
+        danger
+        title={t("sessions.delete_session")}
+        message={
+          deleteSessionTarget && deleteSessionTarget.attendanceCount > 0
+            ? t("sessions.delete_warning", { n: String(deleteSessionTarget.attendanceCount) })
+            : t("sessions.delete_confirm")
+        }
+        confirmLabel={t("common.delete")}
+      />
+
+      {/* Delete training modal */}
+      <ConfirmModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDelete}
+        loading={deleting}
+        danger
+        title={t("trainings.delete_training")}
+        message={t("trainings.delete_confirm")}
+        confirmLabel={t("common.delete")}
+      />
+
+      {/* Unenroll participant modal */}
+      <ConfirmModal
+        open={!!unenrollConfirm}
+        onClose={() => setUnenrollConfirm(null)}
+        onConfirm={confirmUnenroll}
+        danger
+        title={t("trainings.unenroll_title")}
+        message={
+          unenrollConfirm
+            ? unenrollConfirm.attendanceCount > 0
+              ? `${t("trainings.unenroll_message", { name: unenrollConfirm.name })}\n\n⚠️ Bu ishtirokchining ${unenrollConfirm.attendanceCount} ta davomat yozuvi bor. Kursdan chiqarsangiz, barcha davomat ma'lumotlari o'chiriladi.`
+              : t("trainings.unenroll_message", { name: unenrollConfirm.name })
+            : ""
+        }
+        confirmLabel={t("trainings.unenroll_confirm_label")}
+      />
+
+      {/* Add session modal */}
+      <Modal
+        open={addSessionOpen}
+        onClose={() => setAddSessionOpen(false)}
+        title={t("trainings.add_session")}
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setAddSessionOpen(false)}>{t("common.cancel")}</Button>
+            <Button form="add-session-form" type="submit" loading={addingSession}>{t("trainings.add_session")}</Button>
+          </>
+        }
+      >
+        <form id="add-session-form" onSubmit={handleAddSession} className="space-y-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">
+              {t("common.date")} <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              required
+              value={addSessionForm.session_date}
+              onChange={(e) => setAddSessionForm((f) => ({ ...f, session_date: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">
+              {t("trainings.schedule_time")} <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="time"
+              required
+              value={addSessionForm.session_time}
+              onChange={(e) => setAddSessionForm((f) => ({ ...f, session_time: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </form>
+      </Modal>
+
+      {/* Enroll participants modal */}
+      <Modal
+        open={enrollOpen}
+        onClose={() => setEnrollOpen(false)}
+        title={t("trainings.add_participants")}
+        size="lg"
+      >
+        {/* Tab bar */}
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-4">
+          <button
+            onClick={() => setEnrollTab("existing")}
+            className={`flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              enrollTab === "existing" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t("trainings.find_existing")}
+          </button>
+          <button
+            onClick={() => setEnrollTab("new")}
+            className={`flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              enrollTab === "new" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t("trainings.create_new_participant")}
+          </button>
+        </div>
+
+        {enrollTab === "existing" && (
+          <div className="space-y-3">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={enrollSearch}
+                onChange={(e) => setEnrollSearch(e.target.value)}
+                placeholder={t("trainings.enroll_search_placeholder")}
+                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+            </div>
+
+            {filteredForEnroll.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">
+                {enrollSearch ? t("trainings.no_matching") : t("trainings.all_enrolled")}
+              </p>
+            ) : (
+              <div className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                {filteredForEnroll.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between py-2.5 px-1">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{p.full_name}</p>
+                      {p.phone && <p className="text-xs text-gray-500">{p.phone}</p>}
+                    </div>
+                    <Button
+                      size="sm"
+                      loading={enrolling.has(p.id)}
+                      onClick={() => handleEnroll(p.id)}
+                    >
+                      {t("trainings.enroll")}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {enrollTab === "new" && (
+          <form onSubmit={handleCreateAndEnroll} className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {t("participants.full_name")} <span className="text-red-500">*</span>
+              </label>
+              <input
+                required
+                value={newParticipantForm.full_name}
+                onChange={(e) => setNewParticipantForm((f) => ({ ...f, full_name: e.target.value }))}
+                placeholder="e.g. Dilnoza Yusupova"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t("common.phone")}</label>
+              <input
+                value={newParticipantForm.phone}
+                onChange={(e) => setNewParticipantForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="+998901234567"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t("common.email")}</label>
+              <input
+                type="email"
+                value={newParticipantForm.email}
+                onChange={(e) => setNewParticipantForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="optional@example.com"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <Button type="submit" loading={creatingAndEnrolling} className="w-full">
+              {t("trainings.create_and_enroll")}
+            </Button>
+          </form>
+        )}
+      </Modal>
+    </div>
+  );
+}

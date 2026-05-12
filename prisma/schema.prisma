@@ -1,0 +1,646 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Role {
+  id           String      @id @default(uuid())
+  name         String      @unique
+  description  String?
+  color        String      @default("#6366f1")
+  isSuperadmin Boolean     @default(false) @map("is_superadmin")
+  permissions  Json        @default("{}")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  staffUsers   StaffUser[]
+
+  @@map("roles")
+}
+
+model StaffUser {
+  id                 String             @id @default(uuid())
+  name               String
+  username           String?            @unique
+  phone              String?            @unique
+  email              String?            @unique
+  password           String
+  avatarUrl          String?            @map("avatar_url")
+  roleId             String?            @map("role_id")
+  role               Role?              @relation(fields: [roleId], references: [id])
+  isActive           Boolean            @default(true) @map("is_active")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  scannedAttendance  Attendance[]       @relation("ScannedBy")
+  overrideAttendance Attendance[]       @relation("OverrideBy")
+  createdTrainings   Training[]
+  auditLogs          AttendanceAudit[]
+  translations       Translation[]
+  homeworks          Homework[]         @relation("HomeworkCreatedBy")
+  closedHomeworks    Homework[]         @relation("HomeworkClosedBy")
+  reopenedHomeworks  Homework[]         @relation("HomeworkReopenedBy")
+  homeworkGrades     HomeworkGrade[]
+  homeworkMaterials  HomeworkMaterial[]
+  activityScores     ActivityScore[]
+  supervisorLinks    SupervisorLink[]
+  telegramLink       StaffTelegramLink?
+  inboxItems         InboxItem[]
+
+  @@map("staff_users")
+}
+
+model Training {
+  id                   String                @id @default(uuid())
+  name                 String
+  description          String?
+  color                String                @default("#3B82F6")
+  icon                 String                @default("book")
+  startDate            DateTime              @map("start_date") @db.Date
+  endDate              DateTime              @map("end_date") @db.Date
+  scheduleDays         Int[]                 @map("schedule_days")
+  scheduleTime         String                @map("schedule_time")
+  status               String                @default("upcoming")
+  attendanceThreshold  Int                   @default(80) @map("attendance_threshold")
+  lateThresholdMinutes Int?                  @map("late_threshold_minutes")
+  scanWindowBefore     Int?                  @map("scan_window_before") // minutes before session; null = use system default
+  scanWindowAfter      Int?                  @map("scan_window_after") // minutes after session; null = use system default
+  categoryId           String?               @map("category_id")
+  category             TrainingCategory?     @relation(fields: [categoryId], references: [id])
+  createdById          String?               @map("created_by")
+  createdBy            StaffUser?            @relation(fields: [createdById], references: [id])
+  createdAt            DateTime              @default(now()) @map("created_at")
+  sessions             Session[]
+  trainingParticipants TrainingParticipant[]
+  homeworks            Homework[]
+  supervisorLinks      SupervisorLink[]
+
+  @@map("trainings")
+}
+
+model TrainingCategory {
+  id        String     @id @default(uuid())
+  nameUz    String     @map("name_uz")
+  nameRu    String?    @map("name_ru")
+  nameEn    String?    @map("name_en")
+  sortOrder Int        @default(0) @map("sort_order")
+  createdAt DateTime   @default(now()) @map("created_at")
+  trainings Training[]
+
+  @@map("training_categories")
+}
+
+model Translation {
+  id          String     @id @default(uuid())
+  key         String
+  language    String
+  value       String
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  updatedById String?    @map("updated_by")
+  updatedBy   StaffUser? @relation(fields: [updatedById], references: [id])
+
+  @@unique([key, language])
+  @@map("translations")
+}
+
+model Session {
+  id              String          @id @default(uuid())
+  trainingId      String          @map("training_id")
+  training        Training        @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  sessionNumber   Int             @map("session_number")
+  sessionDate     String          @map("session_date") // "YYYY-MM-DD" plain string — no timezone
+  sessionTime     String          @map("session_time")
+  status          String          @default("upcoming") // kept for schema compatibility; state is derived at runtime
+  isCancelled     Boolean         @default(false) @map("is_cancelled")
+  forceClosed     Boolean         @default(false) @map("force_closed")
+  cancelledAt     DateTime?       @map("cancelled_at")
+  cancelledById   String?         @map("cancelled_by")
+  forceClosedAt   DateTime?       @map("force_closed_at")
+  forceClosedById String?         @map("force_closed_by")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  attendance      Attendance[]
+  activityScores  ActivityScore[]
+
+  @@unique([trainingId, sessionNumber])
+  @@index([sessionDate])
+  @@index([trainingId, sessionDate])
+  @@map("sessions")
+}
+
+model Participant {
+  id                   String                @id @default(uuid())
+  fullName             String                @map("full_name")
+  phone                String?
+  email                String?
+  photoUrl             String?               @map("photo_url")
+  qrToken              String                @unique @default(uuid()) @map("qr_token")
+  isBlocked            Boolean               @default(false) @map("is_blocked")
+  blockedAt            DateTime?             @map("blocked_at")
+  blockedReason        String?               @map("blocked_reason")
+  lastSeenAt           DateTime?             @map("last_seen_at")
+  phoneVerifiedAt      DateTime?             @map("phone_verified_at")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  trainingParticipants TrainingParticipant[]
+  attendance           Attendance[]
+  auth                 ParticipantAuth?
+  homeworkSubmissions  HomeworkSubmission[]
+  telegramLink         TelegramLink?
+  telegramLinkCode     TelegramLinkCode?
+  activityScores       ActivityScore[]
+  telegramMessages     TelegramMessage[]
+  phoneLoginTokens     PhoneLoginToken[]
+  supervisedLinks      SupervisorLink[]      @relation("BossLinks")
+  subordinateLinks     SupervisorLink[]      @relation("ReportLinks")
+  botMessageRatings    BotMessageRating[]
+  studentFeedback      StudentFeedback[]
+  longAnswers          LongAnswer[]
+  inboxItems           InboxItem[]
+
+  @@map("participants")
+}
+
+model TrainingParticipant {
+  trainingId    String      @map("training_id")
+  participantId String      @map("participant_id")
+  training      Training    @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  enrolledAt    DateTime    @default(now()) @map("enrolled_at")
+
+  @@id([trainingId, participantId])
+  @@map("training_participants")
+}
+
+model Attendance {
+  id                String            @id @default(uuid())
+  sessionId         String            @map("session_id")
+  participantId     String            @map("participant_id")
+  session           Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant       Participant       @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  status            String
+  method            String            @default("system") // "system" | "qr" | "manual"
+  scannedAt         DateTime?         @map("scanned_at")
+  scannedById       String?           @map("scanned_by")
+  scannedBy         StaffUser?        @relation("ScannedBy", fields: [scannedById], references: [id])
+  note              String?
+  overrideById      String?           @map("override_by")
+  overrideBy        StaffUser?        @relation("OverrideBy", fields: [overrideById], references: [id])
+  overrideAt        DateTime?         @map("override_at")
+  syncedFromOffline Boolean           @default(false) @map("synced_from_offline")
+  auditLogs         AttendanceAudit[]
+
+  @@unique([sessionId, participantId])
+  @@map("attendance")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  @@map("system_settings")
+}
+
+model ParticipantAuth {
+  id            String      @id @default(uuid())
+  participantId String      @unique @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  username      String      @unique
+  passwordHash  String      @map("password_hash")
+  lastLoginAt   DateTime?   @map("last_login_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("participant_auth")
+}
+
+model AttendanceAudit {
+  id           String     @id @default(uuid())
+  attendanceId String     @map("attendance_id")
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  changedById  String?    @map("changed_by")
+  changedBy    StaffUser? @relation(fields: [changedById], references: [id])
+  oldStatus    String?    @map("old_status")
+  newStatus    String?    @map("new_status")
+  reason       String?
+  changedAt    DateTime   @default(now()) @map("changed_at")
+
+  @@map("attendance_audit")
+}
+
+model Homework {
+  id                   String               @id @default(uuid())
+  trainingId           String               @map("training_id")
+  training             Training             @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  title                String
+  description          String?
+  startDate            String?              @map("start_date") // "YYYY-MM-DD" plain string, nullable
+  dueDate              String?              @map("due_date") // "YYYY-MM-DD" plain string, nullable
+  allowLateSubmission  Boolean              @default(true) @map("allow_late_submission")
+  hardCloseAt          String?              @map("hard_close_at") // "YYYY-MM-DD" — absolute cutoff, no submissions after this
+  latePenaltyPercent   Int?                 @map("late_penalty_percent") // hint-only, null = no penalty shown
+  acceptingSubmissions Boolean              @default(true) @map("accepting_submissions")
+  closedAt             DateTime?            @map("closed_at")
+  closedById           String?              @map("closed_by_id")
+  closedBy             StaffUser?           @relation("HomeworkClosedBy", fields: [closedById], references: [id])
+  reopenedAt           DateTime?            @map("reopened_at")
+  reopenedById         String?              @map("reopened_by_id")
+  reopenedBy           StaffUser?           @relation("HomeworkReopenedBy", fields: [reopenedById], references: [id])
+  maxScore             Int                  @default(100) @map("max_score")
+  createdById          String?              @map("created_by")
+  createdBy            StaffUser?           @relation("HomeworkCreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime             @default(now()) @map("created_at")
+  submissions          HomeworkSubmission[]
+  materials            HomeworkMaterial[]
+
+  @@map("homeworks")
+}
+
+enum HomeworkMaterialKind {
+  PDF
+  VIDEO
+  AUDIO
+  IMAGE
+  DOCUMENT
+  LINK
+}
+
+model HomeworkMaterial {
+  id            String               @id @default(uuid())
+  homeworkId    String               @map("homework_id")
+  homework      Homework             @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  kind          HomeworkMaterialKind
+  title         String
+  description   String?
+  storageUrl    String?              @map("storage_url") // R2 public URL for file kinds
+  fileName      String?              @map("file_name")
+  fileSizeBytes Int?                 @map("file_size_bytes")
+  mimeType      String?              @map("mime_type")
+  url           String? // for LINK kind
+  sortOrder     Int                  @default(0) @map("sort_order")
+  createdById   String?              @map("created_by")
+  createdBy     StaffUser?           @relation(fields: [createdById], references: [id])
+  createdAt     DateTime             @default(now()) @map("created_at")
+
+  @@index([homeworkId])
+  @@map("homework_materials")
+}
+
+model HomeworkSubmission {
+  id            String            @id @default(uuid())
+  homeworkId    String            @map("homework_id")
+  homework      Homework          @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  participantId String            @map("participant_id")
+  participant   Participant       @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  text          String?
+  submittedAt   DateTime          @default(now()) @map("submitted_at")
+  isLate        Boolean           @default(false) @map("is_late")
+  lateByDays    Int?              @map("late_by_days")
+  grade         HomeworkGrade?
+  files         HomeworkFile[]
+  events        SubmissionEvent[]
+
+  @@unique([homeworkId, participantId])
+  @@map("homework_submissions")
+}
+
+model HomeworkFile {
+  id             String             @id @default(uuid())
+  submissionId   String             @map("submission_id")
+  submission     HomeworkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  fileName       String             @map("file_name")
+  fileType       String             @map("file_type") // "document" | "audio" | "video" | "voice" | "photo"
+  fileSizeBytes  Int?               @map("file_size_bytes")
+  storageUrl     String?            @map("storage_url") // R2 public URL (null until uploaded)
+  telegramFileId String?            @map("telegram_file_id") // Telegram file_id for re-download
+  uploadedAt     DateTime           @default(now()) @map("uploaded_at")
+
+  @@map("homework_files")
+}
+
+model HomeworkGrade {
+  id           String             @id @default(uuid())
+  submissionId String             @unique @map("submission_id")
+  submission   HomeworkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  score        Int
+  feedback     String?
+  gradedById   String?            @map("graded_by")
+  gradedBy     StaffUser?         @relation(fields: [gradedById], references: [id])
+  gradedAt     DateTime           @default(now()) @map("graded_at")
+
+  @@map("homework_grades")
+}
+
+enum SubmissionEventType {
+  SUBMITTED
+  SUBMITTED_LATE
+  TEXT_EDITED
+  FILE_ADDED
+  FILE_DELETED
+  RESUBMITTED
+  RESUBMITTED_LATE
+  GRADED
+  GRADE_EDITED
+  GRADE_DELETED
+}
+
+model SubmissionEvent {
+  id           String              @id @default(cuid())
+  submissionId String              @map("submission_id")
+  submission   HomeworkSubmission  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  actorId      String              @map("actor_id") // StaffUser.id or Participant.id (string, no FK so both types work)
+  actorRole    String              @map("actor_role") // "participant" | "curator" | "admin"
+  actorName    String              @map("actor_name") // denormalized display name
+  eventType    SubmissionEventType @map("event_type")
+  meta         Json? // { filename, size, oldScore, newScore, text, … }
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  @@index([submissionId])
+  @@map("submission_events")
+}
+
+model ActivityScore {
+  id            String      @id @default(uuid())
+  sessionId     String      @map("session_id")
+  session       Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participantId String      @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  score         Int // e.g. 0-100
+  note          String?
+  enteredById   String?     @map("entered_by")
+  enteredBy     StaffUser?  @relation(fields: [enteredById], references: [id])
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@unique([sessionId, participantId])
+  @@map("activity_scores")
+}
+
+model TelegramMessage {
+  id                   String       @id @default(uuid())
+  chatId               BigInt       @map("chat_id")
+  participantId        String?      @map("participant_id")
+  participant          Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  direction            String // "in" | "out"
+  text                 String?
+  messageType          String       @default("text") @map("message_type") // "text"|"document"|"audio"|"video"|"voice"|"photo"
+  telegramFileId       String?      @map("telegram_file_id")
+  fileName             String?      @map("file_name")
+  fileSizeBytes        Int?         @map("file_size_bytes")
+  telegramMsgId        Int?         @map("telegram_msg_id")
+  replyToTelegramMsgId Int?         @map("reply_to_telegram_msg_id")
+  createdAt            DateTime     @default(now()) @map("created_at")
+
+  @@index([chatId])
+  @@index([participantId])
+  @@index([chatId, telegramMsgId])
+  @@map("telegram_messages")
+}
+
+model TelegramLink {
+  id                String      @id @default(uuid())
+  participantId     String      @unique @map("participant_id")
+  participant       Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  chatId            BigInt      @map("chat_id")
+  username          String?
+  firstName         String?     @map("first_name")
+  verifiedPhone     String?     @map("verified_phone") // E.164, set on contact-share
+  verifiedByContact Boolean     @default(false) @map("verified_by_contact")
+  linkedAt          DateTime    @default(now()) @map("linked_at")
+
+  @@map("telegram_links")
+}
+
+model StaffTelegramLink {
+  id                String    @id @default(uuid())
+  staffUserId       String    @unique @map("staff_user_id")
+  staffUser         StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+  telegramUserId    BigInt    @unique @map("telegram_user_id")
+  chatId            BigInt    @map("chat_id")
+  username          String?
+  firstName         String?   @map("first_name")
+  verifiedPhone     String?   @map("verified_phone")
+  verifiedByContact Boolean   @default(false) @map("verified_by_contact")
+  linkedAt          DateTime  @default(now()) @map("linked_at")
+
+  @@index([chatId])
+  @@index([verifiedPhone])
+  @@map("staff_telegram_links")
+}
+
+model BotAuthLog {
+  id             String   @id @default(cuid())
+  telegramUserId BigInt   @map("telegram_user_id")
+  chatId         BigInt   @map("chat_id")
+  phone          String?
+  event          String // see BotAuthEvent in src/lib/botAuth.ts
+  meta           Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([telegramUserId])
+  @@index([phone])
+  @@map("bot_auth_log")
+}
+
+model TelegramLinkCode {
+  id            String      @id @default(uuid())
+  participantId String      @unique @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  code          String      @unique
+  expiresAt     DateTime    @map("expires_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("telegram_link_codes")
+}
+
+model PhoneLoginToken {
+  id            String      @id @default(uuid())
+  participantId String      @map("participant_id")
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  token         String      @unique
+  expiresAt     DateTime    @map("expires_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("phone_login_tokens")
+}
+
+model SupervisorLink {
+  id          String      @id @default(uuid())
+  bossId      String      @map("boss_id")
+  boss        Participant @relation("BossLinks", fields: [bossId], references: [id], onDelete: Cascade)
+  reportId    String      @map("report_id")
+  report      Participant @relation("ReportLinks", fields: [reportId], references: [id], onDelete: Cascade)
+  trainingId  String?     @map("training_id")
+  training    Training?   @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  createdById String?     @map("created_by")
+  createdBy   StaffUser?  @relation(fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@unique([bossId, reportId, trainingId])
+  @@map("supervisor_links")
+}
+
+model BotMessage {
+  id                   String            @id @default(cuid())
+  chatId               BigInt            @map("chat_id")
+  participantId        String?           @map("participant_id")
+  role                 String // "user" | "assistant"
+  content              String
+  intent               String? // "AI_COURSE_QUESTION" | "LMS_SCHEDULE" etc.
+  routedTo             String?           @map("routed_to") // "lms" | "ai" | "templated"
+  tokenCount           Int?              @map("token_count")
+  metadata             Json?
+  sources              Json?             @map("sources")
+  telegramMsgId        Int?              @map("telegram_msg_id")
+  replyToTelegramMsgId Int?              @map("reply_to_telegram_msg_id")
+  replyToMessageId     String?           @map("reply_to_message_id")
+  replyToMessage       BotMessage?       @relation("BotMessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies              BotMessage[]      @relation("BotMessageReplies")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  rating               BotMessageRating?
+  ttsChunks            BotTtsChunk[]
+  longAnswer           LongAnswer?
+
+  @@index([chatId, createdAt])
+  @@index([chatId, telegramMsgId])
+  @@index([chatId, replyToTelegramMsgId])
+  @@index([replyToMessageId])
+  @@map("bot_messages")
+}
+
+model BotMessageRating {
+  id            String       @id @default(cuid())
+  messageId     String       @unique @map("message_id")
+  message       BotMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  stars         Int
+  reason        String? // "wrong" | "unclear" | "slow" | "off_topic" | "other"
+  comment       String?
+  participantId String?      @map("participant_id")
+  participant   Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  ratedAt       DateTime     @default(now()) @map("rated_at")
+  status        String       @default("new") // "new" | "triaging" | "fixed" | "wont_fix"
+  curatedById   String?      @map("curated_by")
+  curatedAt     DateTime?    @map("curated_at")
+
+  @@index([stars])
+  @@index([reason])
+  @@index([status])
+  @@map("bot_message_ratings")
+}
+
+model BotTtsChunk {
+  id        String     @id @default(cuid())
+  messageId String     @map("message_id")
+  message   BotMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  idx       Int
+  fileId    String     @map("file_id")
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  @@unique([messageId, idx])
+  @@map("bot_tts_chunks")
+}
+
+model LongAnswer {
+  id            String       @id @default(cuid())
+  messageId     String?      @unique @map("message_id")
+  message       BotMessage?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  participantId String?      @map("participant_id")
+  participant   Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  title         String
+  summary       String
+  bodyMd        String       @map("body_md")
+  viewCount     Int          @default(0) @map("view_count")
+  viewedAt      DateTime?    @map("viewed_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@map("long_answers")
+}
+
+model StudentFeedback {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  chatId        BigInt
+  participantId String?
+  category      String // "COMPLAINT" | "SUGGESTION" | "PRAISE"
+  severity      String? // "HIGH" | "MEDIUM" | "LOW" | null
+  tags          String[] // e.g. ["homework", "teacher", "schedule"]
+  messageText   String
+  status        String   @default("new") // "new" | "in_review" | "resolved"
+  curatorNote   String?
+
+  participant Participant? @relation(fields: [participantId], references: [id])
+
+  @@map("student_feedback")
+}
+
+model GradingPolicy {
+  id                   String   @id @default(cuid())
+  onTimePct            Int      @default(100) @map("on_time_pct")
+  sameDayPct           Int      @default(90) @map("same_day_pct")
+  perDayLatePenaltyPct Int      @default(20) @map("per_day_late_penalty_pct")
+  lateFloorPct         Int      @default(10) @map("late_floor_pct")
+  earlyBonusPct        Int      @default(0) @map("early_bonus_pct")
+  earlyBonusDays       Int      @default(2) @map("early_bonus_days")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  updatedById          String?  @map("updated_by_id")
+
+  @@map("grading_policy")
+}
+
+model BotUsageLog {
+  id             String   @id @default(cuid())
+  messageId      String?  @map("message_id")
+  participantId  String?  @map("participant_id")
+  chatId         BigInt   @map("chat_id")
+  model          String
+  kind           String // "chat" | "tts" | "embed" | "classify"
+  tokensIn       Int      @default(0) @map("tokens_in")
+  tokensOut      Int      @default(0) @map("tokens_out")
+  costUsd        Decimal  @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  responseTimeMs Int      @default(0) @map("response_time_ms")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([chatId, createdAt])
+  @@index([kind, createdAt])
+  @@index([createdAt])
+  @@map("bot_usage_log")
+}
+
+model ChatbotBroadcastHistory {
+  id           String   @id @default(cuid())
+  message      String
+  type         String   @default("other")
+  segment      String
+  trainingId   String?  @map("training_id")
+  total        Int
+  sent         Int
+  failed       Int
+  errorSummary Json?    @map("error_summary")
+  createdById  String?  @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("chatbot_broadcast_history")
+}
+
+model InboxItem {
+  id              String       @id @default(cuid())
+  chatId          BigInt       @map("chat_id")
+  participantId   String?      @map("participant_id")
+  participant     Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  sourceMessageId String?      @map("source_message_id")
+  kind            String       // "complaint" | "offer" | "lead" | "question"
+  status          String       @default("new")   // "new" | "in_review" | "resolved" | "dismissed"
+  priority        String       @default("normal")
+  summary         String
+  body            String
+  classifierScore Float?       @map("classifier_score")
+  assignedToId    String?      @map("assigned_to")
+  assignedTo      StaffUser?   @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  resolvedAt      DateTime?    @map("resolved_at")
+  resolutionNote  String?      @map("resolution_note")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([kind, status])
+  @@index([chatId])
+  @@index([participantId])
+  @@map("inbox_items")
+}
