@@ -459,6 +459,31 @@ function splitIntoChunks(text: string, maxChars = DEFAULT_TTS_CHUNK_CHARS, first
   return result.length ? result : [text.slice(0, firstMaxChars)];
 }
 
+function cyrillicToLatin(text: string): string {
+  const map: Record<string, string> = {
+    'А':'A','а':'a','Б':'B','б':'b','В':'V','в':'v','Г':'G','г':'g',
+    'Д':'D','д':'d','Е':'Ye','е':'ye','Ё':'Yo','ё':'yo','Ж':'J','ж':'j',
+    'З':'Z','з':'z','И':'I','и':'i','Й':'Y','й':'y','К':'K','к':'k',
+    'Л':'L','л':'l','М':'M','м':'m','Н':'N','н':'n','О':'O','о':'o',
+    'П':'P','п':'p','Р':'R','р':'r','С':'S','с':'s','Т':'T','т':'t',
+    'У':'U','у':'u','Ф':'F','ф':'f','Х':'X','х':'x','Ц':'Ts','ц':'ts',
+    'Ч':'Ch','ч':'ch','Ш':'Sh','ш':'sh','Щ':'Shch','щ':'shch',
+    'Ъ':"'",'ъ':"'",'Ы':'i','ы':'i','Ь':'','ь':'',
+    'Э':'E','э':'e','Ю':'Yu','ю':'yu','Я':'Ya','я':'ya',
+    'Ғ':"G'",'ғ':"g'",'Қ':'Q','қ':'q','Ҳ':'H','ҳ':'h',
+    'Ў':"O'",'ў':"o'",'Ҷ':'J','ҷ':'j',
+  };
+  return text.split('').map(ch => map[ch] ?? ch).join('');
+}
+
+function expandAbbreviations(text: string): string {
+  return text
+    .replace(/\bRNP\b/gi, "RNP (Расчет Недельного Плана, haftaliy reja hisob-kitobi)")
+    .replace(/\bKPI\b/gi, "KPI (Key Performance Indicator, asosiy ko'rsatkichlar)")
+    .replace(/\bROP\b/gi, "ROP (Revenue Operations Plan, daromad operatsiyalari rejasi)")
+    .replace(/\bCRM\b/gi, "CRM (Customer Relationship Management, mijozlar bilan munosabatlar tizimi)");
+}
+
 function buildHomeMenu() {
   return new InlineKeyboard()
     .text("📊 Mening progressim", "menu_status").row()
@@ -1026,10 +1051,11 @@ export function registerCommandHandlers(b: Bot) {
       await ctx.replyWithChatAction("typing");
       try {
         const memory = await loadConversationMemory(chatId, userMsgId);
+        const ragText = expandAbbreviations(cyrillicToLatin(text));
         const { text: answer, raw, metadata } = await askRag({
           chat_id:        ctx.chat!.id,
           participant_id: participantId,
-          question:       buildConversationAwareQuestion(text, replyContext, memory),
+          question:       buildConversationAwareQuestion(ragText, replyContext, memory),
         });
 
         const DIRECT_ANSWER_LIMIT = await resolveLongAnswerLimit();
@@ -1094,7 +1120,6 @@ export function registerCommandHandlers(b: Bot) {
 
           const kb = new InlineKeyboard()
             .url("📖 To'liq o'qish", `${appUrl}/article/${longAnswer.id}`)
-            .text("🔊 Ovozda tinglash", `tts_${msgId ?? "0"}`)
             .url("📄 PDF yuklab olish", `${appUrl}/article/${longAnswer.id}?print=1`);
 
           const summaryText = sanitizeMarkdown(makeLongAnswerPreview(summary));
@@ -1111,9 +1136,7 @@ export function registerCommandHandlers(b: Bot) {
             const part = splitParts[index];
             const prefix = splitParts.length > 1 ? `💡 ${index + 1}/${splitParts.length}\n\n` : "💡 ";
             const isLast = index === splitParts.length - 1;
-            const kb = isLast
-              ? new InlineKeyboard().text("🔊 Tinglash", `tts_${msgId ?? "0"}`)
-              : undefined;
+            const kb = isLast ? undefined : undefined;
             const sanitized = sanitizeMarkdown(`${prefix}${part}`);
             let sent: number | null = null;
             try {
@@ -1131,14 +1154,13 @@ export function registerCommandHandlers(b: Bot) {
           await mergeBotMessageMetadata(msgId, { telegram_message_count: splitParts.length });
         } else {
           // Send direct answers when they fit Telegram's message limit.
-          const ttsKb = new InlineKeyboard().text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
           const sanitized = sanitizeMarkdown(`💡 ${answer}`);
           let sentTelegramMsgId: number | null = null;
           try {
-            sentTelegramMsgId = await reply(ctx, sanitized, { parse_mode: "Markdown", reply_markup: ttsKb });
+            sentTelegramMsgId = await reply(ctx, sanitized, { parse_mode: "Markdown" });
           } catch (mdErr) {
             if (String(mdErr).includes("can't parse")) {
-              sentTelegramMsgId = await reply(ctx, `💡 ${answer}`, { reply_markup: ttsKb });
+              sentTelegramMsgId = await reply(ctx, `💡 ${answer}`);
             } else {
               throw mdErr;
             }

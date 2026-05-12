@@ -39,7 +39,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         {/* Inline fallback: survives service worker caching + Railway proxy stripping */}
-        <meta http-equiv="Permissions-Policy" content="camera=*" />
+        <meta httpEquiv="Permissions-Policy" content="camera=*" />
       </head>
       <body className="h-full bg-gray-50 font-sans antialiased">
         <LanguageProvider>

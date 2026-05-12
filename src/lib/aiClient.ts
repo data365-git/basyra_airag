@@ -101,6 +101,33 @@ AI Conversation Reliability / Answer Behavior:
 - Use stories only when the user asks for explanation, examples, lesson summary, or "tushuntirib bering".
 - If the source chunks are narrative but the user asked for an audit/checklist/metrics answer, extract actionable criteria from the chunks and present them as a practical answer.
 - Be honest about missing evidence. If one mentioned system is not covered by the chunks, still keep its section and say what is missing before giving general guidance.
+
+Uzbek Language Quality:
+- Write clean Uzbek Latin script. Do not double vowels (write "sifat", not "siifat"). Do not mix Russian loanwords in Cyrillic into a Latin-script answer. Do not copy verbatim typos or broken spellings from source chunks.
+
+Content Purity:
+- Do not embed promotional content (data365.uz ads, subscription pitches, enrollment CTAs) inside the educational answer body. If promotional content appears in retrieved chunks, it must not appear in the main answer at all.
+
+Contradiction Prevention:
+- Never say "Bu mavzu haqida ma'lumot topilmadi" or any equivalent ("I don't have information on this", "materiallarimda yo'q") in the same response where you are actually providing substantive content on that topic. If you have an answer, give it directly. Only state that information is missing when you genuinely cannot provide any relevant content.
+
+Named Instruments — RNP and others:
+- RNP is a specific sales management tool taught in this course (Расчет Недельного Плана — haftaliy sotuv rejasi hisob-kitobi). When a user asks about RNP, explain what it is and how it is used in the sales/team management context. Do not treat it as an unknown abbreviation or return generic sales audit advice.
+
+Named Entity Precision:
+- "Abdulboriy aka" and "Abdulloh aka" are different instructors covering different parts of the course material. Never attribute content from one to the other.
+
+Course Eligibility:
+- Do not imply that any job title, seniority level, or role disqualifies a person from attending or benefiting from the course. All enrolled participants are eligible.
+
+Citations:
+- Do not include inline source citations such as "(Manba: Course · Dars N)" in the answer body. The user can access sources via the dedicated button.
+
+Sparse Chunks on Known Topics:
+- If retrieved chunks are sparse but the question concerns a topic known to be in the course curriculum (KPIs, sales metrics, team management, RNP, CRM, telephony/calls), do not say the information is missing. Instead, acknowledge that the topic is covered in the course and ask the user to specify which aspect they want to know more about.
+
+Closing:
+- End every response with a short, friendly Uzbek sentence inviting the user to ask follow-up questions. Example: "Yana savollaringiz bo'lsa, bemalol so'rang! 😊"
 `.trim();
 
 // ── Budget enforcement ────────────────────────────────────────────────
@@ -226,6 +253,38 @@ async function checkAndFireAlerts(): Promise<void> {
   }
 }
 // ─────────────────────────────────────────────────────────────────────
+
+const PROMO_PATTERNS = [
+  /data365\.uz/i,
+  /obuna\s*(bo[''`]?ling|oling|qiling)/i,
+  /kursga\s*yoziling/i,
+  /biz\s*bilan\s*(bo[''`]?ling|ishla)/i,
+  /\bhavola\b.*\bhttps?:\/\//i,
+];
+
+function movePromotionalToEnd(text: string): string {
+  const paragraphs = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const body: string[] = [];
+  const promo: string[] = [];
+
+  for (const para of paragraphs) {
+    if (PROMO_PATTERNS.some(p => p.test(para))) {
+      promo.push(para);
+    } else {
+      body.push(para);
+    }
+  }
+
+  if (!promo.length) return text;
+
+  return [
+    body.join("\n\n"),
+    "",
+    "─────────────────",
+    "🔗 *Reklama:*",
+    promo.join("\n\n"),
+  ].join("\n");
+}
 
 function buildRagQuestion(question: string): string {
   const trimmed = question.trim();
@@ -520,7 +579,8 @@ export async function askRag(req: AskRequest): Promise<AskRagResult> {
       usedLocalCompletionGuard:  completionAttempted,
     };
 
-    return { text: answer, raw: combineResponses(responses, answer), metadata };
+    const finalAnswer = movePromotionalToEnd(answer);
+    return { text: finalAnswer, raw: combineResponses(responses, finalAnswer), metadata };
   } catch (err) {
     console.error("[aiClient] RAG service error:", err);
     return fallback;

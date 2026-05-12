@@ -44,6 +44,7 @@ export function normalizePhone(raw: string): string {
 /** Normalize or return null — useful for try/catch-free optional fields. */
 export function tryNormalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
+  if (raw.includes("@")) return null; // emails are not phones — skip normalize
   try { return normalizePhone(raw); }
   catch { return null; }
 }

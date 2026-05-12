@@ -47,4 +47,9 @@ describe("tryNormalizePhone", () => {
   it("returns normalized string for valid input", () => {
     expect(tryNormalizePhone("998901234567")).toBe("+998901234567");
   });
+
+  it("returns null for email addresses without warning", () => {
+    expect(tryNormalizePhone("abdulloh@basyra.com")).toBeNull();
+    expect(tryNormalizePhone("admin@basyra.com")).toBeNull();
+  });
 });
