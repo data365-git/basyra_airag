@@ -5,7 +5,14 @@ import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/layout/Header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { ConfirmModal } from "@/components/ui/Modal";
 import { Table, Thead, Th, Tbody, Tr, Td, EmptyRow } from "@/components/ui/Table";
+import {
+  HomeworkAcceptingBadge,
+  getHomeworkAcceptingHint,
+  getHomeworkAcceptingState,
+} from "@/components/homework/HomeworkAcceptingStatus";
 import { usePermission } from "@/hooks/usePermission";
 import { CheckCircle2, Clock, Star, Loader2, FileText, Mic, Video, Image as ImageIcon, File, Pencil, AlertTriangle, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -164,7 +171,9 @@ interface HomeworkMeta {
   title:                string;
   max_score:            number;
   due_date:             string | null;
+  hard_close_at:        string | null;
   allow_late_submission: boolean;
+  accepting_submissions?: boolean | null;
   late_penalty_percent: number | null;
 }
 
@@ -338,6 +347,8 @@ export default function HomeworkDetailPage() {
   const [loading,   setLoading]   = useState(true);
   const [timeline,  setTimeline]  = useState<{ subId: string; name: string } | null>(null);
   const [lateFilter, setLateFilter] = useState<"all" | "on_time" | "late">("all");
+  const [acceptingAction, setAcceptingAction] = useState<"close" | "reopen" | null>(null);
+  const [acceptingSaving, setAcceptingSaving] = useState(false);
 
   // Fetch homework meta from the training's homework list
   const load = useCallback(async () => {
@@ -357,6 +368,30 @@ export default function HomeworkDetailPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
 
+  async function updateAcceptingState(action: "close" | "reopen") {
+    if (!hw) return;
+
+    setAcceptingSaving(true);
+
+    const res = await fetch(`/api/homeworks/${hw.id}`, {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(action === "close"
+        ? { accepting_submissions: false }
+        : { accepting_submissions: true }),
+    });
+
+    setAcceptingSaving(false);
+    if (res.ok) {
+      toast.success(action === "close" ? "Topshiriqlar yopildi" : "Topshiriqlar qayta ochildi");
+      setAcceptingAction(null);
+      await load();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Qabul qilish holatini o'zgartirib bo'lmadi");
+    }
+  }
+
   if (loading) return (
     <div className="space-y-4">
       <div className="h-8 w-48 bg-gray-100 rounded animate-pulse" />
@@ -370,18 +405,37 @@ export default function HomeworkDetailPage() {
 
   const graded    = subs.filter((s) => s.grade).length;
   const submitted = subs.length;
+  const acceptingState = getHomeworkAcceptingState(hw);
+  const isAcceptingClosed = acceptingState === "closed";
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={hw.title}
-        subtitle={`Maksimal ball: ${hw.max_score}${hw.due_date ? ` · Muddat: ${fmtUzDate(hw.due_date)}` : ""}`}
+        subtitle={`Maksimal ball: ${hw.max_score}${hw.due_date ? ` · Muddat: ${fmtUzDate(hw.due_date)}` : ""} · ${getHomeworkAcceptingHint(hw)}`}
         back
         backHref={`/trainings/${trainingId}/homeworks`}
+        actions={
+          canManage ? (
+            <Button
+              size="sm"
+              variant={isAcceptingClosed ? "primary" : "outline"}
+              onClick={() => setAcceptingAction(isAcceptingClosed ? "reopen" : "close")}
+            >
+              {isAcceptingClosed ? "Topshiriqlarni qayta ochish" : "Topshiriqlarni yopish"}
+            </Button>
+          ) : undefined
+        }
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <Card className="text-center py-4">
+          <div className="flex justify-center">
+            <HomeworkAcceptingBadge homework={hw} />
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Qabul holati</p>
+        </Card>
         {[
           { label: "Topshirildi", value: submitted, color: "text-blue-600" },
           { label: "Baholandi",   value: graded,    color: "text-green-600" },
@@ -407,7 +461,7 @@ export default function HomeworkDetailPage() {
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              {f === "all" ? "Barchasi" : f === "on_time" ? "O&apos;z vaqtida" : "⏰ Kechikkan"}
+              {f === "all" ? "Barchasi" : f === "on_time" ? "O'z vaqtida" : "⏰ Kechikkan"}
             </button>
           ))}
         </div>
@@ -515,6 +569,27 @@ export default function HomeworkDetailPage() {
           onClose={() => setTimeline(null)}
         />
       )}
+
+      <ConfirmModal
+        open={acceptingAction === "close"}
+        onClose={() => setAcceptingAction(null)}
+        onConfirm={() => updateAcceptingState("close")}
+        loading={acceptingSaving}
+        danger
+        title="Topshiriqlarni yopish"
+        message="Topshiriqlar qabul qilinishi yopiladi. Ishtirokchilar bu vazifaga yangi javob yubora olmaydi. Mavjud javoblar va baholar o'zgarmaydi. Davom etasizmi?"
+        confirmLabel="Yopish"
+      />
+
+      <ConfirmModal
+        open={acceptingAction === "reopen"}
+        onClose={() => setAcceptingAction(null)}
+        onConfirm={() => updateAcceptingState("reopen")}
+        loading={acceptingSaving}
+        title="Topshiriqlarni qayta ochish"
+        message="Topshiriqlar qabul qilinishi qayta ochiladi. Ishtirokchilar yana javob yuborishi mumkin, muddat va kechikish qoidalari saqlanadi. Davom etasizmi?"
+        confirmLabel="Qayta ochish"
+      />
     </div>
   );
 }

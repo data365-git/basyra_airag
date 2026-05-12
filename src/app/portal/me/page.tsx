@@ -26,11 +26,13 @@ interface AttendanceHistoryEntry {
 }
 
 interface HomeworkItem {
-  id:          string;
-  title:       string;
-  description: string | null;
-  due_date:    string | null;
-  max_score:   number;
+  id:                    string;
+  title:                 string;
+  description:           string | null;
+  due_date:              string | null;
+  max_score:             number;
+  accepting_submissions?: boolean | string | null;
+  closed?:               boolean | string | null;
   submission: {
     id:           string;
     text:         string | null;
@@ -129,6 +131,28 @@ function portalTeamHasMembers(data: unknown): boolean {
   return Array.isArray(team.employees) && team.employees.length > 0;
 }
 
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || value === "true";
+}
+
+function isFalseyFlag(value: unknown): boolean {
+  return value === false || value === "false";
+}
+
+function getTodayInTashkentISO(): string {
+  return new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function isPastDue(dueDate: string | null): boolean {
+  return !!dueDate && dueDate.slice(0, 10) < getTodayInTashkentISO();
+}
+
+function canSubmitHomework(hw: HomeworkItem): boolean {
+  if (isTruthyFlag(hw.closed)) return false;
+  if (isFalseyFlag(hw.accepting_submissions)) return false;
+  return true;
+}
+
 // ─── FIFA-style top card ──────────────────────────────────────────────────────
 
 function FifaCard({
@@ -216,6 +240,8 @@ function HomeworkCard({
   const hasSubmitted = !!hw.submission;
   const hasGrade     = !!hw.submission?.grade;
   const isLate       = !!hw.submission?.is_late;
+  const canSubmit    = canSubmitHomework(hw);
+  const showLateOpenWarning = !hasSubmitted && canSubmit && isPastDue(hw.due_date);
 
   async function loadMaterials() {
     if (materials !== null) return; // already fetched
@@ -377,15 +403,34 @@ function HomeworkCard({
             </div>
           )}
 
-          {/* Not submitted yet — show bot instruction */}
+          {/* Not submitted yet — show submission state */}
           {!hasSubmitted && (
-            <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-3 flex items-start gap-2.5">
-              <Send size={14} className="text-blue-500 mt-0.5 shrink-0" />
-              <p className="text-xs text-blue-700 leading-snug">
-                Vazifani topshirish uchun Telegram botga fayl yuboring.
-                Bot menyusidan <b>/homework</b> ni tanlang.
-              </p>
-            </div>
+            canSubmit ? (
+              <div className="space-y-2">
+                {showLateOpenWarning && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-3 flex items-start gap-2.5">
+                    <AlertTriangle size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                    <p className="text-xs text-amber-700 leading-snug">
+                      Muddat o&apos;tgan, lekin topshiriq hali qabul qilinmoqda. Topshirsangiz kechikkan sifatida belgilanadi.
+                    </p>
+                  </div>
+                )}
+                <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-3 flex items-start gap-2.5">
+                  <Send size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-blue-700 leading-snug">
+                    Vazifani topshirish uchun Telegram botga fayl yuboring.
+                    Bot menyusidan <b>/homework</b> ni tanlang.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-red-50 border border-red-100 rounded-xl px-3 py-3 flex items-start gap-2.5">
+                <AlertCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-red-700 leading-snug">
+                  Bu vazifa yopilgan. Endi fayl yuborish yoki topshiriqni topshirish mumkin emas.
+                </p>
+              </div>
+            )
           )}
 
           {/* Materials */}

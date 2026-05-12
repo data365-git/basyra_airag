@@ -265,10 +265,14 @@ function ThreadRow({
   thread,
   selected,
   onSelect,
+  showCheckbox = false,
+  checked = false,
 }: {
   thread: ThreadSummary;
   selected: boolean;
   onSelect: () => void;
+  showCheckbox?: boolean;
+  checked?: boolean;
 }) {
   return (
     <button
@@ -280,9 +284,21 @@ function ThreadRow({
       )}
     >
       <div className="flex items-start gap-3">
-        <div className={cn("mt-0.5 rounded-full p-2", thread.isAnonymous ? "bg-gray-100" : "bg-blue-100")}>
-          {thread.isAnonymous ? <UserCircle className="h-4 w-4 text-gray-500" /> : <MessageCircle className="h-4 w-4 text-blue-600" />}
-        </div>
+        {showCheckbox ? (
+          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => undefined}
+              className="h-4 w-4 rounded border-gray-300 accent-blue-600"
+              tabIndex={-1}
+            />
+          </div>
+        ) : (
+          <div className={cn("mt-0.5 rounded-full p-2", thread.isAnonymous ? "bg-gray-100" : "bg-blue-100")}>
+            {thread.isAnonymous ? <UserCircle className="h-4 w-4 text-gray-500" /> : <MessageCircle className="h-4 w-4 text-blue-600" />}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <p className="truncate text-sm font-semibold text-gray-900">{thread.name}</p>
@@ -379,6 +395,11 @@ export default function UnifiedChatPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedChatIds, setSelectedChatIds] = useState<Set<string>>(new Set());
+  const [broadcastText, setBroadcastText] = useState("");
+  const [broadcastSending, setBroadcastSending] = useState(false);
 
   async function loadThread(chatId: string) {
     setLoadingTimeline(true);
@@ -488,6 +509,25 @@ export default function UnifiedChatPage() {
     }
   }
 
+  async function handleBroadcast() {
+    if (!broadcastText.trim() || selectedChatIds.size === 0) return;
+    setBroadcastSending(true);
+    try {
+      const res = await fetch("/api/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_ids: Array.from(selectedChatIds), text: broadcastText }),
+      });
+      const data = await res.json() as { sent?: number; failed?: Array<{ chat_id: string; error: string }> };
+      alert(`Yuborildi: ${data.sent ?? 0}${data.failed?.length ? `, xato: ${data.failed.length}` : ""}`);
+      setMultiSelectMode(false);
+      setSelectedChatIds(new Set());
+      setBroadcastText("");
+    } finally {
+      setBroadcastSending(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1500px]">
       <PageHeader
@@ -502,9 +542,9 @@ export default function UnifiedChatPage() {
         </div>
       )}
 
-      <div className="grid min-h-[calc(100vh-190px)] grid-cols-1 gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <Card padding="none" className="flex min-h-[360px] flex-col overflow-hidden">
-          <div className="border-b border-gray-100 p-4">
+      <div className="grid h-[calc(100vh-190px)] grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[360px_minmax(0,1fr)]">
+        <Card padding="none" className="flex min-h-0 flex-col overflow-hidden">
+          <div className="sticky top-0 z-10 border-b border-gray-100 bg-white p-4">
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -513,22 +553,39 @@ export default function UnifiedChatPage() {
               aria-label="Search chats"
             />
             <Search className="pointer-events-none -mt-7 ml-3 h-4 w-4 text-gray-400" />
-            <div className="mt-4 flex flex-wrap gap-2">
-              {filters.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setFilter(item.value)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-medium transition",
-                    filter === item.value
-                      ? "border-blue-600 bg-blue-600 text-white"
-                      : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap gap-2">
+                {filters.map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    onClick={() => setFilter(item.value)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                      filter === item.value
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMultiSelectMode((prev) => !prev);
+                  setSelectedChatIds(new Set());
+                }}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                  multiSelectMode
+                    ? "border-blue-600 bg-blue-600 text-white"
+                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                )}
+              >
+                Tanlash
+              </button>
             </div>
           </div>
 
@@ -548,18 +605,61 @@ export default function UnifiedChatPage() {
                 <ThreadRow
                   key={thread.chatId}
                   thread={thread}
-                  selected={thread.chatId === selectedChatId}
-                  onSelect={() => setSelectedChatId(thread.chatId)}
+                  selected={multiSelectMode ? selectedChatIds.has(thread.chatId) : thread.chatId === selectedChatId}
+                  onSelect={() => {
+                    if (multiSelectMode) {
+                      setSelectedChatIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(thread.chatId)) {
+                          next.delete(thread.chatId);
+                        } else {
+                          next.add(thread.chatId);
+                        }
+                        return next;
+                      });
+                    } else {
+                      setSelectedChatId(thread.chatId);
+                    }
+                  }}
+                  showCheckbox={multiSelectMode}
+                  checked={selectedChatIds.has(thread.chatId)}
                 />
               ))
             )}
           </div>
         </Card>
 
-        <Card padding="none" className="flex min-h-[520px] flex-col overflow-hidden">
-          {selectedChatId ? (
+        <Card padding="none" className="flex min-h-0 flex-col overflow-hidden">
+          {multiSelectMode && selectedChatIds.size > 0 ? (
+            <div className="flex flex-col h-full p-6 gap-4">
+              <h2 className="font-semibold text-gray-900">{selectedChatIds.size} ta foydalanuvchiga xabar</h2>
+              <textarea
+                value={broadcastText}
+                onChange={(e) => setBroadcastText(e.target.value)}
+                placeholder="Xabar matni..."
+                className="flex-1 resize-none border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setMultiSelectMode(false); setSelectedChatIds(new Set()); }}
+                  className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBroadcast}
+                  disabled={!broadcastText.trim() || broadcastSending}
+                  className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {broadcastSending ? "Yuborilmoqda..." : `${selectedChatIds.size} ta ga yuborish`}
+                </button>
+              </div>
+            </div>
+          ) : selectedChatId ? (
             <>
-              <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+              <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-100 bg-white px-5 py-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="rounded-2xl bg-blue-100 p-2.5">
                     <Bot className="h-5 w-5 text-blue-700" />
@@ -590,7 +690,7 @@ export default function UnifiedChatPage() {
                 </div>
               )}
 
-              <form onSubmit={handleSend} className="border-t border-gray-100 bg-white p-4">
+              <form onSubmit={handleSend} className="sticky bottom-0 border-t border-gray-100 bg-white p-4">
                 <div className="flex gap-3">
                   <Textarea
                     value={reply}
@@ -618,8 +718,14 @@ export default function UnifiedChatPage() {
                 <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100">
                   <MessageCircle className="h-7 w-7 text-gray-400" />
                 </div>
-                <p className="font-medium text-gray-700">Suhbat tanlang</p>
-                <p className="mt-1 text-sm text-gray-500">Timeline va reply box shu yerda ko&apos;rinadi.</p>
+                <p className="font-medium text-gray-700">
+                  {multiSelectMode ? "Foydalanuvchilarni tanlang" : "Suhbat tanlang"}
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  {multiSelectMode
+                    ? "Chap tomondagi chatlarni belgilang, so'ng xabar yozing."
+                    : "Timeline va reply box shu yerda ko’rinadi."}
+                </p>
               </div>
             </div>
           )}

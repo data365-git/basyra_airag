@@ -385,7 +385,7 @@ export default function ChatbotContentPage() {
             <p className="font-medium text-red-800">Bilim bazasiga ulanib bo&apos;lmadi</p>
             <p className="text-sm text-red-600 mt-1">{error}</p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={loadContent}
               className="mt-3 text-sm text-red-700 underline hover:no-underline"
             >
               Qayta urinish

@@ -21,7 +21,8 @@ import { requireParticipant } from "@/lib/botAuth";
 import { linkedKeyboard, logMessage, reply } from "./ui";
 import { pendingSubmissions, pendingFiles, pendingRatingComment } from "./state";
 import { classifyMessage, extractFeedbackMeta } from "@/lib/intentRouter";
-import { askRag, logBotMessage, logUsage } from "@/lib/aiClient";
+import { classifyMessage as inboxClassify } from "@/lib/inboxClassifier";
+import { askRag, checkBudget, logBotMessage, logUsage } from "@/lib/aiClient";
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
 const DEFAULT_TTS_CHUNK_CHARS = 400;
@@ -29,6 +30,7 @@ const DEFAULT_TTS_FIRST_CHUNK_CHARS = 350;
 const DEFAULT_TTS_CONCURRENCY = 2;
 const TELEGRAM_TEXT_LIMIT = 3900;
 const MEDIUM_ANSWER_SPLIT_LIMIT = 9000;
+const SHORT_ANSWER_LIMIT = 600;
 
 type LongAnswerDelegate = {
   create(args: {
@@ -57,6 +59,50 @@ const prismaBotModels = prisma as typeof prisma & {
   botTtsChunk: BotTtsChunkDelegate;
 };
 
+const CYR_TO_LAT = new Map<string, string>([
+  ['Ш','Sh'],['ш','sh'],['Щ','Sh'],['щ','sh'],
+  ['Ч','Ch'],['ч','ch'],['Ц','Ts'],['ц','ts'],
+  ['Ю','Yu'],['ю','yu'],['Я','Ya'],['я','ya'],
+  ['Ё','Yo'],['ё','yo'],['Е','Ye'],['е','ye'],
+  ['Ж','J'], ['ж','j'], ['Ң','Ng'],['ң','ng'],
+  ['Ғ',"G'"],['ғ',"g'"],['Ў',"O'"],['ў',"o'"],
+  ['А','A'],['а','a'],['Б','B'],['б','b'],['В','V'],['в','v'],
+  ['Г','G'],['г','g'],['Д','D'],['д','d'],['З','Z'],['з','z'],
+  ['И','I'],['и','i'],['Й','Y'],['й','y'],['К','K'],['к','k'],
+  ['Л','L'],['л','l'],['М','M'],['м','m'],['Н','N'],['н','n'],
+  ['О','O'],['о','o'],['П','P'],['п','p'],['Р','R'],['р','r'],
+  ['С','S'],['с','s'],['Т','T'],['т','t'],['У','U'],['у','u'],
+  ['Ф','F'],['ф','f'],['Х','X'],['х','x'],['Ъ',"'"],['ъ',"'"],
+  ['Ы','I'],['ы','i'],['Ь',''], ['ь',''], ['Э','E'],['э','e'],
+  ['Ҳ','H'],['ҳ','h'],['Қ','Q'],['қ','q'],
+]);
+
+/** Transliterate Uzbek Cyrillic → Latin so RAG embeddings match indexed content. */
+function cyrillicToLatin(text: string): string {
+  if (!/[Ѐ-ӿ]/.test(text)) return text;
+  return [...text].map(ch => CYR_TO_LAT.get(ch) ?? ch).join('');
+}
+
+/**
+ * Expand known business abbreviations in-place so the RAG embedding gets
+ * enough context to retrieve the right chunks. The expansion is appended in
+ * parentheses so the original term is preserved for exact-match too.
+ */
+const ABBR_EXPANSIONS: Array<[RegExp, string]> = [
+  [/\bRNP\b/gi, "RNP (Расчет Недельного Плана, haftaliy reja hisob-kitobi, weekly plan dashboard)"],
+  [/\bKPI\b/gi, "KPI (key performance indicators, asosiy samaradorlik ko'rsatkichlari)"],
+  [/\bROP\b/gi, "ROP (sotuv bo'limi rahbari, rukovoditel otdela prodaj)"],
+  [/\bCRM\b/gi, "CRM (customer relationship management, mijozlar bilan munosabatlar tizimi)"],
+];
+
+function expandAbbreviations(text: string): string {
+  let result = text;
+  for (const [pattern, expansion] of ABBR_EXPANSIONS) {
+    result = result.replace(pattern, expansion);
+  }
+  return result;
+}
+
 /** Repair unbalanced Markdown delimiters that cause Telegram to silently drop formatting */
 function sanitizeMarkdown(text: string): string {
   let result = text;
@@ -73,6 +119,39 @@ function fmtUzDate(d: string | Date | null | undefined): string {
   if (!d) return "";
   const dt = typeof d === "string" ? new Date(d + "T00:00:00") : d;
   return `${dt.getDate()} ${UZ_MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
+}
+
+type HomeworkSubmissionGate = {
+  title: string;
+  dueDate: string | null;
+  acceptingSubmissions?: boolean | null;
+};
+
+function isHomeworkAcceptingSubmissions(hw: HomeworkSubmissionGate): boolean {
+  return hw.acceptingSubmissions !== false;
+}
+
+function getLateByDays(dueDate: string | null | undefined, todayStr: string): number {
+  if (!dueDate || dueDate >= todayStr) return 0;
+  return Math.round(
+    (new Date(todayStr + "T00:00:00Z").getTime() - new Date(dueDate + "T00:00:00Z").getTime()) / 86400000
+  );
+}
+
+function closedHomeworkMessage(hw: HomeworkSubmissionGate): string {
+  return `🔒 <b>${hw.title}</b>\n\nBu vazifa uchun topshiriq qabul qilish yopilgan. Fayl yoki matn yuborib bo'lmaydi.`;
+}
+
+function lateOpenHomeworkMessage(lateByDays: number): string {
+  return `\n\n⏰ <i>Muddat ${lateByDays} kun oldin o'tgan, lekin topshiriq qabul qilish hali ochiq. Kechikkan holda yuborishingiz mumkin.</i>`;
+}
+
+async function findSubmissionHomeworkGate(submissionId: string): Promise<HomeworkSubmissionGate | null> {
+  const sub = await prisma.homeworkSubmission.findUnique({
+    where:   { id: submissionId },
+    include: { homework: true },
+  });
+  return sub?.homework ?? null;
 }
 
 /** Extract first sentence as title (max 80 chars) */
@@ -404,10 +483,10 @@ async function resolveLongAnswerLimit(): Promise<number> {
       },
       orderBy: { updatedAt: "desc" },
     });
-    return parseBoundedInt(row?.value, 3900, 800, 3900);
+    return parseBoundedInt(row?.value, 1800, 800, 1800);
   } catch (error) {
     console.warn("[Bot] long-answer config lookup failed; using default", error);
-      return 3900;
+      return 1800;
   }
 }
 
@@ -457,31 +536,6 @@ function splitIntoChunks(text: string, maxChars = DEFAULT_TTS_CHUNK_CHARS, first
   }
   if (current.trim()) result.push(current.trim());
   return result.length ? result : [text.slice(0, firstMaxChars)];
-}
-
-function cyrillicToLatin(text: string): string {
-  const map: Record<string, string> = {
-    'А':'A','а':'a','Б':'B','б':'b','В':'V','в':'v','Г':'G','г':'g',
-    'Д':'D','д':'d','Е':'Ye','е':'ye','Ё':'Yo','ё':'yo','Ж':'J','ж':'j',
-    'З':'Z','з':'z','И':'I','и':'i','Й':'Y','й':'y','К':'K','к':'k',
-    'Л':'L','л':'l','М':'M','м':'m','Н':'N','н':'n','О':'O','о':'o',
-    'П':'P','п':'p','Р':'R','р':'r','С':'S','с':'s','Т':'T','т':'t',
-    'У':'U','у':'u','Ф':'F','ф':'f','Х':'X','х':'x','Ц':'Ts','ц':'ts',
-    'Ч':'Ch','ч':'ch','Ш':'Sh','ш':'sh','Щ':'Shch','щ':'shch',
-    'Ъ':"'",'ъ':"'",'Ы':'i','ы':'i','Ь':'','ь':'',
-    'Э':'E','э':'e','Ю':'Yu','ю':'yu','Я':'Ya','я':'ya',
-    'Ғ':"G'",'ғ':"g'",'Қ':'Q','қ':'q','Ҳ':'H','ҳ':'h',
-    'Ў':"O'",'ў':"o'",'Ҷ':'J','ҷ':'j',
-  };
-  return text.split('').map(ch => map[ch] ?? ch).join('');
-}
-
-function expandAbbreviations(text: string): string {
-  return text
-    .replace(/\bRNP\b/gi, "RNP (Расчет Недельного Плана, haftaliy reja hisob-kitobi)")
-    .replace(/\bKPI\b/gi, "KPI (Key Performance Indicator, asosiy ko'rsatkichlar)")
-    .replace(/\bROP\b/gi, "ROP (Revenue Operations Plan, daromad operatsiyalari rejasi)")
-    .replace(/\bCRM\b/gi, "CRM (Customer Relationship Management, mijozlar bilan munosabatlar tizimi)");
 }
 
 function buildHomeMenu() {
@@ -616,19 +670,12 @@ export function registerCommandHandlers(b: Bot) {
         return;
       }
 
-      // Late-submission guards
       const todayStr  = new Date().toISOString().slice(0, 10);
       const isOverdue = !!(hw.dueDate && hw.dueDate < todayStr);
-      const lateByDays = isOverdue && hw.dueDate ? Math.round(
-        (new Date(todayStr + "T00:00:00Z").getTime() - new Date(hw.dueDate + "T00:00:00Z").getTime()) / 86400000
-      ) : 0;
+      const lateByDays = getLateByDays(hw.dueDate, todayStr);
 
-      if (isOverdue && !hw.allowLateSubmission) {
-        await reply(ctx, `⏰ <b>${hw.title}</b>\n\nBu vazifa muddati tugagan va kech topshirish ruxsat etilmaydi.`);
-        return;
-      }
-      if (isOverdue && hw.hardCloseAt && hw.hardCloseAt < todayStr) {
-        await reply(ctx, `⏰ <b>${hw.title}</b>\n\nBu vazifaning qabul qilish muddati ham o'tdi (${fmtUzDate(hw.hardCloseAt)}).`);
+      if (!isHomeworkAcceptingSubmissions(hw)) {
+        await reply(ctx, closedHomeworkMessage(hw));
         return;
       }
 
@@ -657,7 +704,7 @@ export function registerCommandHandlers(b: Bot) {
       const doneKb    = new InlineKeyboard().text("✅ Yakunlash", "hw_done");
 
       let prompt = `📎 <b>${hw.title}</b>`;
-      if (isOverdue) prompt += `\n\n⏰ <i>Bu vazifa muddati ${lateByDays} kun oldin o'tdi — kechikkan holda topshiriladi.</i>`;
+      if (isOverdue) prompt += lateOpenHomeworkMessage(lateByDays);
       prompt += "\n\n";
       if (existingSub && fileCount > 0) {
         prompt += `Allaqachon ${fileCount} ta fayl yuborilgan.\n\n`;
@@ -702,6 +749,14 @@ export function registerCommandHandlers(b: Bot) {
 
     if (!pf) {
       await reply(ctx, "Tasdiqlanadigan fayl topilmadi.");
+      return;
+    }
+
+    const hw = await findSubmissionHomeworkGate(pf.submissionId);
+    if (hw && !isHomeworkAcceptingSubmissions(hw)) {
+      pendingFiles.delete(chatKey);
+      pendingSubmissions.delete(chatKey);
+      await reply(ctx, closedHomeworkMessage(hw));
       return;
     }
 
@@ -823,17 +878,6 @@ export function registerCommandHandlers(b: Bot) {
     const homeworks   = await prisma.homework.findMany({
       where: {
         trainingId: { in: trainingIds },
-        OR: [
-          { dueDate: null },
-          { dueDate: { gte: today } },
-          {
-            AND: [
-              { dueDate: { lt: today } },
-              { allowLateSubmission: true },
-              { OR: [{ hardCloseAt: null }, { hardCloseAt: { gte: today } }] },
-            ],
-          },
-        ],
       },
       include: {
         training:    { select: { name: true } },
@@ -849,7 +893,7 @@ export function registerCommandHandlers(b: Bot) {
     });
 
     if (homeworks.length === 0) {
-      await reply(ctx, "📭 Hozircha ochiq vazifa yo'q.");
+      await reply(ctx, "📭 Hozircha vazifa yo'q.");
       return;
     }
 
@@ -860,25 +904,27 @@ export function registerCommandHandlers(b: Bot) {
       const sub    = hw.submissions[0];
       const graded = sub?.grade;
       const isOverdue = hw.dueDate && hw.dueDate < today;
-      const icon   = graded ? "✅" : sub ? "📤" : (isOverdue ? "⏰" : "⏳");
+      const accepting = isHomeworkAcceptingSubmissions(hw);
+      const icon   = graded ? "✅" : !accepting ? "🔒" : sub ? "📤" : (isOverdue ? "⏰" : "⏳");
 
       text +=
         `${icon} <b>${hw.title}</b>` +
-        (isOverdue && !sub ? " <i>(kechikkan)</i>" : "") + "\n" +
+        (isOverdue && accepting && !graded ? " <i>(kech topshirish ochiq)</i>" : "") + "\n" +
         `   📚 ${hw.training.name}\n` +
         (hw.dueDate ? `   📅 Muddat: ${fmtUzDate(hw.dueDate)}\n`    : "") +
+        (!accepting && !graded ? "   🔒 Qabul yopilgan\n" : "") +
         (graded     ? `   ⭐ Baho: ${graded.score}/${hw.maxScore}\n` : "") +
         (sub && !graded && sub.files.length > 0
           ? `   📎 ${sub.files.length} ta fayl topshirilgan\n`       : "") +
         "\n";
 
-      if (!graded) {
+      if (!graded && accepting) {
         ungradedBtns.push({ label: `${i + 1}`, data: `hw_select:${hw.id}` });
       }
     });
 
     if (ungradedBtns.length === 0) {
-      text += "\n✅ Barcha vazifalar baholangan!";
+      text += "\n✅ Barcha vazifalar baholangan yoki qabul yopilgan!";
       await reply(ctx, text, { reply_markup: linkedKeyboard() });
       return;
     }
@@ -940,6 +986,14 @@ export function registerCommandHandlers(b: Bot) {
 
     // Plain text submission
     if (pending && pending.submissionId) {
+      const hw = await findSubmissionHomeworkGate(pending.submissionId);
+      if (hw && !isHomeworkAcceptingSubmissions(hw)) {
+        pendingSubmissions.delete(chatKey);
+        pendingFiles.delete(chatKey);
+        await reply(ctx, closedHomeworkMessage(hw));
+        return;
+      }
+
       const updatedSub = await prisma.homeworkSubmission.update({
         where:   { id: pending.submissionId },
         data:    { text },
@@ -1011,6 +1065,27 @@ export function registerCommandHandlers(b: Bot) {
       replyToMessageId: replyContext?.assistantMessageId ?? null,
     });
 
+    // Fire-and-forget inbox classification
+    inboxClassify(text).then(async (result) => {
+      if (!result) return;
+      try {
+        await (prisma as any).inboxItem.create({
+          data: {
+            chatId: BigInt(chatId),
+            participantId: participantId ?? null,
+            sourceMessageId: String(telegramMsgId ?? ""),
+            kind: result.kind,
+            status: "new",
+            summary: result.summary,
+            body: text,
+            classifierScore: result.score,
+          },
+        });
+      } catch (e) {
+        console.error("inbox classify save failed:", e);
+      }
+    }).catch(() => {});
+
     let intent: string;
     try {
       const result = await classifyMessage(text);
@@ -1050,6 +1125,11 @@ export function registerCommandHandlers(b: Bot) {
     if (intent === "AI_COURSE_QUESTION" || intent === "BUSINESS_CONSULTING" || intent === "UNCLEAR") {
       await ctx.replyWithChatAction("typing");
       try {
+        const budgetBlock = await checkBudget(participantId);
+        if (budgetBlock) {
+          await reply(ctx, budgetBlock);
+          return;
+        }
         const memory = await loadConversationMemory(chatId, userMsgId);
         const ragText = expandAbbreviations(cyrillicToLatin(text));
         const { text: answer, raw, metadata } = await askRag({
@@ -1084,6 +1164,7 @@ export function registerCommandHandlers(b: Bot) {
             incomplete_ending_detected: metadata.incompleteEndingDetected,
             completion_attempted: metadata.completionAttempted,
           },
+          sources: raw?.structured_sources ?? null,
           replyToTelegramMsgId: telegramMsgId,
           replyToMessageId: userMsgId,
         });
@@ -1120,6 +1201,7 @@ export function registerCommandHandlers(b: Bot) {
 
           const kb = new InlineKeyboard()
             .url("📖 To'liq o'qish", `${appUrl}/article/${longAnswer.id}`)
+            .text("📚 Manba", `manba_${msgId ?? "0"}`)
             .url("📄 PDF yuklab olish", `${appUrl}/article/${longAnswer.id}?print=1`);
 
           const summaryText = sanitizeMarkdown(makeLongAnswerPreview(summary));
@@ -1136,7 +1218,10 @@ export function registerCommandHandlers(b: Bot) {
             const part = splitParts[index];
             const prefix = splitParts.length > 1 ? `💡 ${index + 1}/${splitParts.length}\n\n` : "💡 ";
             const isLast = index === splitParts.length - 1;
-            const kb = isLast ? undefined : undefined;
+            const kb = isLast
+              ? new InlineKeyboard()
+                  .text("📚 Manba", `manba_${msgId ?? "0"}`)
+              : undefined;
             const sanitized = sanitizeMarkdown(`${prefix}${part}`);
             let sent: number | null = null;
             try {
@@ -1154,13 +1239,18 @@ export function registerCommandHandlers(b: Bot) {
           await mergeBotMessageMetadata(msgId, { telegram_message_count: splitParts.length });
         } else {
           // Send direct answers when they fit Telegram's message limit.
+          const replyMarkup = answer.length > SHORT_ANSWER_LIMIT
+            ? new InlineKeyboard()
+                .text("📚 Manba", `manba_${msgId ?? "0"}`)
+                .text("🔊 Tinglash", `tts_${msgId ?? "0"}`)
+            : undefined;
           const sanitized = sanitizeMarkdown(`💡 ${answer}`);
           let sentTelegramMsgId: number | null = null;
           try {
-            sentTelegramMsgId = await reply(ctx, sanitized, { parse_mode: "Markdown" });
+            sentTelegramMsgId = await reply(ctx, sanitized, { parse_mode: "Markdown", ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
           } catch (mdErr) {
             if (String(mdErr).includes("can't parse")) {
-              sentTelegramMsgId = await reply(ctx, `💡 ${answer}`);
+              sentTelegramMsgId = await reply(ctx, `💡 ${answer}`, replyMarkup ? { reply_markup: replyMarkup } : undefined);
             } else {
               throw mdErr;
             }
@@ -1168,25 +1258,56 @@ export function registerCommandHandlers(b: Bot) {
           await setBotMessageTelegramMsgId(msgId, sentTelegramMsgId);
         }
 
-        // Message 2: rating prompt — separate message so it has context
-        const ratingKb = new InlineKeyboard()
-          .text("1", `rate_${msgId ?? "0"}_1`)
-          .text("2", `rate_${msgId ?? "0"}_2`)
-          .text("3", `rate_${msgId ?? "0"}_3`)
-          .text("4", `rate_${msgId ?? "0"}_4`)
-          .text("5", `rate_${msgId ?? "0"}_5`);
-        try {
-          await ctx.reply(
-            "⭐ *Iltimos AI\\-yordamchi javobini baholang*\n\n_Bu bizga AI\\-yordamchi ustida ishlashga yordam beradi_ 🙏",
-            { parse_mode: "MarkdownV2", reply_markup: ratingKb }
-          );
-        } catch {
-          // Non-critical — answer already delivered
+        // Message 2: rating prompt — frequency-capped
+        // Always show when cost > $0.005 (expensive answer worth rating),
+        // otherwise only show if > 6 h since last rating prompt for this chat.
+        const costUsd = raw?.cost_usd ?? 0;
+        let showRating = costUsd > 0.005;
+        if (!showRating && msgId) {
+          try {
+            const lastRating = await (prisma as any).botMessageRating?.findFirst({
+              where: { message: { chatId } },
+              orderBy: { ratedAt: "desc" },
+              select: { ratedAt: true },
+            });
+            const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+            showRating = !lastRating || lastRating.ratedAt < sixHoursAgo;
+          } catch {
+            showRating = true; // on error, default to showing
+          }
+        }
+        if (showRating) {
+          const ratingKb = new InlineKeyboard()
+            .text("1", `rate_${msgId ?? "0"}_1`)
+            .text("2", `rate_${msgId ?? "0"}_2`)
+            .text("3", `rate_${msgId ?? "0"}_3`)
+            .text("4", `rate_${msgId ?? "0"}_4`)
+            .text("5", `rate_${msgId ?? "0"}_5`);
+          try {
+            await ctx.reply(
+              "⭐ Bu javob foydali bo'ldimi?",
+              { reply_markup: ratingKb }
+            );
+          } catch {
+            // Non-critical — answer already delivered
+          }
         }
 
-        // Show "enroll in course" CTA only to anonymous users — never to
-        // staff (they manage the system, not enroll in it).
-        if (!participantId && !isStaff) {
+        // CTA frequency cap — show at most once every 3 bot replies, never to staff
+        let showCta = !participantId && !isStaff;
+        if (showCta) {
+          const recentBotMsgs = await prisma.botMessage.findMany({
+            where: { chatId, role: "assistant" },
+            orderBy: { createdAt: "desc" },
+            take: 3,
+            select: { content: true },
+          });
+          if (recentBotMsgs.some(m => m.content.includes("Kursga yozilish"))) {
+            showCta = false;
+          }
+        }
+
+        if (showCta) {
           const cta = new InlineKeyboard().text("📲 Kursga yozilish", "auth_login");
           await reply(ctx, "<i>Jadval, baholar va vazifalaringizni ko'rish uchun ro'yxatdan o'ting</i>", {
             reply_markup: cta,
@@ -1297,6 +1418,14 @@ export function registerCommandHandlers(b: Bot) {
       return;
     }
 
+    const hw = await findSubmissionHomeworkGate(pending.submissionId);
+    if (hw && !isHomeworkAcceptingSubmissions(hw)) {
+      pendingSubmissions.delete(chatKey);
+      pendingFiles.delete(chatKey);
+      await reply(ctx, closedHomeworkMessage(hw));
+      return;
+    }
+
     // Hold file in memory — ask user to confirm before writing to DB
     pendingFiles.set(chatKey, {
       submissionId:   pending.submissionId,
@@ -1314,6 +1443,39 @@ export function registerCommandHandlers(b: Bot) {
       `📎 <b>${fileName}</b>${sizeLabel}\n\nBu faylni topshiriqqa qo'shaylikmi?`,
       { reply_markup: confirmKb }
     );
+  });
+
+  // ── Manba (sources) button ────────────────────────────────────────────────
+  b.callbackQuery(/^manba_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const msgId = ctx.match[1];
+    if (!msgId || msgId === "0") {
+      await ctx.reply("📚 Manba topilmadi.");
+      return;
+    }
+    try {
+      const msg = await (prisma as any).botMessage.findUnique({
+        where: { id: msgId },
+        select: { sources: true },
+      });
+      const sources = (msg?.sources ?? null) as Array<{ course: string; lesson_number: number | null; lesson_title: string | null }> | null;
+      if (!sources || sources.length === 0) {
+        await ctx.reply("📚 Manba topilmadi.");
+        return;
+      }
+      const lines = sources
+        .slice(0, 5)
+        .map((s) => {
+          const parts = [s.course, s.lesson_number != null ? `Dars ${s.lesson_number}` : null, s.lesson_title]
+            .filter(Boolean);
+          return `• ${parts.join(" · ")}`;
+        });
+      if (sources.length > 5) lines.push(`+ ${sources.length - 5} ta ko'proq`);
+      await ctx.reply(`📚 Manbalar:\n\n${lines.join("\n")}`);
+    } catch (err) {
+      console.error("[BOT] manba callback error:", err);
+      await ctx.reply("📚 Manba topilmadi.");
+    }
   });
 
   // ── TTS — voice playback of AI answer ─────────────────────────────────────
@@ -1523,15 +1685,21 @@ export function registerCommandHandlers(b: Bot) {
 
     // Edit the rating message in place — buttons disappear, confirmation appears
     try {
-      await ctx.editMessageText(`✅ Rahmat! Sizning bahoyingiz: ${stars}⭐`);
+      if (stars >= 4) {
+        await ctx.editMessageText(`Rahmat! ${"⭐".repeat(stars)}`);
+      } else {
+        await ctx.editMessageText("Rahmat!");
+      }
     } catch { /* message too old or already edited — ignore */ }
 
-    if (stars <= 3) {
-      // Ask for reason on 1–3⭐ only — 4–5⭐ users are happy, leave them alone
-      await ctx.reply(
-        "Yordam bering — nima xato edi? Buni o'qib, AI'ni yaxshilashga harakat qilaman 🙏",
-        { reply_markup: reasonKeyboard(msgId) },
-      );
+    if (stars <= 2) {
+      // Ask for reason on 1–2⭐ only
+      try {
+        await ctx.reply(
+          "Yordam bering — nima xato edi? Buni o'qib, AI'ni yaxshilashga harakat qilaman 🙏",
+          { reply_markup: reasonKeyboard(msgId) },
+        );
+      } catch { /* non-critical */ }
     }
   });
 

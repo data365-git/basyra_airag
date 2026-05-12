@@ -455,6 +455,10 @@ export async function GET(request: Request) {
       unanswered_count: Number(unansweredRows[0]?.count ?? 0),
       routed_counts: routedCounts,
     },
+    intent_stats: intentRows.map((r) => ({
+      intent: r.intent,
+      count: Number(r.count),
+    })),
     insights: {
       common_intents: intentRows.map((r) => ({
         intent: r.intent,

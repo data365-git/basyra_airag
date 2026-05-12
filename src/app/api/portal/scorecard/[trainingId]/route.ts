@@ -78,6 +78,8 @@ export async function GET(
         title:       hw.title,
         description: hw.description,
         due_date:    hw.dueDate,
+        accepting_submissions: hw.acceptingSubmissions,
+        closed_at:   hw.closedAt,
         max_score:   hw.maxScore,
         submission: sub ? {
           id:           sub.id,

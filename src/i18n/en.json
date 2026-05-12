@@ -8,6 +8,8 @@
   "nav.lms_workspace": "Back to LMS",
   "nav.knowledge_base": "Knowledge base",
   "nav.complaints": "Feedback",
+  "nav.ratings": "Ratings",
+  "nav.inbox": "Inbox",
   "chatbot.tab_admins": "Admins",
   "chatbot.tab_overview": "Overview",
   "chatbot.tab_conversations": "Conversations",

@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Plus, Trash2, BookOpen, Users, Star, ChevronRight, Clock } from "lucide-react";
 import { PageHeader } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
+import { HomeworkAcceptingBadge, getHomeworkAcceptingHint } from "@/components/homework/HomeworkAcceptingStatus";
 import { usePermission } from "@/hooks/usePermission";
 import toast from "react-hot-toast";
 
@@ -18,6 +19,7 @@ interface Homework {
   due_date:             string | null;
   hard_close_at:        string | null;
   allow_late_submission: boolean;
+  accepting_submissions?: boolean | null;
   late_penalty_percent: number | null;
   max_score:            number;
   created_at:           string;
@@ -29,7 +31,6 @@ interface Homework {
 
 export default function HomeworksPage() {
   const { id: trainingId } = useParams<{ id: string }>();
-  const router = useRouter();
   const canManage = usePermission("trainings", "edit");
 
   const [homeworks,    setHomeworks]    = useState<Homework[]>([]);
@@ -48,9 +49,7 @@ export default function HomeworksPage() {
   const [deleteTarget, setDeleteTarget] = useState<Homework | null>(null);
   const [deleting,     setDeleting]     = useState(false);
 
-  useEffect(() => { load(); }, [trainingId]);
-
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const [trainingRes, hwRes] = await Promise.all([
       fetch(`/api/trainings/${trainingId}`).then((r) => r.json()),
@@ -59,7 +58,10 @@ export default function HomeworksPage() {
     setTrainingName(trainingRes?.name ?? "");
     setHomeworks(Array.isArray(hwRes) ? hwRes : []);
     setLoading(false);
-  }
+  }, [trainingId]);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load(); }, [load]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -115,7 +117,7 @@ export default function HomeworksPage() {
         actions={
           canManage ? (
             <Button size="sm" onClick={() => setAddOpen(true)}>
-              <Plus size={14} /> Vazifa qo'shish
+              <Plus size={14} /> Vazifa qo&apos;shish
             </Button>
           ) : undefined
         }
@@ -129,10 +131,10 @@ export default function HomeworksPage() {
         {homeworks.length === 0 ? (
           <div className="py-12 text-center text-gray-400">
             <BookOpen size={40} className="mx-auto mb-3 text-gray-300" />
-            <p className="font-medium text-gray-500">Hali vazifa yo'q</p>
+            <p className="font-medium text-gray-500">Hali vazifa yo&apos;q</p>
             {canManage && (
               <button onClick={() => setAddOpen(true)} className="mt-3 text-sm text-blue-600 hover:underline">
-                Birinchi vazifani qo'shish
+                Birinchi vazifani qo&apos;shish
               </button>
             )}
           </div>
@@ -147,9 +149,13 @@ export default function HomeworksPage() {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 truncate">{hw.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-gray-900 truncate">{hw.title}</p>
+                    <HomeworkAcceptingBadge homework={hw} />
+                  </div>
                   <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 flex-wrap">
                     {hw.due_date && <span>Muddat: {hw.due_date}</span>}
+                    <span>{getHomeworkAcceptingHint(hw)}</span>
                     <span className="flex items-center gap-1">
                       <Users size={11} /> {hw.submission_count} topshirildi
                     </span>
@@ -170,7 +176,7 @@ export default function HomeworksPage() {
                 <div className="flex items-center gap-2 shrink-0">
                   <Link href={`/trainings/${trainingId}/homeworks/${hw.id}`}>
                     <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm text-blue-600 hover:bg-blue-50 font-medium transition-colors">
-                      Ko'rish <ChevronRight size={14} />
+                      Ko&apos;rish <ChevronRight size={14} />
                     </button>
                   </Link>
                   {canManage && (
@@ -258,7 +264,7 @@ export default function HomeworksPage() {
             {addForm.allow_late_submission && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-xs font-medium text-gray-600">Qat'iy yopilish sanasi</label>
+                  <label className="block text-xs font-medium text-gray-600">Qat&apos;iy yopilish sanasi</label>
                   <input
                     type="date"
                     value={addForm.hard_close_at}

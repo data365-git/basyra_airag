@@ -40,7 +40,7 @@ const KEYWORD_RULES: Array<{ intent: Intent; patterns: RegExp[] }> = [
     intent: "BUSINESS_CONSULTING",
     patterns: [
       /\b(crm|bi|dashboard|dashbord|telephony|telefoniya|telefonia|call center|sales funnel|voronka|integratsiya|integration|integrations)\b/i,
-      /\b(audit|аудит|checklist|check-list|tekshiruv|tekshirish|konsalting|consulting|biznes konsult|business consult|biznes jarayon|business process|process analysis|kpi|КПИ|metrics?|metrika|ko'rsatkich|кўрсаткич|номоддий|моддий|indikator|analitika|analytics)\b/i,
+      /\b(audit|аудит|checklist|check-list|tekshiruv|tekshirish|konsalting|consulting|biznes konsult|business consult|biznes jarayon|business process|process analysis|kpi|КПИ|metrics?|metrika|ko'rsatkich|кўрсаткич|indikator|analitika|analytics|nomoddiy|номоддий|moddiy|моддий)\b/i,
       /\b(nimalarni|nimani|qaysi)\b.*\b(o'lchash|o'lchaymiz|tekshirish|tekshiramiz|audit|kpi|metrics?|metrika|ko'rsatkich)\b/i,
       /\b(lms|learning management system)\b.*\b(tizim|system|platforma|platform|audit|аудит|checklist|tekshiruv|kpi|metrics?|metrika|ko'rsatkich|analitika|analytics|integratsiya|integration|crm|telephony|telefoniya|telefonia|telefon|calls?|qo['‘`]?ng['‘`]?iroq|sales|sotuv|funnel|voronka|dashboard|dashbord|bi)\b/i,
       /\b(tizim|system|platforma|platform|audit|аудит|checklist|tekshiruv|kpi|metrics?|metrika|ko'rsatkich|analitika|analytics|integratsiya|integration|crm|telephony|telefoniya|telefonia|telefon|calls?|qo['‘`]?ng['‘`]?iroq|sales|sotuv|funnel|voronka|dashboard|dashbord|bi)\b.*\b(lms|learning management system)\b/i,

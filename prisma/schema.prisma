@@ -36,12 +36,15 @@ model StaffUser {
   createdTrainings   Training[]
   auditLogs          AttendanceAudit[]
   translations       Translation[]
-  homeworks          Homework[]
+  homeworks          Homework[]         @relation("HomeworkCreatedBy")
+  closedHomeworks    Homework[]         @relation("HomeworkClosedBy")
+  reopenedHomeworks  Homework[]         @relation("HomeworkReopenedBy")
   homeworkGrades     HomeworkGrade[]
   homeworkMaterials  HomeworkMaterial[]
   activityScores     ActivityScore[]
   supervisorLinks    SupervisorLink[]
   telegramLink       StaffTelegramLink?
+  inboxItems         InboxItem[]
 
   @@map("staff_users")
 }
@@ -150,6 +153,7 @@ model Participant {
   botMessageRatings    BotMessageRating[]
   studentFeedback      StudentFeedback[]
   longAnswers          LongAnswer[]
+  inboxItems           InboxItem[]
 
   @@map("participants")
 }
@@ -223,22 +227,29 @@ model AttendanceAudit {
 }
 
 model Homework {
-  id                  String               @id @default(uuid())
-  trainingId          String               @map("training_id")
-  training            Training             @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  title               String
-  description         String?
-  startDate           String?              @map("start_date") // "YYYY-MM-DD" plain string, nullable
-  dueDate             String?              @map("due_date") // "YYYY-MM-DD" plain string, nullable
-  allowLateSubmission Boolean              @default(true) @map("allow_late_submission")
-  hardCloseAt         String?              @map("hard_close_at") // "YYYY-MM-DD" — absolute cutoff, no submissions after this
-  latePenaltyPercent  Int?                 @map("late_penalty_percent") // hint-only, null = no penalty shown
-  maxScore            Int                  @default(100) @map("max_score")
-  createdById         String?              @map("created_by")
-  createdBy           StaffUser?           @relation(fields: [createdById], references: [id])
-  createdAt           DateTime             @default(now()) @map("created_at")
-  submissions         HomeworkSubmission[]
-  materials           HomeworkMaterial[]
+  id                   String               @id @default(uuid())
+  trainingId           String               @map("training_id")
+  training             Training             @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  title                String
+  description          String?
+  startDate            String?              @map("start_date") // "YYYY-MM-DD" plain string, nullable
+  dueDate              String?              @map("due_date") // "YYYY-MM-DD" plain string, nullable
+  allowLateSubmission  Boolean              @default(true) @map("allow_late_submission")
+  hardCloseAt          String?              @map("hard_close_at") // "YYYY-MM-DD" — absolute cutoff, no submissions after this
+  latePenaltyPercent   Int?                 @map("late_penalty_percent") // hint-only, null = no penalty shown
+  acceptingSubmissions Boolean              @default(true) @map("accepting_submissions")
+  closedAt             DateTime?            @map("closed_at")
+  closedById           String?              @map("closed_by_id")
+  closedBy             StaffUser?           @relation("HomeworkClosedBy", fields: [closedById], references: [id])
+  reopenedAt           DateTime?            @map("reopened_at")
+  reopenedById         String?              @map("reopened_by_id")
+  reopenedBy           StaffUser?           @relation("HomeworkReopenedBy", fields: [reopenedById], references: [id])
+  maxScore             Int                  @default(100) @map("max_score")
+  createdById          String?              @map("created_by")
+  createdBy            StaffUser?           @relation("HomeworkCreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime             @default(now()) @map("created_at")
+  submissions          HomeworkSubmission[]
+  materials            HomeworkMaterial[]
 
   @@map("homeworks")
 }
@@ -476,6 +487,7 @@ model BotMessage {
   routedTo             String?           @map("routed_to") // "lms" | "ai" | "templated"
   tokenCount           Int?              @map("token_count")
   metadata             Json?
+  sources              Json?             @map("sources")
   telegramMsgId        Int?              @map("telegram_msg_id")
   replyToTelegramMsgId Int?              @map("reply_to_telegram_msg_id")
   replyToMessageId     String?           @map("reply_to_message_id")
@@ -606,4 +618,29 @@ model ChatbotBroadcastHistory {
 
   @@index([createdAt])
   @@map("chatbot_broadcast_history")
+}
+
+model InboxItem {
+  id              String       @id @default(cuid())
+  chatId          BigInt       @map("chat_id")
+  participantId   String?      @map("participant_id")
+  participant     Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  sourceMessageId String?      @map("source_message_id")
+  kind            String       // "complaint" | "offer" | "lead" | "question"
+  status          String       @default("new")   // "new" | "in_review" | "resolved" | "dismissed"
+  priority        String       @default("normal")
+  summary         String
+  body            String
+  classifierScore Float?       @map("classifier_score")
+  assignedToId    String?      @map("assigned_to")
+  assignedTo      StaffUser?   @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  resolvedAt      DateTime?    @map("resolved_at")
+  resolutionNote  String?      @map("resolution_note")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([kind, status])
+  @@index([chatId])
+  @@index([participantId])
+  @@map("inbox_items")
 }
