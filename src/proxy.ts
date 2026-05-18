@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
 import { PORTAL_COOKIE, verifyPortalJWT } from "@/lib/portalAuth";
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/api/health", "/portal", "/api/portal", "/article", "/api/telegram/webhook", "/api/telegram/set-webhook", "/api/portal/telegram-login"];
+const PUBLIC_PATHS = ["/login", "/api/auth", "/api/health", "/portal", "/api/portal", "/article", "/api/telegram/webhook", "/api/telegram/set-webhook", "/api/portal/telegram-login", "/api/debug"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
