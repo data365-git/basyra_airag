@@ -79,7 +79,7 @@ const KEYWORD_RULES: Array<{ intent: Intent; patterns: RegExp[] }> = [
   {
     intent: "SMALL_TALK",
     patterns: [
-      /^(salom|assalomu|привет|hi|hello|hey|rahmat|спасибо|ok|okay|xop|yaxshi|zo'r)[!?.,]?$/i,
+      /^(salom|assalomu|привет|hi|hello|hey|rahmat|спасибо|ok|okay|xop|hop|yaxshi|zo'r|bo'pti|tushundim|tushunarli|qabul)[!?.,]?$/i,
       /^(😊|👍|🙏|❤️|✅)+$/,
     ],
   },
@@ -93,7 +93,7 @@ const KEYWORD_RULES: Array<{ intent: Intent; patterns: RegExp[] }> = [
   {
     intent: "SUGGESTION",
     patterns: [
-      /\b(taklif|tavsiya|yaxshilash|o'zgartirish|qo'shish|bo'lsa yaxshi|nima desangiz)\b/i,
+      /\b(taklifim|tavsiyam|takliflarim|tavsiyalarim|taklif qilaman|tavsiya qilaman|taklif qilmoqchi|menda taklif|mening taklifim|mening tavsiyam|sizga taklif|yaxshilash kerak|qo'shsa bo'ladi|bo'lsa yaxshi|nima desangiz)\b/i,
       /\b(suggestion|idea|improve|add|feature|would be nice|consider)\b/i,
     ],
   },

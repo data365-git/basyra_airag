@@ -8,9 +8,20 @@
  */
 
 import prisma from "@/lib/prisma";
+import { Pool } from "pg";
 
-const RAG_URL   = process.env.RAG_SERVICE_URL ?? "";
-const RAG_TOKEN = process.env.RAG_INTERNAL_TOKEN ?? "";
+const RAG_URL    = process.env.RAG_SERVICE_URL ?? "";
+const RAG_DB_URL = process.env.RAG_DATABASE_URL ?? "";
+let _ragPool: Pool | null = null;
+function getRagPool(): Pool | null {
+  if (!RAG_DB_URL) return null;
+  if (!_ragPool) _ragPool = new Pool({ connectionString: RAG_DB_URL, max: 3 });
+  return _ragPool;
+}
+const RAG_TOKEN  = process.env.RAG_INTERNAL_TOKEN ?? "";
+const GEMINI_KEY = process.env.GEMINI_API_KEY ?? "";
+const GEMINI_CHAT_MODEL = "gemini-2.5-flash";
+const GEMINI_CHAT_FALLBACK_MODEL = "gemini-2.0-flash";
 
 export interface AskRequest {
   chat_id:        number;
@@ -29,6 +40,7 @@ export interface AskResponse {
   tokens_out:       number;
   cost_usd:         number;
   response_time_ms: number;
+  model?:           string | null;
   finish_reason?:   string | null;
   finishReason?:    string | null;
   stop_reason?:     string | null;
@@ -109,11 +121,14 @@ AI Conversation Reliability / Answer Behavior:
 - If the source chunks are narrative but the user asked for an audit/checklist/metrics answer, extract actionable criteria from the chunks and present them as a practical answer.
 - Be honest about missing evidence. If one mentioned system is not covered by the chunks, still keep its section and say what is missing before giving general guidance.
 
-Formatting rules (MUST follow):
+Formatting rules (MUST follow — Telegram Markdown V1, NOT GitHub markdown):
+- Bold uses SINGLE asterisks: "*bold text*" — NEVER use double asterisks "**bold**". Telegram does not render double asterisks.
+- Italic uses underscores: "_italic text_" — NEVER use single asterisks for italic.
 - Numbered list items MUST start with the number at the BEGINNING of the line: "1. Text..." — NEVER place a number at the end of a sentence or paragraph.
-- Section headers must be on their own line in bold: "*1. Sarlavha*" or "*2. Analiz*", then content on the next line.
+- Section headers must be on their own line in single-asterisk bold: "*1. Sarlavha*" or "*2. Analiz*", then content on the next line.
 - Always insert a blank line between each numbered section — never run sections together into a wall of text.
-- Sub-points use "  - " (two-space indent + dash) to indent under the parent item.
+- Sub-points use "  - " (two-space indent + dash) to indent under the parent item. NEVER use "*   " or "* " for bullets — use "- " only.
+- Prefer compact format "1. Title: description on the same line" for short conceptual lists; use multi-line sections only for longer explanations.
 - Do NOT place colons or numbers after a full paragraph; they belong at the start of the header line.
 
 Uzbek language quality rules (MUST follow):
@@ -637,6 +652,207 @@ function combineResponses(responses: AskResponse[], answer: string): AskResponse
   };
 }
 
+function convertMarkdownToTelegram(text: string): string {
+  let result = text.replace(/\*\*([^*\n]+?)\*\*/g, "*$1*");
+  result = result.replace(/^(\s+)\*\s+/gm, "$1- ");
+  result = result.replace(/^\*\s{2,}/gm, "- ");
+  return result;
+}
+
+async function embedQueryGemini(text: string): Promise<number[] | null> {
+  if (!GEMINI_KEY) return null;
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "models/gemini-embedding-001",
+          content: { parts: [{ text: text.slice(0, 2000) }] },
+        }),
+        signal: AbortSignal.timeout(8_000),
+      }
+    );
+    if (!res.ok) {
+      console.warn(`[aiClient] Gemini embed failed: ${res.status}`);
+      return null;
+    }
+    const data = (await res.json()) as { embedding?: { values: number[] } };
+    return data.embedding?.values ?? null;
+  } catch (err) {
+    console.warn("[aiClient] Gemini embed error:", err);
+    return null;
+  }
+}
+
+interface PgChunk {
+  content:    string;
+  lesson_id:  string | null;
+  similarity: number;
+}
+
+async function searchPgvectorChunks(vector: number[], limit = 8): Promise<PgChunk[]> {
+  const pool = getRagPool();
+  if (!pool) return [];
+  try {
+    const vectorLiteral = `[${vector.join(",")}]`;
+    const { rows } = await pool.query<PgChunk>(
+      `SELECT content,
+              lesson_id::text AS lesson_id,
+              1 - (embedding <=> $1::vector) AS similarity
+       FROM   chunks
+       WHERE  embedding IS NOT NULL
+       ORDER  BY embedding <=> $1::vector
+       LIMIT  $2`,
+      [vectorLiteral, limit]
+    );
+    return rows;
+  } catch (err) {
+    console.warn("[aiClient] pgvector search error:", err);
+    return [];
+  }
+}
+
+async function buildStructuredSourcesFromChunks(chunks: PgChunk[]): Promise<Array<{ course: string; lesson_number: number | null; lesson_title: string | null }>> {
+  const pool = getRagPool();
+  if (!pool) return [];
+  const uniqueIds = [...new Set(
+    chunks.map(c => c.lesson_id).filter((id): id is string => Boolean(id))
+  )].map(Number).filter(n => !isNaN(n));
+  if (uniqueIds.length === 0) return [];
+  try {
+    const { rows } = await pool.query<{ lesson_number: number | null; title: string | null; course_name: string }>(
+      `SELECT l.lesson_number, l.title, c.display_name AS course_name
+       FROM   lessons l
+       JOIN   cohorts c ON c.id = l.cohort_id
+       WHERE  l.id = ANY($1)`,
+      [uniqueIds]
+    );
+    return rows.map(r => ({
+      course:        r.course_name,
+      lesson_number: r.lesson_number,
+      lesson_title:  r.title,
+    }));
+  } catch (err) {
+    console.warn("[aiClient] structured sources error:", err);
+    return [];
+  }
+}
+
+async function askGeminiDirect(question: string): Promise<AskRagResult> {
+  if (!GEMINI_KEY) return { text: FALLBACK_MESSAGE, raw: null, metadata: emptyMetadata() };
+
+  const startedAt = Date.now();
+
+  // Step 1: try to retrieve course context from pgvector via Gemini embeddings
+  let chunks: PgChunk[] = [];
+  let structuredSources: Array<{ course: string; lesson_number: number | null; lesson_title: string | null }> = [];
+  const vector = await embedQueryGemini(question);
+  if (vector) {
+    chunks = await searchPgvectorChunks(vector, 8);
+    if (chunks.length > 0) {
+      structuredSources = await buildStructuredSourcesFromChunks(chunks);
+    }
+  }
+
+  // Step 2: build the user message — include retrieved context if we have any
+  const contextBlock = chunks.length > 0
+    ? `Kurs matnlari:
+${chunks.map((c, i) => `[${i + 1}] ${c.content.trim()}`).join("\n\n")}
+
+`
+    : "";
+  const userMessage = contextBlock + `Savol: ${question}`;
+
+  const systemInstruction = chunks.length > 0
+    ? [
+        "Siz Basyra Academy kurslarining AI yordamchisiz.",
+        "Faqat berilgan kurs matnlariga asoslanib javob bering.",
+        "Agar savol bitta atama yoki qisqa ibora bo'lsa (masalan: \"UTP\", \"voronka\"), uni shu atamaning ta'rifi va asosiy tushuntirishi uchun so'rov sifatida talqin qiling.",
+        "Matnlarda javob bo'lmasa: \"Bu haqida kurs materiallarida ma'lumot topilmadi.\" deng.",
+        "",
+        ANSWER_BEHAVIOR_PROMPT,
+      ].join("\n")
+    : ANSWER_BEHAVIOR_PROMPT;
+
+  const requestBody = JSON.stringify({
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+    contents: [{ role: "user", parts: [{ text: userMessage }] }],
+    generationConfig: { temperature: 0.3, maxOutputTokens: 4000 },
+  });
+
+  // Step 3: try primary then fallback Gemini model on 5xx
+  let usedModel = GEMINI_CHAT_MODEL;
+  let res: Response | null = null;
+  let data: any = null;
+
+  try {
+    outer: for (const model of [GEMINI_CHAT_MODEL, GEMINI_CHAT_FALLBACK_MODEL]) {
+      usedModel = model;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody,
+            signal: AbortSignal.timeout(45_000),
+          }
+        );
+        if (res.ok) break outer;
+        console.warn(`[aiClient] Gemini ${model} attempt ${attempt + 1} failed: ${res.status}`);
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) break;
+        if (attempt === 0) await new Promise(r => setTimeout(r, 800));
+      }
+    }
+
+    if (!res || !res.ok) {
+      return { text: FALLBACK_MESSAGE, raw: null, metadata: emptyMetadata() };
+    }
+
+    data = await res.json();
+    const rawText: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    if (!rawText) return { text: FALLBACK_MESSAGE, raw: null, metadata: emptyMetadata() };
+
+    const usage   = data?.usageMetadata ?? {};
+    const tokensIn  = usage.promptTokenCount ?? 0;
+    const tokensOut = usage.candidatesTokenCount ?? 0;
+    // Gemini 2.5 Flash: $0.15/1M input, $0.60/1M output
+    const costUsd = (tokensIn * 0.15 + tokensOut * 0.60) / 1_000_000;
+    const finishReason: string | null = data?.candidates?.[0]?.finishReason ?? null;
+
+    const raw: AskResponse = {
+      answer: rawText,
+      sources: chunks.map(c => c.lesson_id ?? "").filter(Boolean),
+      structured_sources: structuredSources,
+      context_warning: chunks.length === 0,
+      tokens_in: tokensIn,
+      tokens_out: tokensOut,
+      cost_usd: costUsd,
+      response_time_ms: Date.now() - startedAt,
+      model: usedModel,
+      finish_reason: finishReason,
+    };
+
+    const answer = await applyRedactionTerms(movePromotionalToEnd(stripBannedOpener(dedupeResponse(convertMarkdownToTelegram(rawText)))));
+    const metadata: AskMetadata = {
+      finishReason,
+      finishReasons:            [finishReason],
+      continuationCount:        0,
+      completedNaturally:       true,
+      incompleteEndingDetected: false,
+      completionAttempted:      false,
+      usedLocalCompletionGuard: false,
+    };
+
+    return { text: answer, raw, metadata };
+  } catch (err) {
+    console.error("[aiClient] Gemini direct error:", err);
+    return { text: FALLBACK_MESSAGE, raw: null, metadata: emptyMetadata() };
+  }
+}
+
 /**
  * Ask the RAG service a question.
  * Returns the answer text, or the fallback message if the service is unavailable.
@@ -645,8 +861,8 @@ function combineResponses(responses: AskResponse[], answer: string): AskResponse
 export async function askRag(req: AskRequest): Promise<AskRagResult> {
   const fallback = { text: FALLBACK_MESSAGE, raw: null, metadata: emptyMetadata() };
   if (!RAG_URL) {
-    console.warn("[aiClient] RAG_SERVICE_URL not configured");
-    return fallback;
+    console.warn("[aiClient] RAG_SERVICE_URL not configured — trying Gemini direct");
+    return askGeminiDirect(req.question);
   }
 
   const originalQuestion = req.original_question ?? req.question;
@@ -659,7 +875,10 @@ export async function askRag(req: AskRequest): Promise<AskRagResult> {
 
   try {
     const first = await postAsk(requestBody);
-    if (!first) return fallback;
+    if (!first) {
+      console.warn("[aiClient] RAG service unreachable — falling back to Gemini direct");
+      return askGeminiDirect(req.question);
+    }
 
     const responses = [first];
     const parts = [first.answer];
@@ -709,7 +928,7 @@ export async function askRag(req: AskRequest): Promise<AskRagResult> {
     return { text: answer, raw: combineResponses(responses, answer), metadata };
   } catch (err) {
     console.error("[aiClient] RAG service error:", err);
-    return fallback;
+    return askGeminiDirect(req.question);
   }
 }
 

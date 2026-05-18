@@ -1174,7 +1174,7 @@ export function registerCommandHandlers(b: Bot) {
             messageId:      msgId ?? undefined,
             participantId:  participantId ?? undefined,
             chatId:         BigInt(chatId),
-            model:          "gemini-2.5-flash",
+            model:          raw?.model ?? "gemini-2.5-flash",
             kind:           "chat",
             tokensIn:       raw.tokens_in,
             tokensOut:      raw.tokens_out,
@@ -1450,7 +1450,7 @@ export function registerCommandHandlers(b: Bot) {
     await ctx.answerCallbackQuery();
     const msgId = ctx.match[1];
     if (!msgId || msgId === "0") {
-      await ctx.reply("📚 Manba topilmadi.");
+      await ctx.reply("📚 Bu javob umumiy bilim asosida tayyorlandi.");
       return;
     }
     try {
@@ -1460,7 +1460,7 @@ export function registerCommandHandlers(b: Bot) {
       });
       const sources = (msg?.sources ?? null) as Array<{ course: string; lesson_number: number | null; lesson_title: string | null }> | null;
       if (!sources || sources.length === 0) {
-        await ctx.reply("📚 Manba topilmadi.");
+        await ctx.reply("📚 Bu javob umumiy bilim asosida tayyorlandi.");
         return;
       }
       const lines = sources
@@ -1474,7 +1474,7 @@ export function registerCommandHandlers(b: Bot) {
       await ctx.reply(`📚 Manbalar:\n\n${lines.join("\n")}`);
     } catch (err) {
       console.error("[BOT] manba callback error:", err);
-      await ctx.reply("📚 Manba topilmadi.");
+      await ctx.reply("📚 Bu javob umumiy bilim asosida tayyorlandi.");
     }
   });
 
