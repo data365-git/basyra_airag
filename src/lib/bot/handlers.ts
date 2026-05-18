@@ -30,7 +30,7 @@ const DEFAULT_TTS_FIRST_CHUNK_CHARS = 350;
 const DEFAULT_TTS_CONCURRENCY = 2;
 const TELEGRAM_TEXT_LIMIT = 3900;
 const MEDIUM_ANSWER_SPLIT_LIMIT = 9000;
-const SHORT_ANSWER_LIMIT = 600;
+const SHORT_ANSWER_LIMIT = 400;
 
 type LongAnswerDelegate = {
   create(args: {
@@ -168,13 +168,13 @@ function extractSummary(text: string): string {
 
 function makeLongAnswerPreview(summary: string): string {
   const cleanSummary = summary.replace(/\s+/g, " ").trim();
-  const preview = cleanSummary.length > 650 ? `${cleanSummary.slice(0, 650).trim()}...` : cleanSummary;
+  const preview = cleanSummary.length > 400 ? `${cleanSummary.slice(0, 400).trim()}...` : cleanSummary;
   return [
-    "💡 Javob biroz uzunroq chiqdi, shuning uchun uni o'qishga qulay maqola qilib tayyorladim.",
+    "💡 Javob uzunroq chiqdi — Telegramda o'qish noqulay.",
     "",
     preview,
     "",
-    "Davomini havolada to'liq o'qishingiz mumkin.",
+    "📄 To'liq javobni quyidagi tugmadan PDF yoki maqola ko'rinishida oching.",
   ].join("\n");
 }
 
@@ -369,8 +369,11 @@ async function mergeBotMessageMetadata(
 type DeliveryType = "direct" | "split" | "article";
 
 function chooseDeliveryType(answer: string, articleThreshold: number): DeliveryType {
-  if (answer.length <= TELEGRAM_TEXT_LIMIT) return "direct";
-  if (answer.length <= Math.max(articleThreshold, MEDIUM_ANSWER_SPLIT_LIMIT)) return "split";
+  // Telegram is not a good place to read long texts. Anything beyond the
+  // article threshold is delivered as a short preview + buttons; the full
+  // text lives in the web article and PDF view.
+  const directCutoff = Math.min(articleThreshold, TELEGRAM_TEXT_LIMIT);
+  if (answer.length <= directCutoff) return "direct";
   return "article";
 }
 
@@ -483,10 +486,10 @@ async function resolveLongAnswerLimit(): Promise<number> {
       },
       orderBy: { updatedAt: "desc" },
     });
-    return parseBoundedInt(row?.value, 1800, 800, 1800);
+    return parseBoundedInt(row?.value, 1000, 400, 3000);
   } catch (error) {
     console.warn("[Bot] long-answer config lookup failed; using default", error);
-      return 1800;
+      return 1000;
   }
 }
 
@@ -1140,7 +1143,6 @@ export function registerCommandHandlers(b: Bot) {
 
         const DIRECT_ANSWER_LIMIT = await resolveLongAnswerLimit();
         const deliveryType = chooseDeliveryType(answer, DIRECT_ANSWER_LIMIT);
-        const splitParts = deliveryType === "split" ? splitTelegramText(answer) : [];
         const msgId = await logBotMessage({
           chatId,
           participantId,
@@ -1155,7 +1157,7 @@ export function registerCommandHandlers(b: Bot) {
             reply_to_message_id: userMsgId,
             replied_assistant_message_id: replyContext?.assistantMessageId ?? null,
             delivery_type: deliveryType,
-            telegram_message_count: deliveryType === "split" ? splitParts.length : 1,
+            telegram_message_count: 1,
             answer_char_count: answer.length,
             finish_reason: metadata.finishReason,
             finish_reasons: metadata.finishReasons,
@@ -1212,37 +1214,37 @@ export function registerCommandHandlers(b: Bot) {
             sentTelegramMsgId = await reply(ctx, makeLongAnswerPreview(summary), { reply_markup: kb });
           }
           await setBotMessageTelegramMsgId(msgId, sentTelegramMsgId);
-        } else if (deliveryType === "split") {
-          let firstTelegramMsgId: number | null = null;
-          for (let index = 0; index < splitParts.length; index += 1) {
-            const part = splitParts[index];
-            const prefix = splitParts.length > 1 ? `💡 ${index + 1}/${splitParts.length}\n\n` : "💡 ";
-            const isLast = index === splitParts.length - 1;
-            const kb = isLast
-              ? new InlineKeyboard()
-                  .text("📚 Manba", `manba_${msgId ?? "0"}`)
-              : undefined;
-            const sanitized = sanitizeMarkdown(`${prefix}${part}`);
-            let sent: number | null = null;
-            try {
-              sent = await reply(ctx, sanitized, { parse_mode: "Markdown", ...(kb ? { reply_markup: kb } : {}) });
-            } catch (mdErr) {
-              if (String(mdErr).includes("can't parse")) {
-                sent = await reply(ctx, `${prefix}${part}`, kb ? { reply_markup: kb } : undefined);
-              } else {
-                throw mdErr;
-              }
-            }
-            firstTelegramMsgId ??= sent;
-          }
-          await setBotMessageTelegramMsgId(msgId, firstTelegramMsgId);
-          await mergeBotMessageMetadata(msgId, { telegram_message_count: splitParts.length });
         } else {
           // Send direct answers when they fit Telegram's message limit.
+          // Save to LongAnswer so the 📄 PDF button has an article ID to link to.
+          let longAnswerId: string | null = null;
+          if (answer.length > SHORT_ANSWER_LIMIT) {
+            try {
+              const longAnswer = await prismaBotModels.longAnswer.create({
+                data: {
+                  messageId:     msgId ?? undefined,
+                  participantId: participantId ?? undefined,
+                  title:         extractTitle(answer),
+                  summary:       extractSummary(answer),
+                  bodyMd:        answer,
+                },
+              });
+              longAnswerId = longAnswer.id;
+            } catch (err) {
+              console.warn("[Bot] direct longAnswer create failed; PDF button omitted", err);
+            }
+          }
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
           const replyMarkup = answer.length > SHORT_ANSWER_LIMIT
-            ? new InlineKeyboard()
-                .text("📚 Manba", `manba_${msgId ?? "0"}`)
-                .text("🔊 Tinglash", `tts_${msgId ?? "0"}`)
+            ? (() => {
+                const kb = new InlineKeyboard()
+                  .text("📚 Manba", `manba_${msgId ?? "0"}`)
+                  .text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
+                if (longAnswerId && appUrl) {
+                  kb.url("📄 PDF o'qish", `${appUrl}/article/${longAnswerId}?print=1`);
+                }
+                return kb;
+              })()
             : undefined;
           const sanitized = sanitizeMarkdown(`💡 ${answer}`);
           let sentTelegramMsgId: number | null = null;
