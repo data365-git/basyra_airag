@@ -751,6 +751,7 @@ async function askGeminiDirect(question: string): Promise<AskRagResult> {
   const vector = await embedQueryGemini(question);
   if (vector) {
     chunks = await searchPgvectorChunks(vector, 8);
+    console.log(`[RAG] q="${question.slice(0,60)}" chunks=${chunks.length} top3=${chunks.slice(0,3).map(c => `L${c.lesson_id}:${c.similarity.toFixed(3)}`).join(",")}`);
     if (chunks.length > 0) {
       structuredSources = await buildStructuredSourcesFromChunks(chunks);
     }
