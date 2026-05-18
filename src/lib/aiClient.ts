@@ -768,9 +768,10 @@ ${chunks.map((c, i) => `[${i + 1}] ${c.content.trim()}`).join("\n\n")}
   const systemInstruction = chunks.length > 0
     ? [
         "Siz Basyra Academy kurslarining AI yordamchisiz.",
-        "Faqat berilgan kurs matnlariga asoslanib javob bering.",
+        "Asosan berilgan kurs matnlariga asoslanib javob bering.",
         "Agar savol bitta atama yoki qisqa ibora bo'lsa (masalan: \"UTP\", \"voronka\"), uni shu atamaning ta'rifi va asosiy tushuntirishi uchun so'rov sifatida talqin qiling.",
-        "Matnlarda javob bo'lmasa: \"Bu haqida kurs materiallarida ma'lumot topilmadi.\" deng.",
+        "Agar savol shaxs ismi bo'lsa (masalan: \"Abdulloh\", \"Abdulboriy\", \"Akbar aka\"), shu shaxs haqida \"u kim va kursda nima o'rgatadi\" deb so'ralayotgan deb tushuning. Matnlarda u haqida to'g'ridan-to'g'ri ta'rif bo'lmasa ham, u kursda qaysi mavzularni o'rgatishi yoki nima haqida gapirishini matn kontekstidan ajratib bering va qisqa tarzda javob bering.",
+        "Faqat shu shaxs yoki atama umuman matnlarda eslatilmagan bo'lsa, \"Bu haqida kurs materiallarida ma'lumot topilmadi.\" deng. Bo'lmasa, matnlardagi tegishli kontekstdan foydalanib javob tuzing.",
         "",
         ANSWER_BEHAVIOR_PROMPT,
       ].join("\n")
