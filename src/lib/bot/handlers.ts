@@ -93,6 +93,7 @@ const ABBR_EXPANSIONS: Array<[RegExp, string]> = [
   [/\bKPI\b/gi, "KPI (key performance indicators, asosiy samaradorlik ko'rsatkichlari)"],
   [/\bROP\b/gi, "ROP (sotuv bo'limi rahbari, rukovoditel otdela prodaj)"],
   [/\bCRM\b/gi, "CRM (customer relationship management, mijozlar bilan munosabatlar tizimi)"],
+  [/\bUTP\b/gi, "UTP (unique selling proposition, noyob sotuv taklifi, уникальное торговое предложение)"],
 ];
 
 function expandAbbreviations(text: string): string {
@@ -1202,9 +1203,8 @@ export function registerCommandHandlers(b: Bot) {
           });
 
           const kb = new InlineKeyboard()
-            .url("📖 To'liq o'qish", `${appUrl}/article/${longAnswer.id}`)
             .text("📚 Manba", `manba_${msgId ?? "0"}`)
-            .url("📄 PDF yuklab olish", `${appUrl}/article/${longAnswer.id}?print=1`);
+            .url("📄 PDF o'qish", `${appUrl}/article/${longAnswer.id}?print=1`);
 
           const summaryText = sanitizeMarkdown(makeLongAnswerPreview(summary));
           let sentTelegramMsgId: number | null = null;
@@ -1238,11 +1238,11 @@ export function registerCommandHandlers(b: Bot) {
           const replyMarkup = answer.length > SHORT_ANSWER_LIMIT
             ? (() => {
                 const kb = new InlineKeyboard()
-                  .text("📚 Manba", `manba_${msgId ?? "0"}`)
-                  .text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
+                  .text("📚 Manba", `manba_${msgId ?? "0"}`);
                 if (longAnswerId && appUrl) {
                   kb.url("📄 PDF o'qish", `${appUrl}/article/${longAnswerId}?print=1`);
                 }
+                kb.text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
                 return kb;
               })()
             : undefined;
