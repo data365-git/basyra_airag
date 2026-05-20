@@ -20,8 +20,17 @@ function getRagPool(): Pool | null {
 }
 const RAG_TOKEN  = process.env.RAG_INTERNAL_TOKEN ?? "";
 const GEMINI_KEY = process.env.GEMINI_API_KEY ?? "";
-const GEMINI_CHAT_MODEL = "gemini-2.5-flash";
-const GEMINI_CHAT_FALLBACK_MODEL = "gemini-2.0-flash";
+// Ordered cascade: try each in turn (2 attempts each). All Flash-class because
+// the current Google Cloud project does not have paid billing for Pro models
+// (every Pro call returns 429 free-tier quota exhausted). To use Pro, enable
+// billing on the project that owns GEMINI_API_KEY and prepend a Pro model here.
+const GEMINI_CHAT_MODELS = [
+  "gemini-3.5-flash",        // newest, primary
+  "gemini-3-flash-preview",  // 3.0 Flash, secondary fallback
+  "gemini-2.5-flash",        // proven stable, last-resort fallback
+] as const;
+const GEMINI_CHAT_MODEL = GEMINI_CHAT_MODELS[0];
+const GEMINI_CHAT_FALLBACK_MODEL = GEMINI_CHAT_MODELS[1];
 
 export interface AskRequest {
   chat_id:        number;
@@ -747,13 +756,25 @@ async function askGeminiDirect(question: string): Promise<AskRagResult> {
 
   const startedAt = Date.now();
 
-  // Step 1: try to retrieve course context from pgvector via Gemini embeddings
+  // Step 1: try to retrieve course context from pgvector via Gemini embeddings.
+  // IMPORTANT: embed ONLY the current user message, not the conversation-wrapped
+  // blob (which buildConversationAwareQuestion prepends with "Short-term
+  // conversation memory:" + up to 14 prior messages). Embedding the full blob
+  // poisons the vector with chat history and pgvector returns chunks matching
+  // past topics instead of the current question. Memory still goes to Gemini
+  // chat (via `question` further down), just not to the embed call.
+  const embedQuery = (() => {
+    const marker = "New user message:";
+    const idx = question.lastIndexOf(marker);
+    return idx >= 0 ? question.slice(idx + marker.length).trim() : question;
+  })();
+
   let chunks: PgChunk[] = [];
   let structuredSources: Array<{ course: string; lesson_number: number | null; lesson_title: string | null }> = [];
-  const vector = await embedQueryGemini(question);
+  const vector = await embedQueryGemini(embedQuery);
   if (vector) {
     chunks = await searchPgvectorChunks(vector, 8);
-    console.log(`[RAG] q="${question.slice(0,60)}" chunks=${chunks.length} top3=${chunks.slice(0,3).map(c => `L${c.lesson_id}:${c.similarity.toFixed(3)}`).join(",")}`);
+    console.log(`[RAG] q="${embedQuery.slice(0,60)}" chunks=${chunks.length} top3=${chunks.slice(0,3).map(c => `L${c.lesson_id}:${c.similarity.toFixed(3)}`).join(",")}`);
     if (chunks.length > 0) {
       structuredSources = await buildStructuredSourcesFromChunks(chunks);
     }
@@ -786,13 +807,15 @@ ${chunks.map((c, i) => `[${i + 1}] ${c.content.trim()}`).join("\n\n")}
     generationConfig: { temperature: 0.3, maxOutputTokens: 4000 },
   });
 
-  // Step 3: try primary then fallback Gemini model on 5xx
-  let usedModel = GEMINI_CHAT_MODEL;
+  // Step 3: cascade through GEMINI_CHAT_MODELS in order, 2 attempts each.
+  // First 2xx response wins. On 4xx (other than 429) we skip to next model
+  // since retrying the same model with the same key won't help.
+  let usedModel = GEMINI_CHAT_MODELS[0];
   let res: Response | null = null;
   let data: any = null;
 
   try {
-    outer: for (const model of [GEMINI_CHAT_MODEL, GEMINI_CHAT_FALLBACK_MODEL]) {
+    outer: for (const model of GEMINI_CHAT_MODELS) {
       usedModel = model;
       for (let attempt = 0; attempt < 2; attempt++) {
         res = await fetch(
