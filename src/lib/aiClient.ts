@@ -810,7 +810,7 @@ ${chunks.map((c, i) => `[${i + 1}] ${c.content.trim()}`).join("\n\n")}
   // Step 3: cascade through GEMINI_CHAT_MODELS in order, 2 attempts each.
   // First 2xx response wins. On 4xx (other than 429) we skip to next model
   // since retrying the same model with the same key won't help.
-  let usedModel = GEMINI_CHAT_MODELS[0];
+  let usedModel: typeof GEMINI_CHAT_MODELS[number] = GEMINI_CHAT_MODELS[0];
   let res: Response | null = null;
   let data: any = null;
 
