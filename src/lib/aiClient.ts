@@ -782,14 +782,21 @@ async function askGeminiDirect(question: string): Promise<AskRagResult> {
     }
   }
 
-  // Step 2: build the user message — include retrieved context if we have any
+  // Step 2: build the user message — include retrieved context if we have any.
+  // IMPORTANT: pass the BARE current question (embedQuery), not the conversation-
+  // wrapped version. When the wrapped version is passed, Gemini sees prior
+  // assistant turns in memory and treats new questions as continuations of the
+  // previous answer (causing "qizil takliflar:" mid-section starts instead of
+  // proper definitions). Memory-aware behavior is preserved indirectly: any
+  // legitimate follow-up like "misollar ko'proq?" is itself the new bare question
+  // — Gemini still infers context from chunks + the rephrased term.
   const contextBlock = chunks.length > 0
     ? `Kurs matnlari:
 ${chunks.map((c, i) => `[${i + 1}] ${c.content.trim()}`).join("\n\n")}
 
 `
     : "";
-  const userMessage = contextBlock + `Savol: ${question}`;
+  const userMessage = contextBlock + `Savol: ${embedQuery}`;
 
   const systemInstruction = chunks.length > 0
     ? [
@@ -808,7 +815,16 @@ ${chunks.map((c, i) => `[${i + 1}] ${c.content.trim()}`).join("\n\n")}
   const requestBody = JSON.stringify({
     systemInstruction: { parts: [{ text: systemInstruction }] },
     contents: [{ role: "user", parts: [{ text: userMessage }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 4000 },
+    // thinkingBudget: 0 — Gemini 3.x models eat output budget for hidden
+    // "thinking" tokens. Without this, maxOutputTokens=4000 yielded only
+    // ~450 visible chars before MAX_TOKENS fired (truncated answers).
+    // Setting thinkingBudget to 0 disables thinking and dedicates the full
+    // budget to visible output.
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 4000,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   });
 
   // Step 3: cascade through GEMINI_CHAT_MODELS in order, 2 attempts each.

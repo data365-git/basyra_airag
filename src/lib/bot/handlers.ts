@@ -1208,7 +1208,8 @@ export function registerCommandHandlers(b: Bot) {
 
           const kb = new InlineKeyboard()
             .text("📚 Manba", `manba_${msgId ?? "0"}`)
-            .url("📄 PDF o'qish", `${appUrl}/article/${longAnswer.id}?print=1`);
+            .url("📄 PDF o'qish", `${appUrl}/article/${longAnswer.id}?print=1`)
+            .text("🔊 Tinglash", `tts_${msgId ?? "0"}`);
 
           const summaryText = sanitizeMarkdown(makeLongAnswerPreview(summary));
           let sentTelegramMsgId: number | null = null;
