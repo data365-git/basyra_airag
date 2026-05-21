@@ -94,6 +94,10 @@ const ABBR_EXPANSIONS: Array<[RegExp, string]> = [
   [/\bROP\b/gi, "ROP (sotuv bo'limi rahbari, rukovoditel otdela prodaj)"],
   [/\bCRM\b/gi, "CRM (customer relationship management, mijozlar bilan munosabatlar tizimi)"],
   [/\bUTP\b/gi, "UTP (unique selling proposition, noyob sotuv taklifi, уникальное торговое предложение)"],
+  // Course-specific methodology acronyms. NO = Number-Oriented, JoA = Job-Oriented,
+  // NOA / NO-HOW = the combined Number-Oriented Analysis methodology (Basyra term).
+  [/\b(NOA|NO-HOW|NOHOW)\b/gi, "NOA / NO-HOW (Number-Oriented Analysis — Basyra kursida raqamlarga asoslangan audit/tahlil metodologiyasi)"],
+  [/\bJoA\b/gi, "JoA (Job-Oriented Analysis, ish/vazifaga asoslangan tahlil)"],
 ];
 
 function expandAbbreviations(text: string): string {

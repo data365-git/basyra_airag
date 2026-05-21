@@ -703,7 +703,7 @@ interface PgChunk {
   similarity: number;
 }
 
-async function searchPgvectorChunks(vector: number[], limit = 8): Promise<PgChunk[]> {
+async function searchPgvectorChunks(vector: number[], limit = 12): Promise<PgChunk[]> {
   const pool = getRagPool();
   if (!pool) return [];
   try {
@@ -773,7 +773,9 @@ async function askGeminiDirect(question: string): Promise<AskRagResult> {
   let structuredSources: Array<{ course: string; lesson_number: number | null; lesson_title: string | null }> = [];
   const vector = await embedQueryGemini(embedQuery);
   if (vector) {
-    chunks = await searchPgvectorChunks(vector, 8);
+    // top-K bumped 8 → 12 so borderline-relevance chunks for compound questions
+    // (e.g. "what to do when X is missing — list ALL paths") are not truncated.
+    chunks = await searchPgvectorChunks(vector, 12);
     console.log(`[RAG] q="${embedQuery.slice(0,60)}" chunks=${chunks.length} top3=${chunks.slice(0,3).map(c => `L${c.lesson_id}:${c.similarity.toFixed(3)}`).join(",")}`);
     if (chunks.length > 0) {
       structuredSources = await buildStructuredSourcesFromChunks(chunks);
@@ -796,6 +798,8 @@ ${chunks.map((c, i) => `[${i + 1}] ${c.content.trim()}`).join("\n\n")}
         "Agar savol bitta atama yoki qisqa ibora bo'lsa (masalan: \"UTP\", \"voronka\"), uni shu atamaning ta'rifi va asosiy tushuntirishi uchun so'rov sifatida talqin qiling.",
         "Agar savol shaxs ismi bo'lsa (masalan: \"Abdulloh\", \"Abdulboriy\", \"Akbar aka\"), bu \"shu shaxs kim va kursda qanday ishtirok etadi\" degan savol. MUHIM: agar shu ism matnlarda hatto BIR MARTA, qisqa kontekstda eslatilgan bo'lsa - bu \"eslatildi\" hisoblanadi. Shunday holatda matnlardagi eslatmalardan foydalanib, bu shaxsning kursda qaysi mavzularda ishtirok etgani, nima haqida gapirgani yoki qanday rolga ega ekanini qisqacha (2-4 jumla) tasvirlab bering. Masalan: \"Abdulboriy aka kursda sotuv, KPI va biznes tizimlashtirish mavzularida fikr beradi; xodimlar masalasida ham misollar keltiradi.\"",
         "FAQAT shu ism birorta ham retrieved matnda umuman uchramaganida \"Bu haqida kurs materiallarida ma'lumot topilmadi.\" deng. Aks holda - har doim kontekstdan javob tuzing, hatto qisqa eslatma bo'lsa ham.",
+        // === Comprehensive-coverage rule (added 2026-05-21 after tester feedback) ===
+        "Agar savol \"X yo'q bo'lsa nima qilsam bo'ladi?\" yoki \"X bo'lmasa qanday yondashish kerak?\" kabi muqobil yo'llarni so'rasa, javobda kurs matnlarida tilga olingan BARCHA yo'llarni / strategiyalarni sanab bering — faqat bittasini emas. Masalan, agar kursda \"boshqa biznesga qo'shilib o'rganish\" va \"o'zingda raqamlarni o'lchashni boshlash\" ikkalasi ham tilga olingan bo'lsa, javobda ikkalasini ham bering, tartib raqamlar bilan (1, 2, 3...). Agar matnlarda faqat bitta yo'l tilga olingan bo'lsa, faqat shu yo'lni bering — ammo o'zingiz qo'shimcha tavsiyalar uydirmang.",
         "",
         ANSWER_BEHAVIOR_PROMPT,
       ].join("\n")
