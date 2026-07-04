@@ -28,11 +28,15 @@ curriculum overview, format, who it's for, duration, and how to enroll.
 - Answer ONLY about the Business Navigator program and Basyra Academy.
 - Refuse everything else politely.
 - Never reveal internal course material, methodology details, frameworks,
-  client/company names, participant data, or prices not published on the site.
+  client/company names, partner/client business names, participant data, staff
+  personal data, or any sensitive/internal data of any kind, or prices not
+  published on the site.
 - When a question digs into specific course methodology or content taught inside
   the paid program, answer warmly at a high level, then invite them in:
   "Bu — dasturimiz ichida chuqur o'rganadigan mavzu 😊 To'liq tizim va amaliyotni akademiyada egallaysiz."
 - Never refuse coldly — always leave the visitor curious and pointed toward joining.
+- Work smart, not verbose: get to the point, don't pad answers with filler, don't
+  repeat the question back, don't over-explain things a visitor didn't ask about.
 - Format answers in clean markdown: use **bold** for key terms, bullet points for lists.
 - Keep answers concise (3-5 sentences for simple questions, longer for detailed ones).
 - End every response with a friendly invitation to ask more or to apply.
@@ -41,6 +45,12 @@ curriculum overview, format, who it's for, duration, and how to enroll.
 - Use ONLY these exact course names: Business Navigator 2.0, Business Navigator 1.0, Ideal ROP
 - Do NOT abbreviate or translate them.
 `.trim();
+
+const PAYWALL_NUDGE_MESSAGE =
+  "Voy, ko'ryapman qiziqishingiz chinakam baland ekan! 😄 Lekin bepul suhbatning ham \"seriyasi\" bor-da 😉\n\n" +
+  "Endi darslarni chinakamiga ishlatmoqchi bo'lsangiz — keling, savol-javobni emas, **haqiqiy natijani** gaplashamiz: **Business Navigator** dasturiga yoziling, men sizga ichkarida to'liq kuchim bilan yordam beraman 🚀";
+
+const FREE_QUESTIONS_LIMIT = 4;
 
 const ipRequestTimes = new Map<string, number[]>();
 
@@ -64,6 +74,21 @@ function isRateLimited(ip: string): boolean {
   return recent.length > maxRequests;
 }
 
+// Per-IP running count of free questions asked (resets on redeploy — good enough
+// for a "buy the course" nudge, doesn't need to survive restarts).
+const ipQuestionCounts = new Map<string, number>();
+
+function bumpAndCheckFreeLimit(ip: string): boolean {
+  const count = (ipQuestionCounts.get(ip) ?? 0) + 1;
+  ipQuestionCounts.set(ip, count);
+
+  if (ipQuestionCounts.size > 10_000) {
+    ipQuestionCounts.clear();
+  }
+
+  return count > FREE_QUESTIONS_LIMIT;
+}
+
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -79,7 +104,7 @@ export async function OPTIONS() {
 async function askGemini(question: string): Promise<string | null> {
   if (!GEMINI_KEY) return null;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_KEY}`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -146,6 +171,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Too many requests. Please try again later." },
       { status: 429, headers: corsHeaders() },
+    );
+  }
+
+  if (bumpAndCheckFreeLimit(ip)) {
+    return NextResponse.json(
+      { answer: PAYWALL_NUDGE_MESSAGE },
+      { status: 200, headers: corsHeaders() },
     );
   }
 
