@@ -27,7 +27,7 @@ export async function classifyMessage(text: string): Promise<ClassifyResult | nu
 Respond with JSON only: {"kind":"complaint"|"offer"|"lead"|"question","score":0.0-1.0,"summary":"max 12 words in Uzbek"}
 Message: "${text.slice(0, 500)}"`;
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
