@@ -63,7 +63,7 @@ const PAYWALL_NUDGE_MESSAGE =
   "Voy, ko'ryapman qiziqishingiz chinakam baland ekan! 😄 Lekin bepul suhbatning ham \"seriyasi\" bor-da 😉\n\n" +
   "Endi darslarni chinakamiga ishlatmoqchi bo'lsangiz — keling, savol-javobni emas, **haqiqiy natijani** gaplashamiz: **Business Navigator** dasturiga yoziling, men sizga ichkarida to'liq kuchim bilan yordam beraman 🚀";
 
-const FREE_QUESTIONS_LIMIT = 4;
+const FREE_QUESTIONS_LIMIT = 5;
 
 const ipRequestTimes = new Map<string, number[]>();
 
